@@ -1,0 +1,2457 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Приложение для здоровья</title>
+    
+    <!-- Подключение React, ReactDOM и Babel -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Подключение Tailwind CSS для стилей -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Подключение иконок FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // Справочник МКБ-10 (Хронические заболевания)
+        const mcb10Dict = [
+            { code: 'I10', name: 'Эссенциальная (первичная) гипертензия' },
+            { code: 'I11', name: 'Гипертензивная болезнь сердца' },
+            { code: 'I20', name: 'Стенокардия [грудная жаба]' },
+            { code: 'I25', name: 'Хроническая ишемическая болезнь сердца' },
+            { code: 'E10', name: 'Инсулинозависимый сахарный диабет' },
+            { code: 'E11', name: 'Инсулинонезависимый сахарный диабет' },
+            { code: 'E03.9', name: 'Гипотиреоз неуточненный' },
+            { code: 'J45', name: 'Астма' },
+            { code: 'K25', name: 'Язва желудка' },
+            { code: 'K29', name: 'Гастрит и дуоденит' },
+            { code: 'M42', name: 'Остеохондроз позвоночника' },
+            { code: 'M10', name: 'Подагра' },
+            { code: 'G43', name: 'Мигрень' },
+            { code: 'L20', name: 'Атопический дерматит' },
+            { code: 'E06', name: 'Тиреоидит (аутоиммунный)' },
+            { code: 'K73', name: 'Хронический гепатит' },
+            { code: 'N11', name: 'Хронический тубулоинтерстициальный нефрит' }
+        ];
+
+        // Справочник аллергенов
+        const allergyDict = [
+            { code: 'Z88.0', name: 'Аллергия на пенициллин' },
+            { code: 'Z88.1', name: 'Аллергия на другие антибиотики' },
+            { code: 'Z91.0.1', name: 'Пищевая аллергия (орехи, арахис)' },
+            { code: 'Z91.0.2', name: 'Пищевая аллергия (морепродукты)' },
+            { code: 'Z91.0.3', name: 'Пищевая аллергия (молоко)' },
+            { code: 'Z91.0.4', name: 'Пищевая аллергия (яйца)' },
+            { code: 'Z91.0.5', name: 'Пищевая аллергия (глютен/пшеница)' },
+            { code: 'Z91.3', name: 'Аллергия на шерсть животных' },
+            { code: 'J30.1', name: 'Аллергия на пыльцу (поллиноз)' },
+            { code: 'L50', name: 'Крапивница' },
+            { code: 'T78.4', name: 'Аллергия неуточненная' }
+        ];
+
+        // Справочник психотропных препаратов (базовый)
+        const psychoMedsDict = [
+            { name: 'Атаракс (Гидроксизин)', code: 'N05B', group: 'Анксиолитики (Транквилизаторы)' },
+            { name: 'Золофт (Сертралин)', code: 'N06A', group: 'Антидепрессанты (СИОЗС)' },
+            { name: 'Фенибут (Аминофенилмасляная кислота)', code: 'N06B', group: 'Психостимуляторы и ноотропы' },
+            { name: 'Грандаксин (Тофизопам)', code: 'N05B', group: 'Анксиолитики (Транквилизаторы)' },
+            { name: 'Тералиджен (Алимемазин)', code: 'N05A', group: 'Антипсихотики (Нейролептики)' },
+            { name: 'Ципралекс (Эсциталопрам)', code: 'N06A', group: 'Антидепрессанты (СИОЗС)' },
+            { name: 'Феназепам (Бромдигидрохлорфенилбензодиазепин)', code: 'N05B', group: 'Анксиолитики (Транквилизаторы)' },
+            { name: 'Кветиапин (Сероквель)', code: 'N05A', group: 'Антипсихотики (Нейролептики)' },
+            { name: 'Ламиктал (Ламотриджин)', code: 'N03A', group: 'Нормотимики (Противоэпилептические)' },
+            { name: 'Мелаксен (Мелатонин)', code: 'N05C', group: 'Снотворные' }
+        ];
+
+        // Справочник общих препаратов (для хронических заболеваний)
+        const generalMedsDict = [
+            { name: 'Эналаприл', code: 'C09A', group: 'Ингибиторы АПФ (от давления)' },
+            { name: 'Конкор (Бисопролол)', code: 'C07A', group: 'Бета-адреноблокаторы' },
+            { name: 'Метформин (Глюкофаж)', code: 'A10B', group: 'Гипогликемические препараты (от диабета)' },
+            { name: 'Эутирокс (Левотироксин)', code: 'H03A', group: 'Препараты щитовидной железы' },
+            { name: 'Омепразол (Омез)', code: 'A02B', group: 'Ингибиторы протонной помпы (для ЖКТ)' },
+            { name: 'Симбикорт', code: 'R03A', group: 'Препараты для лечения астмы' },
+            { name: 'Ксарелто (Ривароксабан)', code: 'B01A', group: 'Антикоагулянты' },
+            { name: 'Аллопуринол', code: 'M04A', group: 'Препараты от подагры' },
+            { name: 'Нимесил (Нимесулид)', code: 'M01A', group: 'НПВС (Обезболивающие/Противовоспалительные)' }
+        ];
+
+        // Справочник МКБ-10 Психиатрия
+        const psychMcb10Dict = [
+            { code: 'F32', name: 'Депрессивный эпизод' },
+            { code: 'F33', name: 'Рекуррентное депрессивное расстройство' },
+            { code: 'F41.0', name: 'Паническое расстройство' },
+            { code: 'F41.1', name: 'Генерализованное тревожное расстройство' },
+            { code: 'F42', name: 'Обсессивно-компульсивное расстройство' },
+            { code: 'F31', name: 'Биполярное аффективное расстройство' },
+            { code: 'F20', name: 'Шизофрения' },
+            { code: 'F50.0', name: 'Нервная анорексия' },
+            { code: 'F50.2', name: 'Нервная булимия' },
+            { code: 'F90.0', name: 'Синдром дефицита внимания (СДВГ)' },
+            { code: 'F43.1', name: 'Посттравматическое стрессовое расстройство' }
+        ];
+
+        // Справочник лабораторных маркеров (для ручного ввода анализов): code = единица измерения, group = норма
+        const labMarkersDict = [
+            { name: 'Гемоглобин', code: 'г/л', group: '120–160' },
+            { name: 'Эритроциты', code: '10^12/л', group: '3.8–5.1' },
+            { name: 'Лейкоциты', code: '10^9/л', group: '4.0–9.0' },
+            { name: 'Тромбоциты', code: '10^9/л', group: '180–320' },
+            { name: 'СОЭ', code: 'мм/ч', group: '2–15' },
+            { name: 'Глюкоза (натощак)', code: 'ммоль/л', group: '3.3–5.5' },
+            { name: 'Гликированный гемоглобин (HbA1c)', code: '%', group: '4.0–6.0' },
+            { name: 'Холестерин общий', code: 'ммоль/л', group: '3.0–5.2' },
+            { name: 'ЛПНП (плохой холестерин)', code: 'ммоль/л', group: '0–3.0' },
+            { name: 'ЛПВП (хороший холестерин)', code: 'ммоль/л', group: '1.0–1.9' },
+            { name: 'Триглицериды', code: 'ммоль/л', group: '0.4–1.7' },
+            { name: 'АЛТ', code: 'Ед/л', group: '0–41' },
+            { name: 'АСТ', code: 'Ед/л', group: '0–40' },
+            { name: 'Билирубин общий', code: 'мкмоль/л', group: '3.4–20.5' },
+            { name: 'Креатинин', code: 'мкмоль/л', group: '53–97' },
+            { name: 'Мочевина', code: 'ммоль/л', group: '2.5–7.1' },
+            { name: 'Мочевая кислота', code: 'мкмоль/л', group: '150–350' },
+            { name: 'Общий белок', code: 'г/л', group: '64–83' },
+            { name: 'ТТГ (тиреотропный гормон)', code: 'мЕд/л', group: '0.4–4.0' },
+            { name: 'Т4 свободный', code: 'пмоль/л', group: '9–22' },
+            { name: 'Витамин D (25-ОН)', code: 'нг/мл', group: '30–100' },
+            { name: 'Витамин B12', code: 'пг/мл', group: '191–663' },
+            { name: 'Ферритин', code: 'нг/мл', group: '20–250' },
+            { name: 'Железо сыворотки', code: 'мкмоль/л', group: '9–30' },
+            { name: 'С-реактивный белок (СРБ)', code: 'мг/л', group: '0–5' },
+            { name: 'D-димер', code: 'нг/мл', group: '0–500' }
+        ];
+
+        // Компонент автодополнения (защищенный от падений)
+        const AutocompleteInput = ({ options, value, onChange, name, placeholder, colorScheme = 'emerald', icon = 'fa-magnifying-glass', clearOnSelect = false }) => {
+            const [isOpen, setIsOpen] = useState(false);
+            const [searchTerm, setSearchTerm] = useState(value || '');
+            const wrapperRef = useRef(null);
+
+            useEffect(() => {
+                setSearchTerm(value || '');
+            }, [value]);
+
+            useEffect(() => {
+                const handleClickOutside = (event) => {
+                    if (wrapperRef.current && !wrapperRef.current.contains(event.target)) {
+                        setIsOpen(false);
+                    }
+                };
+                document.addEventListener('mousedown', handleClickOutside);
+                return () => document.removeEventListener('mousedown', handleClickOutside);
+            }, []);
+
+            // Безопасная фильтрация с проверками на undefined
+            const filteredOptions = (options || []).filter(opt => {
+                const searchStr = (searchTerm || '').toLowerCase();
+                const nameMatch = opt.name ? opt.name.toLowerCase().includes(searchStr) : false;
+                const codeMatch = opt.code ? opt.code.toLowerCase().includes(searchStr) : false;
+                return nameMatch || codeMatch;
+            });
+
+            const handleInputChange = (e) => {
+                const newValue = e.target.value;
+                setSearchTerm(newValue);
+                setIsOpen(true);
+                onChange({ target: { name, value: newValue } });
+            };
+
+            const handleSelect = (opt) => {
+                const newValue = opt.group ? opt : `${opt.code} - ${opt.name}`;
+                
+                if (clearOnSelect) {
+                    setSearchTerm('');
+                    setIsOpen(false);
+                    onChange(newValue);
+                } else {
+                    setSearchTerm(typeof newValue === 'string' ? newValue : newValue.name);
+                    setIsOpen(false);
+                    onChange({ target: { name, value: newValue } });
+                }
+            };
+
+            const handleSelectCustom = () => {
+                const customOpt = { name: searchTerm, code: 'Custom', group: 'Неизвестная группа' };
+                if (clearOnSelect) {
+                    setSearchTerm('');
+                    setIsOpen(false);
+                    onChange(customOpt); 
+                } else {
+                    setIsOpen(false);
+                    onChange({ target: { name, value: searchTerm } });
+                }
+            };
+
+            const borderClass = colorScheme === 'amber' ? 'border-amber-200 focus:ring-amber-500' : 
+                                colorScheme === 'sky' ? 'border-sky-200 focus:ring-sky-500' :
+                                colorScheme === 'teal' ? 'border-teal-200 focus:ring-teal-500' :
+                                'border-emerald-200 focus:ring-emerald-500';
+            const iconColor = colorScheme === 'amber' ? 'text-amber-400' : 
+                              colorScheme === 'sky' ? 'text-sky-400' :
+                              colorScheme === 'teal' ? 'text-teal-400' :
+                              'text-emerald-400';
+            const hoverClass = colorScheme === 'amber' ? 'hover:bg-amber-50' : 
+                               colorScheme === 'sky' ? 'hover:bg-sky-50' :
+                               colorScheme === 'teal' ? 'hover:bg-teal-50' :
+                               'hover:bg-emerald-50';
+            const codeTextClass = colorScheme === 'amber' ? 'text-amber-600' : 
+                                  colorScheme === 'sky' ? 'text-sky-600' :
+                                  colorScheme === 'teal' ? 'text-teal-600' :
+                                  'text-emerald-600';
+
+            return (
+                <div ref={wrapperRef} className="relative w-full">
+                    <div className="relative">
+                        <i className={`fa-solid ${icon} absolute left-3 top-3.5 ${iconColor}`}></i>
+                        <input
+                            type="text"
+                            name={name}
+                            value={searchTerm}
+                            onChange={handleInputChange}
+                            onFocus={() => setIsOpen(true)}
+                            placeholder={placeholder}
+                            className={`w-full pl-10 pr-4 py-3 bg-white border ${borderClass} rounded-xl outline-none focus:ring-2 transition-all`}
+                            autoComplete="off"
+                        />
+                    </div>
+                    {isOpen && (searchTerm || '').length > 0 && (
+                        <ul className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-56 overflow-auto">
+                            {filteredOptions.map((opt, index) => (
+                                <li 
+                                    key={index} 
+                                    onClick={() => handleSelect(opt)}
+                                    className={`px-4 py-3 ${hoverClass} cursor-pointer border-b border-slate-50 last:border-0 transition-colors`}
+                                >
+                                    <div className="flex flex-col">
+                                        <span className={`font-bold text-xs mb-0.5 ${codeTextClass}`}>{opt.code}</span>
+                                        <span className="text-sm text-slate-700">{opt.name}</span>
+                                    </div>
+                                </li>
+                            ))}
+                            {filteredOptions.length === 0 && (
+                                <li 
+                                    onClick={handleSelectCustom}
+                                    className={`px-4 py-3 bg-slate-50 hover:bg-slate-100 cursor-pointer transition-colors`}
+                                >
+                                    <div className="flex items-center gap-2">
+                                        <i className="fa-solid fa-pen text-slate-400 text-sm"></i>
+                                        <span className="text-sm text-slate-700">Использовать свой вариант: <span className="font-bold text-slate-900">{searchTerm}</span></span>
+                                    </div>
+                                </li>
+                            )}
+                        </ul>
+                    )}
+                </div>
+            );
+        };
+
+        // --- БЕЗОПАСНЫЙ ЭКРАН ПЕРЕХОДА (ВЫНЕСЕН В ОТДЕЛЬНЫЙ КОМПОНЕНТ) ---
+        // Изолируем хуки useState и useEffect, чтобы не ломать основной цикл React
+        const TransitionScreen = ({ text, startProgress, endProgress }) => {
+            const [currentProgress, setCurrentProgress] = useState(startProgress);
+
+            useEffect(() => {
+                let animationFrameId;
+                const duration = 1200; 
+                const startTime = performance.now();
+
+                const animate = (time) => {
+                    const elapsed = time - startTime;
+                    const progressRatio = Math.min(elapsed / duration, 1);
+                    const easeOut = 1 - Math.pow(1 - progressRatio, 3);
+                    
+                    setCurrentProgress(Math.floor(startProgress + (endProgress - startProgress) * easeOut));
+
+                    if (progressRatio < 1) {
+                        animationFrameId = requestAnimationFrame(animate);
+                    }
+                };
+                animationFrameId = requestAnimationFrame(animate);
+                
+                return () => cancelAnimationFrame(animationFrameId);
+            }, [startProgress, endProgress]);
+
+            const radius = 70;
+            const circumference = 2 * Math.PI * radius;
+            const strokeDashoffset = circumference - ((currentProgress || 0) / 100) * circumference;
+
+            return (
+                <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4 relative overflow-hidden">
+                    <div className="absolute inset-0 bg-gradient-to-br from-indigo-50/50 via-white to-violet-50/50 pointer-events-none"></div>
+                    <div className="relative z-10 flex flex-col items-center animate-in fade-in zoom-in duration-500">
+                        <div className="relative w-48 h-48 mb-8">
+                            <svg className="w-full h-full transform -rotate-90 drop-shadow-xl">
+                                <circle cx="96" cy="96" r={radius} fill="transparent" stroke="#e2e8f0" strokeWidth="12" />
+                                <circle cx="96" cy="96" r={radius} fill="transparent" stroke="url(#gradient)" strokeWidth="12"
+                                    strokeDasharray={circumference}
+                                    strokeDashoffset={strokeDashoffset}
+                                    strokeLinecap="round"
+                                />
+                                <defs>
+                                    <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                                        <stop offset="0%" stopColor="#6366f1" />
+                                        <stop offset="100%" stopColor="#8b5cf6" />
+                                    </linearGradient>
+                                </defs>
+                            </svg>
+                            <div className="absolute inset-0 flex items-center justify-center flex-col">
+                                <span className="text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-violet-600 drop-shadow-sm">
+                                    {currentProgress}%
+                                </span>
+                            </div>
+                        </div>
+                        <h3 className="text-xl font-bold text-slate-700 animate-pulse text-center px-6">{text}</h3>
+                    </div>
+                </div>
+            );
+        };
+
+        // Индикатор прогресса анкеты (шаги в виде полосок)
+        const StepIndicator = ({ step, total }) => (
+            <div className="flex items-center gap-1.5 mt-3 relative z-10">
+                {Array.from({ length: total }).map((_, i) => (
+                    <div key={i} className={`h-1.5 rounded-full transition-all duration-500 ${i < step ? 'bg-white w-8' : 'bg-white/30 w-4'}`}></div>
+                ))}
+            </div>
+        );
+
+        // Основное приложение
+        function App() {
+            const [currentScreen, setCurrentScreen] = useState(1);
+            
+            // Стейт для управления вкладками на дашборде
+            const [dashboardTab, setDashboardTab] = useState('main');
+            
+            // Ссылка для системного окна загрузки файлов (Перенесено наверх!)
+            const fileInputRef = useRef(null);
+            
+            // Стейт для управления экраном загрузки/перехода
+            const [transitionConfig, setTransitionConfig] = useState({
+                isTransitioning: false,
+                text: '',
+                startProgress: 0,
+                endProgress: 0,
+            });
+
+            // Стейт для загруженных исследований по категориям
+            const [uploadedFiles, setUploadedFiles] = useState({
+                labResults: [],
+                doctorVisit: [],
+                medicalReport: [],
+                instrumentalDiag: []
+            });
+            const [uploadCategory, setUploadCategory] = useState(null);
+
+            // Стейт для формы ручного добавления исследования (когда нет файла под рукой)
+            const [manualEntryCategory, setManualEntryCategory] = useState(null);
+            const [manualEntryData, setManualEntryData] = useState({ name: '', unit: '', normalRange: '', value: '', date: '', notes: '' });
+
+            // Стейт для записей на прием
+            const [appointments, setAppointments] = useState([]);
+
+            // ИСПРАВЛЕННАЯ: Безопасная структура предзаполненных данных
+            const [formData, setFormData] = useState({
+                lastName: 'Иванова',
+                firstName: 'Анна',
+                patronymic: 'Сергеевна',
+                dob: '1995-08-15',
+                height: '168',
+                weight: '62',
+                gender: 'female',
+
+                bloodGroup: 'II (A)',
+                rhesusFactor: 'Rh+',
+                hasAllergies: true,
+                allergyCategory: 'food',
+                allergyDetails: 'Пищевая аллергия (орехи, арахис)',
+                hasChronic: true,
+                chronicDiagnoses: [{ id: 1, text: 'J45 - Астма' }],
+                hasGeneralMeds: true,
+                generalMeds: [{
+                    id: 1,
+                    name: 'Симбикорт',
+                    group: 'Препараты для лечения астмы',
+                    code: 'R03A',
+                    schemeType: 'daily',
+                    schedule: [{ id: 11, time: 'Утро', dosage: '1 вдох' }, { id: 12, time: 'Вечер', dosage: '1 вдох' }]
+                }],
+                arviFrequency: '1-2',
+                
+                menarcheDate: '2008-05-10',
+                lastPeriodDate: '2026-06-25',
+                cycleDays: '28',
+                pmsSymptoms: ['Тянущие боли внизу живота', 'Раздражительность'],
+                painLevel: '6',
+                lastGynecologyVisit: '2025-11-20',
+
+                stressLevel: '7',
+                sleepQuality: 'fair',
+                moodState: 'anxious',
+                hasPsychiatricDisorder: true,
+                psychDisorderDate: '2024-03-10',
+                psychDoctorName: 'Смирнов Петр Алексеевич',
+                psychClinicName: 'Медицинский центр "Здоровье"',
+                psychDiagnoses: [{ id: 2, text: 'F41.1 - Генерализованное тревожное расстройство' }],
+                psychSymptoms: ['Постоянная тревога', 'Бессонница'],
+                hasPsychMeds: true,
+                psychMeds: [{
+                    id: 2,
+                    name: 'Атаракс (Гидроксизин)',
+                    group: 'Анксиолитики (Транквилизаторы)',
+                    code: 'N05B',
+                    schemeType: 'as_needed',
+                    schedule: [{ id: 21, time: 'На ночь', dosage: '1/2 таб' }]
+                }],
+                profilePhoto: 'https://placehold.co/400x400/6366f1/ffffff?text=АИ',
+                
+                // Юридические согласия
+                consentPersonalData: false,
+                consentMedicalData: false
+            });
+
+            // Безопасный доступ к массивам
+            const safeArray = (arr) => Array.isArray(arr) ? arr : [];
+
+            const [customSymptom, setCustomSymptom] = useState('');
+            const [customPmsSymptom, setCustomPmsSymptom] = useState(''); 
+
+            const handleChange = (e) => {
+                const { name, value } = e.target;
+                setFormData(prev => ({ ...prev, [name]: value }));
+            };
+
+            const handleCheckboxChange = (e) => {
+                const { name, checked } = e.target;
+                setFormData(prev => ({ ...prev, [name]: checked }));
+            };
+
+            // Безопасная функция плавного перехода с анимацией
+            const navigateWithTransition = (nextScreen, text, start, end) => {
+                setTransitionConfig({
+                    isTransitioning: true,
+                    text,
+                    startProgress: start,
+                    endProgress: end
+                });
+                
+                setTimeout(() => {
+                    setCurrentScreen(nextScreen);
+                    setTransitionConfig(prev => ({ ...prev, isTransitioning: false }));
+                }, 1500); 
+            };
+
+            const handleNextToStep2 = (e) => {
+                e.preventDefault();
+                navigateWithTransition(2, "Сохраняем базовые данные...", 0, 25);
+            };
+
+            const handleNextToStep3 = (e) => {
+                e.preventDefault();
+                navigateWithTransition(3, "Анализируем медицинскую карту...", 25, 50);
+            };
+
+            const handleNextToStep4 = (e) => {
+                e.preventDefault();
+                navigateWithTransition(4, "Формируем психологический профиль...", 50, 75);
+            };
+
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                navigateWithTransition(5, "Шифруем и сохраняем анкету...", 75, 100);
+            };
+
+            const handleBack = () => {
+                setCurrentScreen(currentScreen - 1);
+            };
+
+            // --- БЕЗОПАСНЫЕ ФУНКЦИИ ДЛЯ МАССИВОВ ---
+            const handleAddPsychDiagnosis = (val) => {
+                if (!val) return;
+                const text = typeof val === 'string' ? val : `${val.code} - ${val.name}`;
+                if (!text.trim()) return;
+                setFormData(prev => ({
+                    ...prev,
+                    psychDiagnoses: [...safeArray(prev.psychDiagnoses), { id: Date.now(), text: text }]
+                }));
+            };
+
+            const handleRemovePsychDiagnosis = (id) => {
+                setFormData(prev => ({
+                    ...prev,
+                    psychDiagnoses: safeArray(prev.psychDiagnoses).filter(d => d.id !== id)
+                }));
+            };
+
+            const toggleSymptom = (symptom) => {
+                setFormData(prev => {
+                    const currentArray = safeArray(prev.psychSymptoms);
+                    const exists = currentArray.includes(symptom);
+                    return {
+                        ...prev,
+                        psychSymptoms: exists ? currentArray.filter(s => s !== symptom) : [...currentArray, symptom]
+                    };
+                });
+            };
+
+            const addCustomSymptom = () => {
+                const currentArray = safeArray(formData.psychSymptoms);
+                if (customSymptom.trim() && !currentArray.includes(customSymptom.trim())) {
+                    setFormData(prev => ({
+                        ...prev,
+                        psychSymptoms: [...safeArray(prev.psychSymptoms), customSymptom.trim()]
+                    }));
+                    setCustomSymptom('');
+                }
+            };
+
+            const handleAddPsychMed = (val) => {
+                if (!val) return;
+                const medName = typeof val === 'string' ? val : val.name;
+                const medGroup = typeof val === 'string' ? '' : val.group;
+                const medCode = typeof val === 'string' ? '' : val.code;
+
+                if (!medName.trim()) return;
+                setFormData(prev => ({
+                    ...prev,
+                    psychMeds: [...safeArray(prev.psychMeds), { 
+                        id: Date.now(), name: medName, group: medGroup, code: medCode, 
+                        schemeType: '', schedule: [{ id: Date.now() + 1, time: '', dosage: '' }] 
+                    }]
+                }));
+            };
+
+            const handleRemovePsychMed = (id) => {
+                setFormData(prev => ({
+                    ...prev,
+                    psychMeds: safeArray(prev.psychMeds).filter(m => m.id !== id)
+                }));
+            };
+
+            const handlePsychMedFieldChange = (id, field, value) => {
+                setFormData(prev => ({
+                    ...prev,
+                    psychMeds: safeArray(prev.psychMeds).map(m => m.id === id ? { ...m, [field]: value } : m)
+                }));
+            };
+
+            const handleAddPsychMedSchedule = (medId) => {
+                setFormData(prev => ({
+                    ...prev,
+                    psychMeds: safeArray(prev.psychMeds).map(m => {
+                        if (m.id === medId) return { ...m, schedule: [...safeArray(m.schedule), { id: Date.now(), time: '', dosage: '' }] };
+                        return m;
+                    })
+                }));
+            };
+
+            const handleRemovePsychMedSchedule = (medId, scheduleId) => {
+                setFormData(prev => ({
+                    ...prev,
+                    psychMeds: safeArray(prev.psychMeds).map(m => {
+                        if (m.id === medId) return { ...m, schedule: safeArray(m.schedule).filter(s => s.id !== scheduleId) };
+                        return m;
+                    })
+                }));
+            };
+
+            const handlePsychMedScheduleChange = (medId, scheduleId, field, value) => {
+                setFormData(prev => ({
+                    ...prev,
+                    psychMeds: safeArray(prev.psychMeds).map(m => {
+                        if (m.id === medId) {
+                            return { ...m, schedule: safeArray(m.schedule).map(s => s.id === scheduleId ? { ...s, [field]: value } : s) };
+                        }
+                        return m;
+                    })
+                }));
+            };
+
+            const handleAddChronicDiagnosis = (val) => {
+                 if (!val) return;
+                const text = typeof val === 'string' ? val : `${val.code} - ${val.name}`;
+                if (!text.trim()) return;
+                setFormData(prev => ({
+                    ...prev,
+                    chronicDiagnoses: [...safeArray(prev.chronicDiagnoses), { id: Date.now(), text: text }]
+                }));
+            };
+
+            const handleRemoveChronicDiagnosis = (id) => {
+                setFormData(prev => ({
+                    ...prev,
+                    chronicDiagnoses: safeArray(prev.chronicDiagnoses).filter(d => d.id !== id)
+                }));
+            };
+
+             const handleAddGeneralMed = (val) => {
+                if (!val) return;
+                const medName = typeof val === 'string' ? val : val.name;
+                const medGroup = typeof val === 'string' ? '' : val.group;
+                const medCode = typeof val === 'string' ? '' : val.code;
+
+                if (!medName.trim()) return;
+                setFormData(prev => ({
+                    ...prev,
+                    generalMeds: [...safeArray(prev.generalMeds), { 
+                        id: Date.now(), name: medName, group: medGroup, code: medCode, 
+                        schemeType: '', schedule: [{ id: Date.now() + 1, time: '', dosage: '' }] 
+                    }]
+                }));
+            };
+
+            const handleRemoveGeneralMed = (id) => {
+                setFormData(prev => ({
+                    ...prev,
+                    generalMeds: safeArray(prev.generalMeds).filter(m => m.id !== id)
+                }));
+            };
+
+            const handleGeneralMedFieldChange = (id, field, value) => {
+                setFormData(prev => ({
+                    ...prev,
+                    generalMeds: safeArray(prev.generalMeds).map(m => m.id === id ? { ...m, [field]: value } : m)
+                }));
+            };
+
+            const handleAddGeneralMedSchedule = (medId) => {
+                setFormData(prev => ({
+                    ...prev,
+                    generalMeds: safeArray(prev.generalMeds).map(m => {
+                        if (m.id === medId) return { ...m, schedule: [...safeArray(m.schedule), { id: Date.now(), time: '', dosage: '' }] };
+                        return m;
+                    })
+                }));
+            };
+
+            const handleRemoveGeneralMedSchedule = (medId, scheduleId) => {
+                setFormData(prev => ({
+                    ...prev,
+                    generalMeds: safeArray(prev.generalMeds).map(m => {
+                        if (m.id === medId) return { ...m, schedule: safeArray(m.schedule).filter(s => s.id !== scheduleId) };
+                        return m;
+                    })
+                }));
+            };
+
+            const handleGeneralMedScheduleChange = (medId, scheduleId, field, value) => {
+                setFormData(prev => ({
+                    ...prev,
+                    generalMeds: safeArray(prev.generalMeds).map(m => {
+                        if (m.id === medId) {
+                            return { ...m, schedule: safeArray(m.schedule).map(s => s.id === scheduleId ? { ...s, [field]: value } : s) };
+                        }
+                        return m;
+                    })
+                }));
+            };
+
+            const popularPmsSymptoms = ['Тянущие боли внизу живота', 'Раздражительность', 'Перепады настроения', 'Отечность', 'Болезненность груди', 'Головная боль', 'Повышенный аппетит', 'Слабость, утомляемость'];
+
+            const togglePmsSymptom = (symptom) => {
+                setFormData(prev => {
+                    const currentArray = safeArray(prev.pmsSymptoms);
+                    const exists = currentArray.includes(symptom);
+                    return {
+                        ...prev,
+                        pmsSymptoms: exists ? currentArray.filter(s => s !== symptom) : [...currentArray, symptom]
+                    };
+                });
+            };
+
+            const addCustomPmsSymptom = () => {
+                const currentArray = safeArray(formData.pmsSymptoms);
+                if (customPmsSymptom.trim() && !currentArray.includes(customPmsSymptom.trim())) {
+                    setFormData(prev => ({
+                        ...prev,
+                        pmsSymptoms: [...safeArray(prev.pmsSymptoms), customPmsSymptom.trim()]
+                    }));
+                    setCustomPmsSymptom('');
+                }
+            };
+
+            const getRecommendedSymptoms = () => {
+                let symptoms = new Set();
+                safeArray(formData.psychDiagnoses).forEach(diag => {
+                    const text = diag.text || '';
+                    if (text.includes('F32') || text.includes('F33') || text.includes('F31') || text.toLowerCase().includes('депрес') || text.toLowerCase().includes('биполяр')) {
+                        ['Апатия', 'Сниженное настроение', 'Нарушение сна', 'Потеря интереса', 'Чувство вины'].forEach(s => symptoms.add(s));
+                    } else if (text.includes('F41') || text.includes('F40') || text.toLowerCase().includes('тревож') || text.toLowerCase().includes('панич')) {
+                        ['Постоянная тревога', 'Панические атаки', 'Учащенное сердцебиение', 'Тремор', 'Страх', 'Одышка'].forEach(s => symptoms.add(s));
+                    } else if (text.includes('F42') || text.toLowerCase().includes('обсесс')) {
+                        ['Навязчивые мысли', 'Навязчивые действия (ритуалы)', 'Повышенная тревога'].forEach(s => symptoms.add(s));
+                    } else if (text.includes('F50') || text.toLowerCase().includes('анорексия') || text.toLowerCase().includes('булимия')) {
+                        ['Страх набрать вес', 'Ограничение в еде', 'Переедание', 'Искаженное восприятие тела'].forEach(s => symptoms.add(s));
+                    }
+                });
+                
+                if (symptoms.size === 0) {
+                    ['Тревога', 'Бессонница', 'Апатия', 'Перепады настроения', 'Раздражительность'].forEach(s => symptoms.add(s));
+                }
+                return Array.from(symptoms);
+            };
+
+            const calculateBMI = () => {
+                if (!formData.height || !formData.weight) return null;
+                const h = parseFloat(formData.height) / 100;
+                const w = parseFloat(formData.weight);
+                const bmi = (w / (h * h)).toFixed(1);
+                let category = '';
+                let colorClass = '';
+                if (bmi < 18.5) { category = 'Дефицит массы'; colorClass = 'text-sky-500 bg-sky-50 border-sky-200'; }
+                else if (bmi < 25) { category = 'Норма'; colorClass = 'text-emerald-500 bg-emerald-50 border-emerald-200'; }
+                else if (bmi < 30) { category = 'Избыточный вес'; colorClass = 'text-amber-500 bg-amber-50 border-amber-200'; }
+                else { category = 'Ожирение'; colorClass = 'text-rose-500 bg-rose-50 border-rose-200'; }
+                return { value: bmi, category, colorClass };
+            };
+
+            const calculateNextPeriod = () => {
+                if (!formData.lastPeriodDate || !formData.cycleDays) return null;
+                const date = new Date(formData.lastPeriodDate);
+                date.setDate(date.getDate() + parseInt(formData.cycleDays));
+                return date.toLocaleDateString('ru-RU');
+            };
+
+            const formatDate = (dateStr) => {
+                if (!dateStr) return 'Не указано';
+                const d = new Date(dateStr);
+                return d.toLocaleDateString('ru-RU');
+            };
+
+            const handlePhotoUpload = (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                        setFormData(prev => ({ ...prev, profilePhoto: reader.result }));
+                    };
+                    reader.readAsDataURL(file);
+                }
+            };
+
+            // --- Загрузка исследований по категориям ---
+            const triggerFileUpload = (category) => {
+                setUploadCategory(category);
+                if (fileInputRef.current) fileInputRef.current.click();
+            };
+
+            const handleFilesSelected = (e) => {
+                const files = Array.from(e.target.files || []);
+                if (!uploadCategory || files.length === 0) return;
+                setUploadedFiles(prev => ({
+                    ...prev,
+                    [uploadCategory]: [...safeArray(prev[uploadCategory]), ...files.map(f => ({ id: Date.now() + Math.random(), name: f.name }))]
+                }));
+                e.target.value = '';
+            };
+
+            const removeUploadedFile = (category, id) => {
+                setUploadedFiles(prev => ({ ...prev, [category]: safeArray(prev[category]).filter(f => f.id !== id) }));
+            };
+
+            // --- Ручное добавление исследования (без файла) ---
+            const emptyManualEntry = { name: '', unit: '', normalRange: '', value: '', date: '', notes: '' };
+
+            const openManualEntry = (category) => {
+                setManualEntryCategory(category);
+                setManualEntryData(emptyManualEntry);
+            };
+
+            const closeManualEntry = () => {
+                setManualEntryCategory(null);
+            };
+
+            const handleManualEntryChange = (e) => {
+                const { name, value } = e.target;
+                setManualEntryData(prev => ({ ...prev, [name]: value }));
+            };
+
+            // Выбор маркера из справочника лаб. анализов — автоматически подтягивает единицу измерения и норму
+            const handleMarkerSelect = (e) => {
+                const val = e.target.value;
+                if (val && typeof val === 'object') {
+                    setManualEntryData(prev => ({ ...prev, name: val.name, unit: val.code, normalRange: val.group }));
+                } else {
+                    setManualEntryData(prev => ({ ...prev, name: val, unit: '', normalRange: '' }));
+                }
+            };
+
+            const saveManualEntry = () => {
+                if (!manualEntryCategory || !manualEntryData.name.trim()) return;
+                setUploadedFiles(prev => ({
+                    ...prev,
+                    [manualEntryCategory]: [...safeArray(prev[manualEntryCategory]), {
+                        id: Date.now() + Math.random(),
+                        name: manualEntryData.name.trim(),
+                        unit: manualEntryData.unit,
+                        normalRange: manualEntryData.normalRange,
+                        value: manualEntryData.value.trim(),
+                        date: manualEntryData.date,
+                        notes: manualEntryData.notes.trim(),
+                        manual: true
+                    }]
+                }));
+                setManualEntryCategory(null);
+                setManualEntryData(emptyManualEntry);
+            };
+
+            // --- Записи на прием (мок-данные) ---
+            const mockDoctors = [
+                { specialty: 'Терапевт', doctor: 'Ковалева Ирина Николаевна' },
+                { specialty: 'Психотерапевт', doctor: formData.psychDoctorName || 'Смирнов Петр Алексеевич' },
+                { specialty: 'Эндокринолог', doctor: 'Белов Дмитрий Игоревич' },
+                { specialty: 'Гинеколог', doctor: 'Орлова Мария Сергеевна' },
+            ];
+            const monthsShort = ['ЯНВ', 'ФЕВ', 'МАР', 'АПР', 'МАЙ', 'ИЮН', 'ИЮЛ', 'АВГ', 'СЕН', 'ОКТ', 'НОЯ', 'ДЕК'];
+
+            const addAppointment = () => {
+                const pick = mockDoctors[Math.floor(Math.random() * mockDoctors.length)];
+                const date = new Date();
+                date.setDate(date.getDate() + 3 + Math.floor(Math.random() * 10));
+                const times = ['09:30', '11:00', '14:15', '16:45'];
+                setAppointments(prev => [...prev, {
+                    id: Date.now(),
+                    specialty: pick.specialty,
+                    doctor: pick.doctor,
+                    month: monthsShort[date.getMonth()],
+                    day: date.getDate(),
+                    time: times[Math.floor(Math.random() * times.length)]
+                }]);
+            };
+
+            const removeAppointment = (id) => {
+                setAppointments(prev => prev.filter(a => a.id !== id));
+            };
+
+            // ==========================================
+            // ЭКРАН 1: ЗНАКОМСТВО
+            // ==========================================
+            const renderOnboardingScreen = () => (
+                <div className="min-h-screen bg-slate-50 flex flex-col items-center py-10 px-4 relative">
+                    <div className="absolute inset-0 bg-gradient-to-br from-indigo-50/50 via-white to-violet-50/50 pointer-events-none"></div>
+                    
+                    <div className="w-full max-w-md bg-white/80 backdrop-blur-xl rounded-3xl shadow-2xl shadow-indigo-200/50 border border-white/50 overflow-hidden relative z-10">
+                        <div className="bg-gradient-to-r from-indigo-600 to-violet-600 p-8 text-white text-center relative overflow-hidden">
+                            <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-2xl -mr-10 -mt-10"></div>
+                            <div className="absolute bottom-0 left-0 w-24 h-24 bg-indigo-400/20 rounded-full blur-xl -ml-10 -mb-10"></div>
+                            
+                            <div className="flex justify-center mb-4 relative z-10">
+                                <div className="p-4 bg-white/20 backdrop-blur-md rounded-2xl shadow-inner border border-white/30">
+                                    <i className="fa-solid fa-heart-pulse text-3xl text-white"></i>
+                                </div>
+                            </div>
+                            <h1 className="text-2xl font-extrabold tracking-tight relative z-10">Добро пожаловать!</h1>
+                            <p className="text-indigo-100 text-sm mt-2 font-medium relative z-10">Шаг 1 из 3: Знакомство</p>
+                            <StepIndicator step={1} total={3} />
+                        </div>
+
+                        <form onSubmit={handleNextToStep2} className="p-6 md:p-8 space-y-6">
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-semibold text-slate-700 mb-1.5">Фамилия</label>
+                                    <div className="relative">
+                                        <i className="fa-regular fa-user absolute left-3.5 top-3.5 text-slate-400"></i>
+                                        <input type="text" name="lastName" required value={formData.lastName} onChange={handleChange} className="w-full pl-10 pr-4 py-3 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all" placeholder="Иванов" />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-semibold text-slate-700 mb-1.5">Имя</label>
+                                    <div className="relative">
+                                        <i className="fa-regular fa-user absolute left-3.5 top-3.5 text-slate-400"></i>
+                                        <input type="text" name="firstName" required value={formData.firstName} onChange={handleChange} className="w-full pl-10 pr-4 py-3 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all" placeholder="Иван" />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-semibold text-slate-700 mb-1.5">Отчество</label>
+                                    <div className="relative">
+                                        <i className="fa-regular fa-user absolute left-3.5 top-3.5 text-slate-400"></i>
+                                        <input type="text" name="patronymic" value={formData.patronymic} onChange={handleChange} className="w-full pl-10 pr-4 py-3 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all" placeholder="Иванович (если есть)" />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-semibold text-slate-700 mb-1.5">Дата рождения</label>
+                                <div className="relative">
+                                    <i className="fa-regular fa-calendar absolute left-3.5 top-3.5 text-slate-400"></i>
+                                    <input type="date" name="dob" required value={formData.dob} onChange={handleChange} className="w-full pl-10 pr-4 py-3 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all text-slate-700" />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-semibold text-slate-700 mb-1.5">Рост (см)</label>
+                                    <div className="relative">
+                                        <i className="fa-solid fa-ruler-vertical absolute left-3.5 top-3.5 text-slate-400"></i>
+                                        <input type="number" name="height" required value={formData.height} onChange={handleChange} className="w-full pl-10 pr-4 py-3 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all" placeholder="175" />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-semibold text-slate-700 mb-1.5">Вес (кг)</label>
+                                    <div className="relative">
+                                        <i className="fa-solid fa-weight-scale absolute left-3.5 top-3.5 text-slate-400"></i>
+                                        <input type="number" name="weight" required value={formData.weight} onChange={handleChange} className="w-full pl-10 pr-4 py-3 bg-slate-50/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all" placeholder="70" />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-semibold text-slate-700 mb-2">Пол</label>
+                                <div className="flex gap-4">
+                                    <label className={`flex-1 flex justify-center items-center gap-2 py-3.5 border rounded-xl cursor-pointer transition-all ${formData.gender === 'male' ? 'border-indigo-500 bg-indigo-50 text-indigo-700 ring-2 ring-indigo-200 font-bold shadow-sm' : 'border-slate-200 text-slate-600 hover:bg-slate-50 font-medium'}`}>
+                                        <input type="radio" name="gender" value="male" className="sr-only" required onChange={handleChange} checked={formData.gender === 'male'} />
+                                        <i className="fa-solid fa-mars text-lg"></i> Мужской
+                                    </label>
+                                    <label className={`flex-1 flex justify-center items-center gap-2 py-3.5 border rounded-xl cursor-pointer transition-all ${formData.gender === 'female' ? 'border-pink-500 bg-pink-50 text-pink-700 ring-2 ring-pink-200 font-bold shadow-sm' : 'border-slate-200 text-slate-600 hover:bg-slate-50 font-medium'}`}>
+                                        <input type="radio" name="gender" value="female" className="sr-only" required onChange={handleChange} checked={formData.gender === 'female'} />
+                                        <i className="fa-solid fa-venus text-lg"></i> Женский
+                                    </label>
+                                </div>
+                            </div>
+
+                            <button type="submit" className="w-full mt-8 bg-gradient-to-r from-indigo-500 to-violet-500 hover:from-indigo-600 hover:to-violet-600 text-white font-bold py-4 px-4 rounded-xl flex items-center justify-center gap-2 transition-all transform hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-indigo-200">
+                                Далее <i className="fa-solid fa-arrow-right text-lg"></i>
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            );
+
+            // ==========================================
+            // ЭКРАН 2: МЕДИЦИНСКИЕ ДАННЫЕ
+            // ==========================================
+            const renderMedicalScreen = () => (
+                <div className="min-h-screen bg-slate-50 flex flex-col items-center py-10 px-4 relative">
+                    <div className="absolute inset-0 bg-gradient-to-br from-indigo-50/50 via-white to-violet-50/50 pointer-events-none"></div>
+                    
+                    <div className="w-full max-w-md bg-white/80 backdrop-blur-xl rounded-3xl shadow-2xl shadow-indigo-200/50 border border-white/50 overflow-hidden relative z-10">
+                        <div className="bg-gradient-to-r from-indigo-600 to-violet-600 p-5 text-white flex items-center gap-4 relative overflow-hidden">
+                            <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-2xl -mr-10 -mt-10"></div>
+                            <button onClick={handleBack} className="p-2.5 hover:bg-white/20 rounded-xl transition-colors relative z-10 backdrop-blur-md" type="button">
+                                <i className="fa-solid fa-arrow-left text-lg"></i>
+                            </button>
+                            <div className="relative z-10">
+                                <h1 className="text-xl font-bold tracking-tight">Медицинская карта</h1>
+                                <p className="text-indigo-100 text-xs mt-0.5 font-medium">Шаг 2 из 3</p>
+                                <StepIndicator step={2} total={3} />
+                            </div>
+                        </div>
+
+                        <form onSubmit={handleNextToStep3} className="p-6 md:p-8 space-y-7">
+                            
+                            {/* Группа крови */}
+                            <div>
+                                <label className="block text-sm font-semibold text-slate-700 mb-2 flex items-center gap-2">
+                                    <i className="fa-solid fa-droplet text-red-500"></i> Группа крови и резус-фактор
+                                </label>
+                                <div className="flex gap-3">
+                                    <select name="bloodGroup" required value={formData.bloodGroup} onChange={handleChange} className="flex-1 p-3.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none bg-white/50 font-medium">
+                                        <option value="" disabled>Группа...</option>
+                                        <option value="I (0)">I (0)</option>
+                                        <option value="II (A)">II (A)</option>
+                                        <option value="III (B)">III (B)</option>
+                                        <option value="IV (AB)">IV (AB)</option>
+                                    </select>
+                                    <select name="rhesusFactor" required value={formData.rhesusFactor} onChange={handleChange} className="flex-1 p-3.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none bg-white/50 font-medium">
+                                        <option value="" disabled>Резус...</option>
+                                        <option value="Rh+">Положительный (Rh+)</option>
+                                        <option value="Rh-">Отрицательный (Rh-)</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            {/* Аллергии */}
+                            <div className="p-5 bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-100 rounded-2xl transition-all">
+                                <label className="flex items-center gap-3 cursor-pointer group">
+                                    <div className="relative flex items-center justify-center">
+                                        <input type="checkbox" name="hasAllergies" checked={formData.hasAllergies} onChange={handleCheckboxChange} className="w-5 h-5 text-amber-500 rounded border-slate-300 focus:ring-amber-500 cursor-pointer" />
+                                    </div>
+                                    <span className="font-semibold text-slate-800 flex items-center gap-2 group-hover:text-amber-700 transition-colors">
+                                        <i className="fa-solid fa-triangle-exclamation text-amber-500"></i> Есть аллергии
+                                    </span>
+                                </label>
+                                
+                                {formData.hasAllergies && (
+                                    <div className="mt-4 pt-4 border-t border-amber-200/50 space-y-4 animate-in fade-in slide-in-from-top-2">
+                                        <select name="allergyCategory" required value={formData.allergyCategory} onChange={handleChange} className="w-full p-3 bg-white border border-amber-200/80 rounded-xl outline-none focus:ring-2 focus:ring-amber-500 font-medium text-slate-700">
+                                            <option value="" disabled>Выберите категорию...</option>
+                                            <option value="meds">Медицинские препараты</option>
+                                            <option value="food">Пищевая</option>
+                                            <option value="pollen">Пыльца / Растения</option>
+                                            <option value="animals">Шерсть животных</option>
+                                            <option value="other">Другое</option>
+                                        </select>
+                                        {formData.allergyCategory && (
+                                            <AutocompleteInput
+                                                options={allergyDict}
+                                                value={formData.allergyDetails}
+                                                onChange={handleChange}
+                                                name="allergyDetails"
+                                                placeholder="Начните вводить название аллергена..."
+                                                colorScheme="amber"
+                                                icon="fa-virus"
+                                            />
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Хронические заболевания */}
+                            <div className="p-5 bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-100 rounded-2xl transition-all">
+                                <label className="flex items-center gap-3 cursor-pointer group">
+                                    <div className="relative flex items-center justify-center">
+                                        <input type="checkbox" name="hasChronic" checked={formData.hasChronic} onChange={handleCheckboxChange} className="w-5 h-5 text-emerald-500 rounded border-slate-300 focus:ring-emerald-500 cursor-pointer" />
+                                    </div>
+                                    <span className="font-semibold text-slate-800 flex items-center gap-2 group-hover:text-emerald-700 transition-colors">
+                                        <i className="fa-solid fa-file-medical text-emerald-500"></i> Хронические заболевания
+                                    </span>
+                                </label>
+
+                                {formData.hasChronic && (
+                                    <div className="mt-4 pt-4 border-t border-emerald-200/50 space-y-4 animate-in fade-in slide-in-from-top-2">
+                                        <div className="space-y-3">
+                                            <label className="block text-sm font-semibold text-slate-700">Установленные диагнозы</label>
+                                            <AutocompleteInput
+                                                options={mcb10Dict}
+                                                value=""
+                                                onChange={handleAddChronicDiagnosis}
+                                                name="chronicDetails"
+                                                placeholder="Поиск по названию или коду МКБ-10..."
+                                                colorScheme="emerald"
+                                                icon="fa-book-medical"
+                                                clearOnSelect={true}
+                                            />
+                                            {/* Список выбранных диагнозов хроники */}
+                                            {safeArray(formData.chronicDiagnoses).length > 0 && (
+                                                <div className="flex flex-wrap gap-2 mt-2">
+                                                    {safeArray(formData.chronicDiagnoses).map(d => (
+                                                        <div key={d.id} className="flex items-center gap-2 px-3 py-1.5 bg-white border border-emerald-200 text-emerald-800 rounded-lg shadow-sm text-sm font-medium">
+                                                            <span>{d.text}</span>
+                                                            <button type="button" onClick={() => handleRemoveChronicDiagnosis(d.id)} className="text-emerald-400 hover:text-rose-500 transition-colors">
+                                                                <i className="fa-solid fa-xmark"></i>
+                                                            </button>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Медикаментозная терапия для хроники */}
+                                        {safeArray(formData.chronicDiagnoses).length > 0 && (
+                                            <div className="pt-4 border-t border-emerald-200/50 space-y-4">
+                                                <label className="flex items-center gap-3 cursor-pointer group">
+                                                    <div className="relative flex items-center justify-center">
+                                                        <input type="checkbox" name="hasGeneralMeds" checked={formData.hasGeneralMeds} onChange={handleCheckboxChange} className="w-5 h-5 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 cursor-pointer" />
+                                                    </div>
+                                                    <span className="font-semibold text-slate-800 flex items-center gap-2 group-hover:text-emerald-700 transition-colors">
+                                                        <i className="fa-solid fa-pills text-emerald-500"></i> Назначена терапия по этим заболеваниям?
+                                                    </span>
+                                                </label>
+
+                                                {formData.hasGeneralMeds && (
+                                                    <div className="space-y-4 p-4 bg-emerald-50/50 rounded-xl border border-emerald-100">
+                                                        <AutocompleteInput
+                                                            options={generalMedsDict}
+                                                            value=""
+                                                            onChange={handleAddGeneralMed}
+                                                            name="generalMedInput"
+                                                            placeholder="Найти препарат (напр. Омез, Конкор)..."
+                                                            colorScheme="emerald"
+                                                            icon="fa-prescription-bottle-medical"
+                                                            clearOnSelect={true}
+                                                        />
+                                                        
+                                                        {/* Список препаратов (Хроника) */}
+                                                        {safeArray(formData.generalMeds).length > 0 && (
+                                                            <div className="space-y-3 mt-3">
+                                                                {safeArray(formData.generalMeds).map(med => (
+                                                                    <div key={med.id} className="p-4 bg-white rounded-xl border border-emerald-200 shadow-sm relative">
+                                                                        <button type="button" onClick={() => handleRemoveGeneralMed(med.id)} className="absolute top-3 right-3 text-slate-400 hover:text-rose-500 transition-colors">
+                                                                            <i className="fa-solid fa-trash-can"></i>
+                                                                        </button>
+                                                                        <h4 className="font-bold text-emerald-800 mb-1 pr-6 flex items-center gap-2">
+                                                                            <i className="fa-solid fa-capsules text-emerald-500"></i>
+                                                                            {med.name}
+                                                                        </h4>
+                                                                        {med.group && (
+                                                                            <div className="mb-3 text-xs font-medium text-slate-500 flex items-center gap-1.5">
+                                                                                <span className="bg-emerald-100/50 text-emerald-700 px-2 py-0.5 rounded border border-emerald-200/50">{med.group}</span>
+                                                                                {med.code && <span className="text-slate-400">({med.code})</span>}
+                                                                            </div>
+                                                                        )}
+                                                                        
+                                                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                                            <div>
+                                                                                <label className="block text-xs font-semibold text-slate-500 mb-1">Схема лечения</label>
+                                                                                <select value={med.schemeType} onChange={(e) => handleGeneralMedFieldChange(med.id, 'schemeType', e.target.value)} className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-400">
+                                                                                    <option value="" disabled>Выберите тип...</option>
+                                                                                    <option value="daily">Ежедневно</option>
+                                                                                    <option value="as_needed">По потребности</option>
+                                                                                    <option value="course">Курсом</option>
+                                                                                </select>
+                                                                            </div>
+                                                                        </div>
+                                                                        
+                                                                        {/* Динамический блок расписания приемов */}
+                                                                        <div className="mt-3 bg-slate-50/80 p-3 rounded-lg border border-slate-100">
+                                                                            <label className="block text-xs font-semibold text-slate-600 mb-2">Расписание приемов в течение дня</label>
+                                                                            <div className="space-y-2">
+                                                                                {safeArray(med.schedule).map((item, index) => (
+                                                                                    <div key={item.id} className="flex gap-2 items-center">
+                                                                                        <div className="flex-1">
+                                                                                            <input type="text" value={item.time} onChange={(e) => handleGeneralMedScheduleChange(med.id, item.id, 'time', e.target.value)} placeholder="Время (напр. 08:00 или Утро)" className="w-full p-2 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:ring-1 focus:ring-emerald-400" />
+                                                                                        </div>
+                                                                                        <div className="flex-1">
+                                                                                            <input type="text" value={item.dosage} onChange={(e) => handleGeneralMedScheduleChange(med.id, item.id, 'dosage', e.target.value)} placeholder="Доза (напр. 1 таб, 50мг)" className="w-full p-2 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:ring-1 focus:ring-emerald-400" />
+                                                                                        </div>
+                                                                                        {safeArray(med.schedule).length > 1 && (
+                                                                                            <button type="button" onClick={() => handleRemoveGeneralMedSchedule(med.id, item.id)} className="p-2 text-slate-400 hover:text-rose-500 transition-colors">
+                                                                                                <i className="fa-solid fa-xmark"></i>
+                                                                                            </button>
+                                                                                        )}
+                                                                                    </div>
+                                                                                ))}
+                                                                            </div>
+                                                                            <button type="button" onClick={() => handleAddGeneralMedSchedule(med.id)} className="mt-2 text-xs font-bold text-emerald-600 hover:text-emerald-700 flex items-center gap-1 transition-colors">
+                                                                                <i className="fa-solid fa-plus"></i> Добавить еще один прием
+                                                                            </button>
+                                                                        </div>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* ОРВИ */}
+                            <div>
+                                <label className="block text-sm font-semibold text-slate-700 mb-2 flex items-center gap-2">
+                                    <i className="fa-solid fa-temperature-half text-slate-500"></i> Частота заболеваний ОРВИ
+                                </label>
+                                <select name="arviFrequency" required value={formData.arviFrequency} onChange={handleChange} className="w-full p-3.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none bg-white/50 font-medium text-slate-700">
+                                    <option value="" disabled>Выберите из списка...</option>
+                                    <option value="rarely">Редко (раз в несколько лет)</option>
+                                    <option value="1-2">1-2 раза в год</option>
+                                    <option value="3-4">3-4 раза в год</option>
+                                    <option value="often">Более 5 раз в год</option>
+                                </select>
+                            </div>
+
+                            {/* Женское здоровье */}
+                            {formData.gender === 'female' && (
+                                <div className="pt-6 mt-6 border-t-2 border-dashed border-pink-200 space-y-5">
+                                    <h3 className="text-lg font-extrabold text-slate-800 flex items-center gap-2 mb-2">
+                                        <i className="fa-solid fa-spa text-pink-500"></i> Женское здоровье
+                                    </h3>
+                                    
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">Первая менстр.</label>
+                                            <input type="date" name="menarcheDate" required value={formData.menarcheDate} onChange={handleChange} className="w-full p-2.5 bg-pink-50/30 border border-pink-200 rounded-xl focus:ring-2 focus:ring-pink-400 outline-none text-sm text-slate-700" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">Крайняя менстр.</label>
+                                            <input type="date" name="lastPeriodDate" required value={formData.lastPeriodDate} onChange={handleChange} className="w-full p-2.5 bg-pink-50/30 border border-pink-200 rounded-xl focus:ring-2 focus:ring-pink-400 outline-none text-sm text-slate-700" />
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">Дней в цикле</label>
+                                            <input type="number" name="cycleDays" required value={formData.cycleDays} onChange={handleChange} placeholder="Например, 28" className="w-full p-2.5 bg-pink-50/30 border border-pink-200 rounded-xl focus:ring-2 focus:ring-pink-400 outline-none text-slate-700 font-medium" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">Визит к врачу</label>
+                                            <input type="date" name="lastGynecologyVisit" required value={formData.lastGynecologyVisit} onChange={handleChange} className="w-full p-2.5 bg-pink-50/30 border border-pink-200 rounded-xl focus:ring-2 focus:ring-pink-400 outline-none text-sm text-slate-700" />
+                                        </div>
+                                    </div>
+
+                                    {/* Симптомы ПМС как теги */}
+                                    <div className="bg-white/60 p-4 rounded-xl border border-pink-100 shadow-sm">
+                                        <label className="block text-xs font-semibold text-slate-600 mb-2 uppercase tracking-wider">Отметьте симптомы ПМС</label>
+                                        <div className="flex flex-wrap gap-2">
+                                            {popularPmsSymptoms.map((symptom, idx) => {
+                                                const isSelected = safeArray(formData.pmsSymptoms).includes(symptom);
+                                                return (
+                                                    <label key={idx} className={`cursor-pointer px-3 py-1.5 rounded-lg border text-sm font-medium transition-all ${isSelected ? 'bg-pink-500 text-white border-pink-500 shadow-md' : 'bg-white text-slate-600 border-slate-200 hover:border-pink-300 hover:bg-pink-50'}`}>
+                                                        <input type="checkbox" className="sr-only" checked={isSelected} onChange={() => togglePmsSymptom(symptom)} />
+                                                        {symptom}
+                                                    </label>
+                                                );
+                                            })}
+                                            {/* Вывод кастомных добавленных симптомов ПМС */}
+                                            {safeArray(formData.pmsSymptoms).filter(s => !popularPmsSymptoms.includes(s)).map((symptom, idx) => (
+                                                <label key={`custom-pms-${idx}`} className={`cursor-pointer px-3 py-1.5 rounded-lg border text-sm font-medium transition-all bg-pink-500 text-white border-pink-500 shadow-md`}>
+                                                    <input type="checkbox" className="sr-only" checked={true} onChange={() => togglePmsSymptom(symptom)} />
+                                                    {symptom}
+                                                </label>
+                                            ))}
+                                        </div>
+                                        <div className="flex gap-2 mt-3">
+                                            <input type="text" value={customPmsSymptom} onChange={(e) => setCustomPmsSymptom(e.target.value)} placeholder="Свой симптом..." className="flex-1 px-3 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-pink-400 bg-white" onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addCustomPmsSymptom())} />
+                                            <button type="button" onClick={addCustomPmsSymptom} className="px-4 py-2 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-lg text-sm font-bold transition-colors border border-slate-200">
+                                                Добавить
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-pink-50/50 p-4 rounded-xl border border-pink-100">
+                                        <label className="block text-sm font-semibold text-slate-700 mb-3 flex justify-between items-center">
+                                            <span>Уровень болезненности</span>
+                                            <span className="px-3 py-1 bg-white text-pink-600 font-bold rounded-lg shadow-sm border border-pink-100">{formData.painLevel} / 10</span>
+                                        </label>
+                                        <input type="range" name="painLevel" min="1" max="10" value={formData.painLevel} onChange={handleChange} className="w-full h-2.5 bg-pink-200 rounded-lg appearance-none cursor-pointer accent-pink-500 focus:outline-none focus:ring-2 focus:ring-pink-400" />
+                                        <div className="flex justify-between text-xs font-medium text-slate-500 mt-2 px-1">
+                                            <span>Легко</span>
+                                            <span>Очень больно</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            <button type="submit" className="w-full mt-8 bg-gradient-to-r from-indigo-500 to-violet-500 hover:from-indigo-600 hover:to-violet-600 text-white font-bold py-4 px-4 rounded-xl flex items-center justify-center gap-2 transition-all transform hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-indigo-200">
+                                Далее к психологии <i className="fa-solid fa-arrow-right text-lg"></i>
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            );
+
+            // ==========================================
+            // ЭКРАН 3: ПСИХОЛОГИЯ
+            // ==========================================
+            const renderPsychologyScreen = () => (
+                <div className="min-h-screen bg-slate-50 flex flex-col items-center py-10 px-4 relative">
+                    <div className="absolute inset-0 bg-gradient-to-br from-indigo-50/50 via-white to-violet-50/50 pointer-events-none"></div>
+                    
+                    <div className="w-full max-w-md bg-white/80 backdrop-blur-xl rounded-3xl shadow-2xl shadow-indigo-200/50 border border-white/50 overflow-hidden relative z-10">
+                        <div className="bg-gradient-to-r from-indigo-600 to-violet-600 p-5 text-white flex items-center gap-4 relative overflow-hidden">
+                            <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-2xl -mr-10 -mt-10"></div>
+                            <button onClick={handleBack} className="p-2.5 hover:bg-white/20 rounded-xl transition-colors relative z-10 backdrop-blur-md" type="button">
+                                <i className="fa-solid fa-arrow-left text-lg"></i>
+                            </button>
+                            <div className="relative z-10">
+                                <h1 className="text-xl font-bold tracking-tight">Психология</h1>
+                                <p className="text-indigo-100 text-xs mt-0.5 font-medium">Шаг 3 из 3</p>
+                                <StepIndicator step={3} total={3} />
+                            </div>
+                        </div>
+
+                        <form onSubmit={handleNextToStep4} className="p-6 md:p-8 space-y-7">
+                            
+                            {/* Уровень стресса */}
+                            <div className="p-5 bg-gradient-to-br from-purple-50 to-fuchsia-50 border border-purple-100 rounded-2xl">
+                                <label className="block text-sm font-semibold text-slate-700 mb-3 flex justify-between items-center">
+                                    <span className="flex items-center gap-2">
+                                        <i className="fa-solid fa-brain text-purple-500"></i> Текущий уровень стресса
+                                    </span>
+                                    <span className="px-3 py-1 bg-white text-purple-600 font-bold rounded-lg border border-purple-200 shadow-sm">{formData.stressLevel} / 10</span>
+                                </label>
+                                <input type="range" name="stressLevel" min="1" max="10" value={formData.stressLevel} onChange={handleChange} className="w-full h-2.5 bg-purple-200 rounded-lg appearance-none cursor-pointer accent-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-400" />
+                                <div className="flex justify-between text-xs font-medium text-slate-500 mt-2 px-1">
+                                    <span>Спокоен</span>
+                                    <span>Крайний стресс</span>
+                                </div>
+                            </div>
+
+                            {/* Качество сна */}
+                            <div>
+                                <label className="block text-sm font-semibold text-slate-700 mb-2 flex items-center gap-2">
+                                    <i className="fa-solid fa-moon text-indigo-400"></i> Качество сна
+                                </label>
+                                <select name="sleepQuality" required value={formData.sleepQuality} onChange={handleChange} className="w-full p-3.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none bg-white/50 font-medium text-slate-700">
+                                    <option value="" disabled>Выберите вариант...</option>
+                                    <option value="excellent">Отличное (засыпаю легко, сплю 7-8 часов)</option>
+                                    <option value="good">Хорошее (бывают редкие пробуждения)</option>
+                                    <option value="fair">Удовлетворительное (сплю мало или часто просыпаюсь)</option>
+                                    <option value="poor">Плохое (бессонница, тяжелое пробуждение)</option>
+                                </select>
+                            </div>
+
+                            {/* Настроение */}
+                            <div>
+                                <label className="block text-sm font-semibold text-slate-700 mb-2 flex items-center gap-2">
+                                    <i className="fa-solid fa-face-smile-beam text-amber-500"></i> Преобладающее настроение (за 2 нед.)
+                                </label>
+                                <select name="moodState" required value={formData.moodState} onChange={handleChange} className="w-full p-3.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none bg-white/50 font-medium text-slate-700">
+                                    <option value="" disabled>Выберите вариант...</option>
+                                    <option value="positive">Позитивное, стабильное</option>
+                                    <option value="neutral">Нейтральное, ровное</option>
+                                    <option value="anxious">Тревожное, беспокойное</option>
+                                    <option value="depressed">Подавленное, апатичное</option>
+                                    <option value="swings">Частые резкие перепады</option>
+                                </select>
+                            </div>
+
+                            {/* Наличие психических заболеваний */}
+                            <div className="p-5 bg-gradient-to-br from-teal-50 to-emerald-50 border border-teal-100 rounded-2xl transition-all">
+                                <label className="flex items-start gap-3 cursor-pointer group">
+                                    <div className="relative flex items-center justify-center mt-1">
+                                        <input type="checkbox" name="hasPsychiatricDisorder" checked={formData.hasPsychiatricDisorder} onChange={handleCheckboxChange} className="w-5 h-5 text-teal-600 rounded border-slate-300 focus:ring-teal-500 cursor-pointer" />
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <span className="font-semibold text-slate-800 flex items-center gap-2 group-hover:text-teal-700 transition-colors">
+                                            <i className="fa-solid fa-notes-medical text-teal-500"></i> Наличие психических заболеваний
+                                        </span>
+                                        <span className="text-xs text-slate-600 mt-1.5 font-medium bg-white/60 p-2 rounded-lg border border-teal-200/60 inline-block leading-relaxed">
+                                            <i className="fa-solid fa-circle-exclamation text-amber-500 mr-1.5"></i>
+                                            Указывается <b>только при наличии установленного диагноза</b> врачом-специалистом (психиатром, психотерапевтом).
+                                        </span>
+                                    </div>
+                                </label>
+
+                                {formData.hasPsychiatricDisorder && (
+                                    <div className="mt-5 pt-5 border-t border-teal-200/50 space-y-6 animate-in fade-in slide-in-from-top-2">
+                                        
+                                        {/* 1. Диагнозы */}
+                                        <div className="space-y-3">
+                                            <label className="block text-sm font-semibold text-slate-700">Установленные диагнозы</label>
+                                            <AutocompleteInput
+                                                options={psychMcb10Dict}
+                                                value=""
+                                                onChange={handleAddPsychDiagnosis}
+                                                name="psychDiagnosisInput"
+                                                placeholder="Поиск диагноза по МКБ-10 или названию..."
+                                                colorScheme="teal"
+                                                icon="fa-magnifying-glass"
+                                                clearOnSelect={true}
+                                            />
+                                            {/* Список выбранных диагнозов */}
+                                            {safeArray(formData.psychDiagnoses).length > 0 && (
+                                                <div className="flex flex-wrap gap-2 mt-2">
+                                                    {safeArray(formData.psychDiagnoses).map(d => (
+                                                        <div key={d.id} className="flex items-center gap-2 px-3 py-1.5 bg-white border border-teal-200 text-teal-800 rounded-lg shadow-sm text-sm font-medium">
+                                                            <span>{d.text}</span>
+                                                            <button type="button" onClick={() => handleRemovePsychDiagnosis(d.id)} className="text-teal-400 hover:text-rose-500 transition-colors">
+                                                                <i className="fa-solid fa-xmark"></i>
+                                                            </button>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* 2. Симптомы */}
+                                        {safeArray(formData.psychDiagnoses).length > 0 && (
+                                            <div className="space-y-3 p-4 bg-white/60 rounded-xl border border-teal-100">
+                                                <label className="block text-sm font-semibold text-slate-700">Отметьте основные проявления (симптомы)</label>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {getRecommendedSymptoms().map((symptom, idx) => {
+                                                        const isSelected = safeArray(formData.psychSymptoms).includes(symptom);
+                                                        return (
+                                                            <label key={idx} className={`cursor-pointer px-3 py-1.5 rounded-lg border text-sm font-medium transition-all ${isSelected ? 'bg-teal-500 text-white border-teal-500 shadow-md' : 'bg-white text-slate-600 border-slate-200 hover:border-teal-300 hover:bg-teal-50'}`}>
+                                                                <input type="checkbox" className="sr-only" checked={isSelected} onChange={() => toggleSymptom(symptom)} />
+                                                                {symptom}
+                                                            </label>
+                                                        );
+                                                    })}
+                                                    {/* Вывод кастомных добавленных симптомов */}
+                                                    {safeArray(formData.psychSymptoms).filter(s => !getRecommendedSymptoms().includes(s)).map((symptom, idx) => (
+                                                        <label key={`custom-${idx}`} className={`cursor-pointer px-3 py-1.5 rounded-lg border text-sm font-medium transition-all bg-teal-500 text-white border-teal-500 shadow-md`}>
+                                                            <input type="checkbox" className="sr-only" checked={true} onChange={() => toggleSymptom(symptom)} />
+                                                            {symptom}
+                                                        </label>
+                                                    ))}
+                                                </div>
+                                                <div className="flex gap-2 mt-2">
+                                                    <input type="text" value={customSymptom} onChange={(e) => setCustomSymptom(e.target.value)} placeholder="Свой вариант симптома..." className="flex-1 px-3 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-teal-500" onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addCustomSymptom())} />
+                                                    <button type="button" onClick={addCustomSymptom} className="px-4 py-2 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-lg text-sm font-bold transition-colors">
+                                                        Добавить
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* 3. Медикаментозная терапия */}
+                                        <div className="pt-4 border-t border-teal-200/50 space-y-4">
+                                            <label className="flex items-center gap-3 cursor-pointer group">
+                                                <div className="relative flex items-center justify-center">
+                                                    <input type="checkbox" name="hasPsychMeds" checked={formData.hasPsychMeds} onChange={handleCheckboxChange} className="w-5 h-5 text-sky-600 rounded border-slate-300 focus:ring-sky-500 cursor-pointer" />
+                                                </div>
+                                                <span className="font-semibold text-slate-800 flex items-center gap-2 group-hover:text-sky-700 transition-colors">
+                                                    <i className="fa-solid fa-pills text-sky-500"></i> Назначена медикаментозная терапия?
+                                                </span>
+                                            </label>
+
+                                            {formData.hasPsychMeds && (
+                                                <div className="space-y-4 p-4 bg-sky-50/50 rounded-xl border border-sky-100">
+                                                    <AutocompleteInput
+                                                        options={psychoMedsDict}
+                                                        value=""
+                                                        onChange={handleAddPsychMed}
+                                                        name="psychMedInput"
+                                                        placeholder="Найти и добавить препарат..."
+                                                        colorScheme="sky"
+                                                        icon="fa-prescription-bottle-medical"
+                                                        clearOnSelect={true}
+                                                    />
+                                                    
+                                                    {/* Список препаратов с деталями */}
+                                                    {safeArray(formData.psychMeds).length > 0 && (
+                                                        <div className="space-y-3 mt-3">
+                                                            {safeArray(formData.psychMeds).map(med => (
+                                                                <div key={med.id} className="p-4 bg-white rounded-xl border border-sky-200 shadow-sm relative">
+                                                                    <button type="button" onClick={() => handleRemovePsychMed(med.id)} className="absolute top-3 right-3 text-slate-400 hover:text-rose-500 transition-colors">
+                                                                        <i className="fa-solid fa-trash-can"></i>
+                                                                    </button>
+                                                                    <h4 className="font-bold text-sky-800 mb-1 pr-6 flex items-center gap-2">
+                                                                        <i className="fa-solid fa-capsules text-sky-500"></i>
+                                                                        {med.name}
+                                                                    </h4>
+                                                                    {med.group && (
+                                                                        <div className="mb-3 text-xs font-medium text-slate-500 flex items-center gap-1.5">
+                                                                            <span className="bg-sky-100/50 text-sky-700 px-2 py-0.5 rounded border border-sky-200/50">{med.group}</span>
+                                                                            {med.code && <span className="text-slate-400">({med.code})</span>}
+                                                                        </div>
+                                                                    )}
+                                                                    
+                                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                                        <div>
+                                                                            <label className="block text-xs font-semibold text-slate-500 mb-1">Схема лечения</label>
+                                                                            <select value={med.schemeType} onChange={(e) => handlePsychMedFieldChange(med.id, 'schemeType', e.target.value)} className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-sky-400">
+                                                                                <option value="" disabled>Выберите тип...</option>
+                                                                                <option value="daily">Ежедневно</option>
+                                                                                <option value="as_needed">По потребности</option>
+                                                                                <option value="course">Курсом (ограничено)</option>
+                                                                            </select>
+                                                                        </div>
+                                                                    </div>
+
+                                                                    {/* Динамический блок расписания приемов для Психологии */}
+                                                                    <div className="mt-3 bg-slate-50/80 p-3 rounded-lg border border-slate-100">
+                                                                        <label className="block text-xs font-semibold text-slate-600 mb-2">Расписание приемов в течение дня</label>
+                                                                        <div className="space-y-2">
+                                                                            {safeArray(med.schedule).map((item, index) => (
+                                                                                <div key={item.id} className="flex gap-2 items-center">
+                                                                                    <div className="flex-1">
+                                                                                        <input type="text" value={item.time} onChange={(e) => handlePsychMedScheduleChange(med.id, item.id, 'time', e.target.value)} placeholder="Время (напр. 20:00 или На ночь)" className="w-full p-2 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:ring-1 focus:ring-sky-400" />
+                                                                                    </div>
+                                                                                    <div className="flex-1">
+                                                                                        <input type="text" value={item.dosage} onChange={(e) => handlePsychMedScheduleChange(med.id, item.id, 'dosage', e.target.value)} placeholder="Доза (напр. 1/2 таб, 25мг)" className="w-full p-2 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:ring-1 focus:ring-sky-400" />
+                                                                                    </div>
+                                                                                    {safeArray(med.schedule).length > 1 && (
+                                                                                        <button type="button" onClick={() => handleRemovePsychMedSchedule(med.id, item.id)} className="p-2 text-slate-400 hover:text-rose-500 transition-colors">
+                                                                                            <i className="fa-solid fa-xmark"></i>
+                                                                                        </button>
+                                                                                    )}
+                                                                                </div>
+                                                                            ))}
+                                                                        </div>
+                                                                        <button type="button" onClick={() => handleAddPsychMedSchedule(med.id)} className="mt-2 text-xs font-bold text-sky-600 hover:text-sky-700 flex items-center gap-1 transition-colors">
+                                                                            <i className="fa-solid fa-plus"></i> Добавить еще один прием
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* 4. Данные о враче и клинике */}
+                                        <div className="pt-4 border-t border-teal-200/50 space-y-4">
+                                            <h4 className="font-bold text-slate-700 text-sm flex items-center gap-2 mb-2"><i className="fa-solid fa-user-doctor text-teal-500"></i> Данные специалиста</h4>
+                                            <div>
+                                                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">Дата постановки диагноза</label>
+                                                <input type="date" name="psychDisorderDate" required value={formData.psychDisorderDate} onChange={handleChange} className="w-full p-2.5 bg-white border border-teal-200/80 rounded-xl focus:ring-2 focus:ring-teal-500 outline-none text-sm text-slate-700" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">ФИО врача</label>
+                                                <input type="text" name="psychDoctorName" required value={formData.psychDoctorName} onChange={handleChange} placeholder="Например: Иванов Иван Иванович" className="w-full p-2.5 bg-white border border-teal-200/80 rounded-xl focus:ring-2 focus:ring-teal-500 outline-none text-sm text-slate-700" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">Клиника (Медучреждение)</label>
+                                                <input type="text" name="psychClinicName" required value={formData.psychClinicName} onChange={handleChange} placeholder="Название клиники" className="w-full p-2.5 bg-white border border-teal-200/80 rounded-xl focus:ring-2 focus:ring-teal-500 outline-none text-sm text-slate-700" />
+                                            </div>
+                                        </div>
+
+                                    </div>
+                                )}
+                            </div>
+
+                            <button type="submit" className="w-full mt-8 bg-gradient-to-r from-indigo-500 to-violet-500 hover:from-indigo-600 hover:to-violet-600 text-white font-bold py-4 px-4 rounded-xl flex items-center justify-center gap-2 transition-all transform hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-indigo-200">
+                                Проверить анкету <i className="fa-solid fa-clipboard-check text-xl"></i>
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            );
+
+            // ==========================================
+            // ЭКРАН 4: ПРОВЕРКА АНКЕТЫ
+            // ==========================================
+            const renderReviewScreen = () => {
+                const bmi = calculateBMI();
+                const nextPeriod = formData.gender === 'female' ? calculateNextPeriod() : null;
+                const canSubmit = formData.consentPersonalData && formData.consentMedicalData;
+
+                return (
+                    <div className="min-h-screen bg-slate-50 flex flex-col items-center py-10 px-4 relative">
+                        <div className="absolute inset-0 bg-gradient-to-br from-indigo-50/50 via-white to-violet-50/50 pointer-events-none"></div>
+                        
+                        <div className="w-full max-w-2xl bg-white/80 backdrop-blur-xl rounded-3xl shadow-2xl shadow-indigo-200/50 border border-white/50 overflow-hidden relative z-10">
+                            <div className="bg-gradient-to-r from-indigo-600 to-violet-600 pt-6 px-6 pb-16 text-white flex items-center gap-4 relative overflow-hidden">
+                                <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-2xl -mr-10 -mt-10"></div>
+                                <button onClick={handleBack} className="p-2.5 hover:bg-white/20 rounded-xl transition-colors relative z-10 backdrop-blur-md" type="button">
+                                    <i className="fa-solid fa-arrow-left text-lg"></i>
+                                </button>
+                                <div className="relative z-10 flex-1">
+                                    <h1 className="text-2xl font-bold tracking-tight">Проверка данных</h1>
+                                    <p className="text-indigo-100 text-xs mt-0.5 font-medium">Шаг 4 из 4. Проверьте вашу анкету</p>
+                                </div>
+                            </div>
+
+                            <div className="p-6 md:p-8 space-y-8">
+                                {/* Фото профиля */}
+                                <div className="flex flex-col items-center justify-center -mt-14 mb-4 relative z-20">
+                                    <div className="relative group cursor-pointer" onClick={() => document.getElementById('photoUpload').click()}>
+                                        <div className={`w-28 h-28 rounded-full border-4 border-white shadow-xl flex items-center justify-center overflow-hidden bg-slate-100 transition-all ${formData.profilePhoto ? '' : 'group-hover:bg-slate-200'}`}>
+                                            {formData.profilePhoto ? (
+                                                <img src={formData.profilePhoto} alt="Profile" className="w-full h-full object-cover" />
+                                            ) : (
+                                                <i className="fa-solid fa-camera text-3xl text-slate-400 group-hover:text-indigo-500 transition-colors"></i>
+                                            )}
+                                        </div>
+                                        <div className="absolute bottom-0 right-0 bg-indigo-500 text-white p-2 rounded-full shadow-lg border-2 border-white cursor-pointer hover:bg-indigo-600 transition-colors">
+                                            <i className="fa-solid fa-pen text-xs"></i>
+                                        </div>
+                                        <input type="file" id="photoUpload" accept="image/*" className="hidden" onChange={handlePhotoUpload} />
+                                    </div>
+                                    <h2 className="text-xl font-bold text-slate-800 mt-3">{formData.lastName} {formData.firstName} {formData.patronymic}</h2>
+                                    <p className="text-sm text-slate-500 font-medium">{formatDate(formData.dob)} • {formData.gender === 'male' ? 'Мужчина' : 'Женщина'}</p>
+                                </div>
+
+                                {/* Блок 1: Основные данные */}
+                                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                                    <div className="bg-slate-50 border-b border-slate-200 px-5 py-3 flex justify-between items-center">
+                                        <h3 className="font-bold text-slate-700 flex items-center gap-2"><i className="fa-solid fa-user text-indigo-500"></i> Личные данные</h3>
+                                        <button type="button" onClick={() => setCurrentScreen(1)} className="text-sm font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 bg-indigo-50 px-3 py-1.5 rounded-lg transition-colors">
+                                            <i className="fa-solid fa-pen-to-square"></i> Изменить
+                                        </button>
+                                    </div>
+                                    <div className="p-5 grid grid-cols-2 gap-y-4 gap-x-6 text-sm">
+                                        <div><span className="block text-slate-400 text-xs uppercase tracking-wider font-semibold mb-1">Рост</span><span className="font-medium text-slate-800">{formData.height || '-'} см</span></div>
+                                        <div><span className="block text-slate-400 text-xs uppercase tracking-wider font-semibold mb-1">Вес</span><span className="font-medium text-slate-800">{formData.weight || '-'} кг</span></div>
+                                        
+                                        {/* Расчет ИМТ */}
+                                        {bmi && (
+                                            <div className={`col-span-2 p-3 rounded-xl border ${bmi.colorClass} flex items-center justify-between`}>
+                                                <div>
+                                                    <span className="block text-xs uppercase tracking-wider font-bold opacity-75 mb-0.5">Индекс массы тела (ИМТ)</span>
+                                                    <span className="font-bold text-lg">{bmi.value}</span>
+                                                </div>
+                                                <div className="px-3 py-1 bg-white/50 rounded-lg font-bold shadow-sm">
+                                                    {bmi.category}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Блок 2: Медицина */}
+                                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                                    <div className="bg-slate-50 border-b border-slate-200 px-5 py-3 flex justify-between items-center">
+                                        <h3 className="font-bold text-slate-700 flex items-center gap-2"><i className="fa-solid fa-notes-medical text-emerald-500"></i> Медицина</h3>
+                                        <button type="button" onClick={() => setCurrentScreen(2)} className="text-sm font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 bg-indigo-50 px-3 py-1.5 rounded-lg transition-colors">
+                                            <i className="fa-solid fa-pen-to-square"></i> Изменить
+                                        </button>
+                                    </div>
+                                    <div className="p-5 space-y-5 text-sm">
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div><span className="block text-slate-400 text-xs uppercase tracking-wider font-semibold mb-1">Группа крови</span><span className="font-medium text-slate-800">{formData.bloodGroup || '-'} {formData.rhesusFactor || '-'}</span></div>
+                                            <div><span className="block text-slate-400 text-xs uppercase tracking-wider font-semibold mb-1">Частота ОРВИ</span><span className="font-medium text-slate-800">{formData.arviFrequency === 'rarely' ? 'Редко' : formData.arviFrequency === 'often' ? 'Более 5 раз в год' : formData.arviFrequency ? `${formData.arviFrequency} раз(а) в год` : '-'}</span></div>
+                                        </div>
+                                        
+                                        {formData.hasAllergies && (
+                                            <div className="pt-3 border-t border-slate-100">
+                                                <span className="block text-slate-400 text-xs uppercase tracking-wider font-semibold mb-1">Аллергии</span>
+                                                <span className="font-medium text-amber-700 bg-amber-50 px-2.5 py-1 rounded-md border border-amber-200/60 inline-block">{typeof formData.allergyDetails === 'object' ? formData.allergyDetails.name : formData.allergyDetails}</span>
+                                            </div>
+                                        )}
+
+                                        {formData.hasChronic && safeArray(formData.chronicDiagnoses).length > 0 && (
+                                            <div className="pt-3 border-t border-slate-100">
+                                                <span className="block text-slate-400 text-xs uppercase tracking-wider font-semibold mb-2">Хронические заболевания</span>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {safeArray(formData.chronicDiagnoses).map(d => (
+                                                        <span key={d.id} className="text-xs font-medium text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200/60">{d.text}</span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {formData.hasGeneralMeds && safeArray(formData.generalMeds).length > 0 && (
+                                            <div className="pt-3 border-t border-slate-100">
+                                                <span className="block text-slate-400 text-xs uppercase tracking-wider font-semibold mb-2">Принимаемые препараты (Хроника)</span>
+                                                <div className="space-y-3">
+                                                    {safeArray(formData.generalMeds).map(med => (
+                                                        <div key={med.id} className="p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                                                            <div className="font-bold text-slate-700">{med.name}</div>
+                                                            <div className="text-xs text-slate-500 mb-2">{med.schemeType === 'daily' ? 'Ежедневно' : med.schemeType === 'as_needed' ? 'По потребности' : 'Курсом'}</div>
+                                                            <div className="grid grid-cols-1 gap-1.5">
+                                                                {safeArray(med.schedule).map(s => (
+                                                                    <div key={s.id} className="flex justify-between items-center bg-white px-2 py-1.5 rounded border border-slate-100 text-xs">
+                                                                        <span className="font-semibold text-slate-600">{s.time || 'Время не указано'}</span>
+                                                                        <span className="text-emerald-600 font-bold">{s.dosage || 'Доза не указана'}</span>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {formData.gender === 'female' && (
+                                            <div className="mt-4 pt-4 border-t-2 border-dashed border-pink-100">
+                                                <span className="block text-slate-400 text-xs uppercase tracking-wider font-semibold mb-3 flex items-center gap-2"><i className="fa-solid fa-spa text-pink-400"></i> Женское здоровье</span>
+                                                
+                                                <div className="grid grid-cols-2 gap-3 mb-3">
+                                                    <div><span className="block text-slate-400 text-[10px] uppercase font-bold mb-1">Первая менстр.</span><span className="font-medium text-slate-700 text-xs">{formatDate(formData.menarcheDate)}</span></div>
+                                                    <div><span className="block text-slate-400 text-[10px] uppercase font-bold mb-1">Крайняя менстр.</span><span className="font-medium text-slate-700 text-xs">{formatDate(formData.lastPeriodDate)}</span></div>
+                                                    <div><span className="block text-slate-400 text-[10px] uppercase font-bold mb-1">Цикл</span><span className="font-medium text-slate-700 text-xs">{formData.cycleDays || '-'} дней</span></div>
+                                                    <div><span className="block text-slate-400 text-[10px] uppercase font-bold mb-1">Визит к врачу</span><span className="font-medium text-slate-700 text-xs">{formatDate(formData.lastGynecologyVisit)}</span></div>
+                                                </div>
+
+                                                <div className="mb-3">
+                                                    <span className="block text-slate-400 text-[10px] uppercase font-bold mb-1">Симптомы ПМС (Боль: {formData.painLevel}/10)</span>
+                                                    <div className="flex flex-wrap gap-1.5">
+                                                        {safeArray(formData.pmsSymptoms).map((symp, i) => (
+                                                            <span key={i} className="text-[10px] font-medium text-pink-700 bg-pink-50 px-2 py-0.5 rounded border border-pink-200">{symp}</span>
+                                                        ))}
+                                                    </div>
+                                                </div>
+
+                                                {/* Расчет цикла */}
+                                                {nextPeriod && (
+                                                    <div className="p-3 bg-pink-50 border border-pink-200 rounded-xl flex justify-between items-center mt-3">
+                                                        <span className="text-xs font-bold text-pink-700 uppercase">Ожидаемая дата след. менструации:</span>
+                                                        <span className="font-bold text-pink-600 bg-white px-2 py-1 rounded shadow-sm">{nextPeriod}</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Блок 3: Психология */}
+                                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                                    <div className="bg-slate-50 border-b border-slate-200 px-5 py-3 flex justify-between items-center">
+                                        <h3 className="font-bold text-slate-700 flex items-center gap-2"><i className="fa-solid fa-brain text-purple-500"></i> Психология</h3>
+                                        <button type="button" onClick={() => setCurrentScreen(3)} className="text-sm font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 bg-indigo-50 px-3 py-1.5 rounded-lg transition-colors">
+                                            <i className="fa-solid fa-pen-to-square"></i> Изменить
+                                        </button>
+                                    </div>
+                                    <div className="p-5 space-y-5 text-sm">
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div><span className="block text-slate-400 text-xs uppercase tracking-wider font-semibold mb-1">Уровень стресса</span><span className="font-medium text-slate-800">{formData.stressLevel}/10</span></div>
+                                            <div>
+                                                <span className="block text-slate-400 text-xs uppercase tracking-wider font-semibold mb-1">Сон / Настроение</span>
+                                                <span className="font-medium text-slate-800 text-xs block">Сон: {formData.sleepQuality === 'excellent' ? 'Отличный' : formData.sleepQuality === 'good' ? 'Хороший' : formData.sleepQuality === 'fair' ? 'Удовл.' : 'Плохой'}</span>
+                                                <span className="font-medium text-slate-800 text-xs block">Фон: {formData.moodState === 'positive' ? 'Позитивный' : formData.moodState === 'neutral' ? 'Нейтральный' : formData.moodState === 'anxious' ? 'Тревожный' : formData.moodState === 'depressed' ? 'Подавленный' : 'Перепады'}</span>
+                                            </div>
+                                        </div>
+
+                                        {formData.hasPsychiatricDisorder && safeArray(formData.psychDiagnoses).length > 0 && (
+                                            <div className="pt-3 border-t border-slate-100">
+                                                <span className="block text-slate-400 text-xs uppercase tracking-wider font-semibold mb-2">Установленные диагнозы</span>
+                                                <div className="flex flex-wrap gap-2 mb-3">
+                                                    {safeArray(formData.psychDiagnoses).map(d => (
+                                                        <span key={d.id} className="text-xs font-medium text-teal-700 bg-teal-50 px-2.5 py-1 rounded-md border border-teal-200/60">{d.text}</span>
+                                                    ))}
+                                                </div>
+                                                
+                                                <span className="block text-slate-400 text-[10px] uppercase font-bold mb-1">Проявления (симптомы)</span>
+                                                <div className="flex flex-wrap gap-1.5 mb-4">
+                                                    {safeArray(formData.psychSymptoms).map((symp, i) => (
+                                                        <span key={i} className="text-[10px] font-medium text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">{symp}</span>
+                                                    ))}
+                                                </div>
+
+                                                <div className="bg-teal-50/50 p-3 rounded-lg border border-teal-100">
+                                                    <span className="block text-teal-700 text-xs font-bold mb-2 flex items-center gap-1.5"><i className="fa-solid fa-user-doctor"></i> Данные специалиста</span>
+                                                    <div className="space-y-1 text-xs">
+                                                        <p><span className="text-slate-500">Врач:</span> <span className="font-medium text-slate-700">{formData.psychDoctorName || 'Не указан'}</span></p>
+                                                        <p><span className="text-slate-500">Клиника:</span> <span className="font-medium text-slate-700">{formData.psychClinicName || 'Не указана'}</span></p>
+                                                        <p><span className="text-slate-500">Дата постановки:</span> <span className="font-medium text-slate-700">{formatDate(formData.psychDisorderDate)}</span></p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+                                        
+                                        {formData.hasPsychMeds && safeArray(formData.psychMeds).length > 0 && (
+                                            <div className="pt-3 border-t border-slate-100">
+                                                <span className="block text-slate-400 text-xs uppercase tracking-wider font-semibold mb-2">Назначенные препараты</span>
+                                                <div className="space-y-3">
+                                                    {safeArray(formData.psychMeds).map(med => (
+                                                        <div key={med.id} className="p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                                                            <div className="font-bold text-sky-700">{med.name}</div>
+                                                            <div className="text-[10px] text-slate-400 mb-2">{med.group}</div>
+                                                            <div className="text-xs text-slate-500 mb-2">{med.schemeType === 'daily' ? 'Ежедневно' : med.schemeType === 'as_needed' ? 'По потребности' : 'Курсом'}</div>
+                                                            <div className="grid grid-cols-1 gap-1.5">
+                                                                {safeArray(med.schedule).map(s => (
+                                                                    <div key={s.id} className="flex justify-between items-center bg-white px-2 py-1.5 rounded border border-slate-100 text-xs">
+                                                                        <span className="font-semibold text-slate-600">{s.time || 'Время не указано'}</span>
+                                                                        <span className="text-sky-600 font-bold">{s.dosage || 'Доза не указана'}</span>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Блок 4: Юридические согласия (ФЗ-152) */}
+                                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
+                                    <h3 className="font-bold text-slate-700 flex items-center gap-2 mb-4"><i className="fa-solid fa-file-signature text-indigo-500"></i> Согласия на обработку данных</h3>
+                                    
+                                    <label className="flex items-start gap-3 cursor-pointer group">
+                                        <div className="relative flex items-center justify-center mt-0.5">
+                                            <input type="checkbox" name="consentPersonalData" checked={formData.consentPersonalData} onChange={handleCheckboxChange} className="w-5 h-5 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer" />
+                                        </div>
+                                        <span className="text-sm font-medium text-slate-600 group-hover:text-slate-800 transition-colors leading-snug">
+                                            Я даю согласие на обработку моих персональных данных в соответствии с Федеральным законом от 27.07.2006 г. № 152-ФЗ «О персональных данных».
+                                        </span>
+                                    </label>
+
+                                    <label className="flex items-start gap-3 cursor-pointer group">
+                                        <div className="relative flex items-center justify-center mt-0.5">
+                                            <input type="checkbox" name="consentMedicalData" checked={formData.consentMedicalData} onChange={handleCheckboxChange} className="w-5 h-5 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer" />
+                                        </div>
+                                        <span className="text-sm font-medium text-slate-600 group-hover:text-slate-800 transition-colors leading-snug">
+                                            Я даю явное согласие на обработку специальных категорий персональных данных, касающихся состояния моего здоровья и интимной жизни.
+                                        </span>
+                                    </label>
+                                </div>
+
+                                <button 
+                                    onClick={handleSubmit} 
+                                    disabled={!canSubmit}
+                                    className={`w-full mt-6 text-white font-bold py-4 px-4 rounded-xl flex items-center justify-center gap-2 transition-all transform shadow-lg 
+                                    ${canSubmit 
+                                        ? 'bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 shadow-emerald-200 hover:scale-[1.02] active:scale-[0.98]' 
+                                        : 'bg-slate-300 cursor-not-allowed shadow-none'}`}
+                                >
+                                    {canSubmit ? 'Всё верно! Отправить анкету' : 'Подтвердите согласия для отправки'} 
+                                    <i className={`fa-solid ${canSubmit ? 'fa-paper-plane' : 'fa-lock'} text-lg`}></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            };
+
+            // ==========================================
+            // ЭКРАН 5: УСПЕХ (Завершение)
+            // ==========================================
+            const renderSuccessScreen = () => (
+                <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4 relative overflow-hidden">
+                    <div className="absolute inset-0 bg-gradient-to-br from-indigo-50/50 via-white to-violet-50/50 pointer-events-none"></div>
+                    
+                    <div className="w-full max-w-md bg-white/80 backdrop-blur-xl p-10 rounded-3xl shadow-2xl shadow-indigo-200/50 border border-white/50 text-center relative z-10">
+                        <div className="w-24 h-24 bg-gradient-to-tr from-emerald-500 to-teal-500 rounded-full flex items-center justify-center mx-auto mb-8 shadow-lg shadow-emerald-300 relative">
+                            <div className="absolute inset-0 bg-white/20 rounded-full animate-ping opacity-75"></div>
+                            <i className="fa-solid fa-check text-4xl text-white relative z-10"></i>
+                        </div>
+                        <h2 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-emerald-600 to-teal-600 mb-4">Анкета отправлена!</h2>
+                        <p className="text-slate-600 mb-10 leading-relaxed text-lg font-medium">
+                            Спасибо, {formData.firstName}! Данные вашей медицинской карты надежно сохранены в системе.
+                        </p>
+                        <button onClick={() => setCurrentScreen(6)} className="text-white font-bold transition-all border-2 border-emerald-500 py-3 px-8 rounded-xl bg-emerald-500 hover:bg-emerald-600 hover:shadow-lg hover:shadow-emerald-200 w-full">
+                            Перейти в Личный кабинет <i className="fa-solid fa-arrow-right ml-2"></i>
+                        </button>
+                    </div>
+                </div>
+            );
+
+            // ==========================================
+            // ЭКРАН 7: АНКЕТА И АНАМНЕЗ (ПРОСМОТР ПРОФИЛЯ)
+            // ==========================================
+            const renderProfileScreen = () => {
+                const bmi = calculateBMI();
+                const nextPeriod = formData.gender === 'female' ? calculateNextPeriod() : null;
+
+                return (
+                    <div className="min-h-screen bg-slate-50 flex flex-col items-center py-10 px-4 relative">
+                        <div className="absolute inset-0 bg-gradient-to-br from-indigo-50/50 via-white to-violet-50/50 pointer-events-none"></div>
+
+                        <div className="w-full max-w-2xl bg-white/80 backdrop-blur-xl rounded-3xl shadow-2xl shadow-indigo-200/50 border border-white/50 overflow-hidden relative z-10">
+                            <div className="bg-gradient-to-r from-indigo-600 to-violet-600 pt-6 px-6 pb-16 text-white flex items-center gap-4 relative overflow-hidden">
+                                <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-2xl -mr-10 -mt-10"></div>
+                                <button onClick={() => setCurrentScreen(6)} className="p-2.5 hover:bg-white/20 rounded-xl transition-colors relative z-10 backdrop-blur-md" type="button">
+                                    <i className="fa-solid fa-arrow-left text-lg"></i>
+                                </button>
+                                <div className="relative z-10 flex-1">
+                                    <h1 className="text-2xl font-bold tracking-tight">Анкета и анамнез</h1>
+                                    <p className="text-indigo-100 text-xs mt-0.5 font-medium">Полный профиль здоровья</p>
+                                </div>
+                            </div>
+
+                            <div className="p-6 md:p-8 space-y-8">
+                                {/* Фото профиля */}
+                                <div className="flex flex-col items-center justify-center -mt-14 mb-4 relative z-20">
+                                    <div className="w-28 h-28 rounded-full border-4 border-white shadow-xl flex items-center justify-center overflow-hidden bg-slate-100">
+                                        {formData.profilePhoto ? (
+                                            <img src={formData.profilePhoto} alt="Profile" className="w-full h-full object-cover" />
+                                        ) : (
+                                            <i className="fa-solid fa-user text-3xl text-slate-400"></i>
+                                        )}
+                                    </div>
+                                    <h2 className="text-xl font-bold text-slate-800 mt-3">{formData.lastName} {formData.firstName} {formData.patronymic}</h2>
+                                    <p className="text-sm text-slate-500 font-medium">{formatDate(formData.dob)} • {formData.gender === 'male' ? 'Мужчина' : 'Женщина'}</p>
+                                </div>
+
+                                {/* Блок 1: Основные данные */}
+                                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                                    <div className="bg-slate-50 border-b border-slate-200 px-5 py-3 flex justify-between items-center">
+                                        <h3 className="font-bold text-slate-700 flex items-center gap-2"><i className="fa-solid fa-user text-indigo-500"></i> Личные данные</h3>
+                                        <button type="button" onClick={() => setCurrentScreen(1)} className="text-sm font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 bg-indigo-50 px-3 py-1.5 rounded-lg transition-colors">
+                                            <i className="fa-solid fa-pen-to-square"></i> Изменить
+                                        </button>
+                                    </div>
+                                    <div className="p-5 grid grid-cols-2 gap-y-4 gap-x-6 text-sm">
+                                        <div><span className="block text-slate-400 text-xs uppercase tracking-wider font-semibold mb-1">Рост</span><span className="font-medium text-slate-800">{formData.height || '-'} см</span></div>
+                                        <div><span className="block text-slate-400 text-xs uppercase tracking-wider font-semibold mb-1">Вес</span><span className="font-medium text-slate-800">{formData.weight || '-'} кг</span></div>
+
+                                        {bmi && (
+                                            <div className={`col-span-2 p-3 rounded-xl border ${bmi.colorClass} flex items-center justify-between`}>
+                                                <div>
+                                                    <span className="block text-xs uppercase tracking-wider font-bold opacity-75 mb-0.5">Индекс массы тела (ИМТ)</span>
+                                                    <span className="font-bold text-lg">{bmi.value}</span>
+                                                </div>
+                                                <div className="px-3 py-1 bg-white/50 rounded-lg font-bold shadow-sm">
+                                                    {bmi.category}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Блок 2: Медицина */}
+                                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                                    <div className="bg-slate-50 border-b border-slate-200 px-5 py-3 flex justify-between items-center">
+                                        <h3 className="font-bold text-slate-700 flex items-center gap-2"><i className="fa-solid fa-notes-medical text-emerald-500"></i> Медицина</h3>
+                                        <button type="button" onClick={() => setCurrentScreen(2)} className="text-sm font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 bg-indigo-50 px-3 py-1.5 rounded-lg transition-colors">
+                                            <i className="fa-solid fa-pen-to-square"></i> Изменить
+                                        </button>
+                                    </div>
+                                    <div className="p-5 space-y-5 text-sm">
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div><span className="block text-slate-400 text-xs uppercase tracking-wider font-semibold mb-1">Группа крови</span><span className="font-medium text-slate-800">{formData.bloodGroup || '-'} {formData.rhesusFactor || '-'}</span></div>
+                                            <div><span className="block text-slate-400 text-xs uppercase tracking-wider font-semibold mb-1">Частота ОРВИ</span><span className="font-medium text-slate-800">{formData.arviFrequency === 'rarely' ? 'Редко' : formData.arviFrequency === 'often' ? 'Более 5 раз в год' : formData.arviFrequency ? `${formData.arviFrequency} раз(а) в год` : '-'}</span></div>
+                                        </div>
+
+                                        {formData.hasAllergies && (
+                                            <div className="pt-3 border-t border-slate-100">
+                                                <span className="block text-slate-400 text-xs uppercase tracking-wider font-semibold mb-1">Аллергии</span>
+                                                <span className="font-medium text-amber-700 bg-amber-50 px-2.5 py-1 rounded-md border border-amber-200/60 inline-block">{typeof formData.allergyDetails === 'object' ? formData.allergyDetails.name : formData.allergyDetails}</span>
+                                            </div>
+                                        )}
+
+                                        {formData.hasChronic && safeArray(formData.chronicDiagnoses).length > 0 && (
+                                            <div className="pt-3 border-t border-slate-100">
+                                                <span className="block text-slate-400 text-xs uppercase tracking-wider font-semibold mb-2">Хронические заболевания</span>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {safeArray(formData.chronicDiagnoses).map(d => (
+                                                        <span key={d.id} className="text-xs font-medium text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200/60">{d.text}</span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {formData.hasGeneralMeds && safeArray(formData.generalMeds).length > 0 && (
+                                            <div className="pt-3 border-t border-slate-100">
+                                                <span className="block text-slate-400 text-xs uppercase tracking-wider font-semibold mb-2">Принимаемые препараты (Хроника)</span>
+                                                <div className="space-y-3">
+                                                    {safeArray(formData.generalMeds).map(med => (
+                                                        <div key={med.id} className="p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                                                            <div className="font-bold text-slate-700">{med.name}</div>
+                                                            <div className="text-xs text-slate-500 mb-2">{med.schemeType === 'daily' ? 'Ежедневно' : med.schemeType === 'as_needed' ? 'По потребности' : 'Курсом'}</div>
+                                                            <div className="grid grid-cols-1 gap-1.5">
+                                                                {safeArray(med.schedule).map(s => (
+                                                                    <div key={s.id} className="flex justify-between items-center bg-white px-2 py-1.5 rounded border border-slate-100 text-xs">
+                                                                        <span className="font-semibold text-slate-600">{s.time || 'Время не указано'}</span>
+                                                                        <span className="text-emerald-600 font-bold">{s.dosage || 'Доза не указана'}</span>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {formData.gender === 'female' && (
+                                            <div className="mt-4 pt-4 border-t-2 border-dashed border-pink-100">
+                                                <span className="block text-slate-400 text-xs uppercase tracking-wider font-semibold mb-3 flex items-center gap-2"><i className="fa-solid fa-spa text-pink-400"></i> Женское здоровье</span>
+
+                                                <div className="grid grid-cols-2 gap-3 mb-3">
+                                                    <div><span className="block text-slate-400 text-[10px] uppercase font-bold mb-1">Первая менстр.</span><span className="font-medium text-slate-700 text-xs">{formatDate(formData.menarcheDate)}</span></div>
+                                                    <div><span className="block text-slate-400 text-[10px] uppercase font-bold mb-1">Крайняя менстр.</span><span className="font-medium text-slate-700 text-xs">{formatDate(formData.lastPeriodDate)}</span></div>
+                                                    <div><span className="block text-slate-400 text-[10px] uppercase font-bold mb-1">Цикл</span><span className="font-medium text-slate-700 text-xs">{formData.cycleDays || '-'} дней</span></div>
+                                                    <div><span className="block text-slate-400 text-[10px] uppercase font-bold mb-1">Визит к врачу</span><span className="font-medium text-slate-700 text-xs">{formatDate(formData.lastGynecologyVisit)}</span></div>
+                                                </div>
+
+                                                <div className="mb-3">
+                                                    <span className="block text-slate-400 text-[10px] uppercase font-bold mb-1">Симптомы ПМС (Боль: {formData.painLevel}/10)</span>
+                                                    <div className="flex flex-wrap gap-1.5">
+                                                        {safeArray(formData.pmsSymptoms).map((symp, i) => (
+                                                            <span key={i} className="text-[10px] font-medium text-pink-700 bg-pink-50 px-2 py-0.5 rounded border border-pink-200">{symp}</span>
+                                                        ))}
+                                                    </div>
+                                                </div>
+
+                                                {nextPeriod && (
+                                                    <div className="p-3 bg-pink-50 border border-pink-200 rounded-xl flex justify-between items-center mt-3">
+                                                        <span className="text-xs font-bold text-pink-700 uppercase">Ожидаемая дата след. менструации:</span>
+                                                        <span className="font-bold text-pink-600 bg-white px-2 py-1 rounded shadow-sm">{nextPeriod}</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Блок 3: Психология */}
+                                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                                    <div className="bg-slate-50 border-b border-slate-200 px-5 py-3 flex justify-between items-center">
+                                        <h3 className="font-bold text-slate-700 flex items-center gap-2"><i className="fa-solid fa-brain text-purple-500"></i> Психология</h3>
+                                        <button type="button" onClick={() => setCurrentScreen(3)} className="text-sm font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 bg-indigo-50 px-3 py-1.5 rounded-lg transition-colors">
+                                            <i className="fa-solid fa-pen-to-square"></i> Изменить
+                                        </button>
+                                    </div>
+                                    <div className="p-5 space-y-5 text-sm">
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div><span className="block text-slate-400 text-xs uppercase tracking-wider font-semibold mb-1">Уровень стресса</span><span className="font-medium text-slate-800">{formData.stressLevel}/10</span></div>
+                                            <div>
+                                                <span className="block text-slate-400 text-xs uppercase tracking-wider font-semibold mb-1">Сон / Настроение</span>
+                                                <span className="font-medium text-slate-800 text-xs block">Сон: {formData.sleepQuality === 'excellent' ? 'Отличный' : formData.sleepQuality === 'good' ? 'Хороший' : formData.sleepQuality === 'fair' ? 'Удовл.' : 'Плохой'}</span>
+                                                <span className="font-medium text-slate-800 text-xs block">Фон: {formData.moodState === 'positive' ? 'Позитивный' : formData.moodState === 'neutral' ? 'Нейтральный' : formData.moodState === 'anxious' ? 'Тревожный' : formData.moodState === 'depressed' ? 'Подавленный' : 'Перепады'}</span>
+                                            </div>
+                                        </div>
+
+                                        {formData.hasPsychiatricDisorder && safeArray(formData.psychDiagnoses).length > 0 && (
+                                            <div className="pt-3 border-t border-slate-100">
+                                                <span className="block text-slate-400 text-xs uppercase tracking-wider font-semibold mb-2">Установленные диагнозы</span>
+                                                <div className="flex flex-wrap gap-2 mb-3">
+                                                    {safeArray(formData.psychDiagnoses).map(d => (
+                                                        <span key={d.id} className="text-xs font-medium text-teal-700 bg-teal-50 px-2.5 py-1 rounded-md border border-teal-200/60">{d.text}</span>
+                                                    ))}
+                                                </div>
+
+                                                <span className="block text-slate-400 text-[10px] uppercase font-bold mb-1">Проявления (симптомы)</span>
+                                                <div className="flex flex-wrap gap-1.5 mb-4">
+                                                    {safeArray(formData.psychSymptoms).map((symp, i) => (
+                                                        <span key={i} className="text-[10px] font-medium text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">{symp}</span>
+                                                    ))}
+                                                </div>
+
+                                                <div className="bg-teal-50/50 p-3 rounded-lg border border-teal-100">
+                                                    <span className="block text-teal-700 text-xs font-bold mb-2 flex items-center gap-1.5"><i className="fa-solid fa-user-doctor"></i> Данные специалиста</span>
+                                                    <div className="space-y-1 text-xs">
+                                                        <p><span className="text-slate-500">Врач:</span> <span className="font-medium text-slate-700">{formData.psychDoctorName || 'Не указан'}</span></p>
+                                                        <p><span className="text-slate-500">Клиника:</span> <span className="font-medium text-slate-700">{formData.psychClinicName || 'Не указана'}</span></p>
+                                                        <p><span className="text-slate-500">Дата постановки:</span> <span className="font-medium text-slate-700">{formatDate(formData.psychDisorderDate)}</span></p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {formData.hasPsychMeds && safeArray(formData.psychMeds).length > 0 && (
+                                            <div className="pt-3 border-t border-slate-100">
+                                                <span className="block text-slate-400 text-xs uppercase tracking-wider font-semibold mb-2">Назначенные препараты</span>
+                                                <div className="space-y-3">
+                                                    {safeArray(formData.psychMeds).map(med => (
+                                                        <div key={med.id} className="p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                                                            <div className="font-bold text-sky-700">{med.name}</div>
+                                                            <div className="text-[10px] text-slate-400 mb-2">{med.group}</div>
+                                                            <div className="text-xs text-slate-500 mb-2">{med.schemeType === 'daily' ? 'Ежедневно' : med.schemeType === 'as_needed' ? 'По потребности' : 'Курсом'}</div>
+                                                            <div className="grid grid-cols-1 gap-1.5">
+                                                                {safeArray(med.schedule).map(s => (
+                                                                    <div key={s.id} className="flex justify-between items-center bg-white px-2 py-1.5 rounded border border-slate-100 text-xs">
+                                                                        <span className="font-semibold text-slate-600">{s.time || 'Время не указано'}</span>
+                                                                        <span className="text-sky-600 font-bold">{s.dosage || 'Доза не указана'}</span>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <button onClick={() => setCurrentScreen(6)} className="w-full bg-indigo-50 text-indigo-600 font-bold py-3.5 px-4 rounded-xl flex items-center justify-center gap-2 hover:bg-indigo-100 transition-colors">
+                                    <i className="fa-solid fa-arrow-left"></i> Вернуться в личный кабинет
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            };
+
+            // ==========================================
+            // ЭКРАН 6: ДАШБОРД (ЛИЧНЫЙ КАБИНЕТ)
+            // ==========================================
+            const renderDashboardScreen = () => {
+                // Расчет показателей здоровья на основе анкеты
+                const calculateHealthScores = () => {
+                    let physical = 100;
+                    let emotional = 100;
+                    
+                    // Физика
+                    if (formData.hasChronic) physical -= safeArray(formData.chronicDiagnoses).length * 10;
+                    if (formData.arviFrequency === '3-4') physical -= 10;
+                    if (formData.arviFrequency === 'often') physical -= 20;
+                    if (formData.painLevel && parseInt(formData.painLevel) > 6) physical -= 10;
+                    const bmi = calculateBMI();
+                    if (bmi && bmi.category !== 'Норма') physical -= 15;
+                    
+                    // Эмоции
+                    const stress = parseInt(formData.stressLevel) || 5;
+                    if (stress > 5) emotional -= (stress - 5) * 5;
+                    if (formData.sleepQuality === 'fair') emotional -= 15;
+                    if (formData.sleepQuality === 'poor') emotional -= 25;
+                    if (formData.moodState === 'anxious' || formData.moodState === 'depressed') emotional -= 20;
+                    if (formData.moodState === 'swings') emotional -= 15;
+                    if (formData.hasPsychiatricDisorder) emotional -= safeArray(formData.psychDiagnoses).length * 15;
+
+                    return {
+                        physical: Math.max(15, physical), // Не даем опуститься ниже 15%
+                        emotional: Math.max(15, emotional)
+                    };
+                };
+
+                const scores = calculateHealthScores();
+
+                // Собираем все диагнозы в один список
+                const allDiagnoses = [
+                    ...safeArray(formData.chronicDiagnoses).map(d => d.text),
+                    ...safeArray(formData.psychDiagnoses).map(d => d.text)
+                ];
+
+                // Динамическая надежность профиля на основе загруженных категорий исследований
+                const uploadedCategoriesCount = Object.values(uploadedFiles).filter(arr => safeArray(arr).length > 0).length;
+                const reliability = Math.min(30 + uploadedCategoriesCount * 15, 90);
+
+                const uploadCategories = [
+                    { key: 'labResults', icon: 'fa-flask', color: 'sky', title: 'Лабораторные анализы', subtitle: 'Кровь, моча, гормоны, биохимия' },
+                    { key: 'doctorVisit', icon: 'fa-user-doctor', color: 'emerald', title: 'Осмотр врача', subtitle: 'Протоколы осмотра, назначения' },
+                    { key: 'medicalReport', icon: 'fa-file-medical', color: 'purple', title: 'Медицинское заключение', subtitle: 'Выписки, справки, эпикризы' },
+                    { key: 'instrumentalDiag', icon: 'fa-x-ray', color: 'rose', title: 'Инструментальная диагн.', subtitle: 'УЗИ, МРТ, КТ, ЭКГ, Рентген' },
+                ];
+                const uploadColorMap = {
+                    sky: { bg: 'bg-sky-100', text: 'text-sky-600', hoverBorder: 'hover:border-sky-200', badge: 'bg-sky-50 text-sky-600 border-sky-200' },
+                    emerald: { bg: 'bg-emerald-100', text: 'text-emerald-600', hoverBorder: 'hover:border-emerald-200', badge: 'bg-emerald-50 text-emerald-600 border-emerald-200' },
+                    purple: { bg: 'bg-purple-100', text: 'text-purple-600', hoverBorder: 'hover:border-purple-200', badge: 'bg-purple-50 text-purple-600 border-purple-200' },
+                    rose: { bg: 'bg-rose-100', text: 'text-rose-600', hoverBorder: 'hover:border-rose-200', badge: 'bg-rose-50 text-rose-600 border-rose-200' },
+                };
+
+                return (
+                    <div className="min-h-screen bg-slate-50 flex flex-col pb-20 relative">
+                        {/* Шапка */}
+                        <div className="bg-gradient-to-r from-indigo-600 to-violet-600 pt-12 pb-6 px-6 text-white rounded-b-[2.5rem] shadow-lg shadow-indigo-200/50 relative overflow-hidden">
+                            <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-2xl -mr-10 -mt-10"></div>
+                            <div className="flex justify-between items-center relative z-10">
+                                <div>
+                                    <h1 className="text-2xl font-extrabold tracking-tight">Привет, {formData.firstName}!</h1>
+                                    <p className="text-indigo-100 text-sm mt-1 font-medium">Ваш личный профиль здоровья</p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setCurrentScreen(7)}
+                                    className="w-14 h-14 rounded-full border-2 border-white/50 shadow-md overflow-hidden bg-indigo-200 flex-shrink-0 cursor-pointer hover:ring-4 hover:ring-white/30 transition-all active:scale-95"
+                                    title="Анкета и анамнез"
+                                >
+                                    {formData.profilePhoto ? (
+                                        <img src={formData.profilePhoto} alt="Аватар" className="w-full h-full object-cover" />
+                                    ) : (
+                                        <div className="w-full h-full flex items-center justify-center text-indigo-500 font-bold text-xl">
+                                            {formData.firstName.charAt(0)}
+                                        </div>
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Контент вкладок */}
+                        <div className="flex-1 px-4 mt-6">
+                            {dashboardTab === 'main' ? (
+                                <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
+                                    
+                                    {/* Плашка призыва к действию / надежность профиля */}
+                                    {reliability < 90 ? (
+                                        <div className="bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 p-5 rounded-2xl shadow-sm relative overflow-hidden">
+                                            <div className="absolute -right-4 -top-4 w-16 h-16 bg-amber-500/10 rounded-full blur-xl"></div>
+                                            <div className="flex items-center justify-between mb-2">
+                                                <h3 className="font-bold text-amber-900 flex items-center gap-2">
+                                                    <i className="fa-solid fa-chart-pie text-amber-500 text-lg"></i> Картина не полная!
+                                                </h3>
+                                                <span className="text-xs font-extrabold text-amber-700 bg-white/70 px-2.5 py-1 rounded-full border border-amber-200">{reliability}%</span>
+                                            </div>
+                                            <div className="w-full h-1.5 bg-amber-200/60 rounded-full overflow-hidden mb-4">
+                                                <div className="h-full bg-amber-500 rounded-full transition-all duration-700" style={{ width: `${reliability}%` }}></div>
+                                            </div>
+                                            <p className="text-xs text-amber-800 leading-relaxed mb-4">
+                                                Текущие показатели рассчитаны <b>только на базе анкеты (надежность {reliability}%)</b>. Чтобы алгоритмы ИИ могли составить точный профиль и дать рекомендации, необходимо загрузить медицинские исследования.
+                                            </p>
+                                            <button onClick={() => setDashboardTab('researches')} className="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold py-3 px-4 rounded-xl shadow-md shadow-amber-200 transition-colors text-sm">
+                                                Добавить исследования <i className="fa-solid fa-arrow-right ml-1"></i>
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <div className="bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-200 p-5 rounded-2xl shadow-sm relative overflow-hidden">
+                                            <div className="absolute -right-4 -top-4 w-16 h-16 bg-emerald-500/10 rounded-full blur-xl"></div>
+                                            <h3 className="font-bold text-emerald-900 mb-2 flex items-center gap-2">
+                                                <i className="fa-solid fa-circle-check text-emerald-500 text-lg"></i> Профиль почти полный!
+                                            </h3>
+                                            <p className="text-xs text-emerald-800 leading-relaxed">
+                                                Надежность данных выросла до <b>{reliability}%</b> благодаря загруженным исследованиям. Алгоритмы ИИ учитывают их при расчете показателей.
+                                            </p>
+                                        </div>
+                                    )}
+
+                                    {/* Быстрые действия */}
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <button onClick={() => setDashboardTab('researches')} className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col items-center gap-2 shadow-sm hover:shadow-md hover:border-indigo-200 transition-all group">
+                                            <div className="w-11 h-11 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center text-lg group-hover:scale-110 transition-transform">
+                                                <i className="fa-solid fa-file-medical"></i>
+                                            </div>
+                                            <span className="text-xs font-bold text-slate-700">Исследования</span>
+                                        </button>
+                                        <button onClick={() => setDashboardTab('appointments')} className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col items-center gap-2 shadow-sm hover:shadow-md hover:border-indigo-200 transition-all group">
+                                            <div className="w-11 h-11 bg-violet-50 text-violet-600 rounded-xl flex items-center justify-center text-lg group-hover:scale-110 transition-transform">
+                                                <i className="fa-solid fa-calendar-check"></i>
+                                            </div>
+                                            <span className="text-xs font-bold text-slate-700">Записаться к врачу</span>
+                                        </button>
+                                    </div>
+
+                                    {/* Показатели */}
+                                    <h3 className="font-extrabold text-slate-800 text-lg px-1">Оценка состояния</h3>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center text-center">
+                                            <div className="relative w-20 h-20 mb-3 flex items-center justify-center">
+                                                <svg className="w-full h-full transform -rotate-90">
+                                                    <circle cx="40" cy="40" r="36" fill="transparent" stroke="#f1f5f9" strokeWidth="8" />
+                                                    <circle cx="40" cy="40" r="36" fill="transparent" stroke="#10b981" strokeWidth="8" strokeLinecap="round" strokeDasharray="226" strokeDashoffset={226 - (scores.physical / 100) * 226} className="transition-all duration-1000" />
+                                                </svg>
+                                                <span className="absolute text-xl font-bold text-emerald-600">{scores.physical}%</span>
+                                            </div>
+                                            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Физическое<br/>здоровье</span>
+                                        </div>
+                                        
+                                        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center text-center">
+                                            <div className="relative w-20 h-20 mb-3 flex items-center justify-center">
+                                                <svg className="w-full h-full transform -rotate-90">
+                                                    <circle cx="40" cy="40" r="36" fill="transparent" stroke="#f1f5f9" strokeWidth="8" />
+                                                    <circle cx="40" cy="40" r="36" fill="transparent" stroke="#8b5cf6" strokeWidth="8" strokeLinecap="round" strokeDasharray="226" strokeDashoffset={226 - (scores.emotional / 100) * 226} className="transition-all duration-1000" />
+                                                </svg>
+                                                <span className="absolute text-xl font-bold text-violet-600">{scores.emotional}%</span>
+                                            </div>
+                                            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Ментальное<br/>состояние</span>
+                                        </div>
+                                    </div>
+
+                                    {/* Диагнозы */}
+                                    {allDiagnoses.length > 0 && (
+                                        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+                                            <h3 className="font-extrabold text-slate-800 mb-3 flex items-center gap-2">
+                                                <i className="fa-solid fa-notes-medical text-rose-500"></i> Зафиксированные диагнозы
+                                            </h3>
+                                            <div className="flex flex-col gap-2">
+                                                {allDiagnoses.map((diag, i) => (
+                                                    <div key={i} className="px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg text-sm font-medium text-slate-700 flex items-start gap-2">
+                                                        <i className="fa-solid fa-circle text-[8px] text-rose-400 mt-1.5"></i> {diag}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            ) : dashboardTab === 'researches' ? (
+                                <div className="space-y-4 animate-in fade-in slide-in-from-right-4">
+                                    <div className="mb-6 px-1">
+                                        <h2 className="text-xl font-extrabold text-slate-800">Добавить исследование</h2>
+                                        <p className="text-sm text-slate-500 mt-1">Выберите тип документа для загрузки в систему</p>
+                                    </div>
+
+                                    {/* Скрытый инпут для файлов */}
+                                    <input type="file" ref={fileInputRef} className="hidden" multiple accept="image/*,.pdf,.doc,.docx" onChange={handleFilesSelected} />
+
+                                    {uploadCategories.map(cat => {
+                                        const colors = uploadColorMap[cat.color];
+                                        const files = safeArray(uploadedFiles[cat.key]);
+                                        const isManualOpen = manualEntryCategory === cat.key;
+                                        return (
+                                            <div key={cat.key} className={`bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden transition-colors ${colors.hoverBorder}`}>
+                                                <div onClick={() => triggerFileUpload(cat.key)} className="p-4 flex items-center gap-4 cursor-pointer group">
+                                                    <div className={`w-12 h-12 ${colors.bg} ${colors.text} rounded-xl flex items-center justify-center text-xl group-hover:scale-110 transition-transform flex-shrink-0`}>
+                                                        <i className={`fa-solid ${cat.icon}`}></i>
+                                                    </div>
+                                                    <div className="flex-1">
+                                                        <h4 className="font-bold text-slate-800">{cat.title}</h4>
+                                                        <p className="text-xs text-slate-500 mt-0.5">{cat.subtitle}</p>
+                                                    </div>
+                                                    {files.length > 0 && (
+                                                        <span className={`text-xs font-bold px-2 py-1 rounded-full border ${colors.badge}`}>{files.length}</span>
+                                                    )}
+                                                    <i className="fa-solid fa-chevron-right text-slate-300"></i>
+                                                </div>
+
+                                                <div className="px-4 pb-3 -mt-1">
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => { e.stopPropagation(); isManualOpen ? closeManualEntry() : openManualEntry(cat.key); }}
+                                                        className={`text-xs font-semibold flex items-center gap-1.5 transition-colors ${isManualOpen ? 'text-slate-400' : colors.text}`}
+                                                    >
+                                                        <i className={`fa-solid ${isManualOpen ? 'fa-xmark' : 'fa-pen'}`}></i>
+                                                        {isManualOpen ? 'Отменить ручной ввод' : 'Нет файла под рукой? Добавить вручную'}
+                                                    </button>
+                                                </div>
+
+                                                {isManualOpen && (
+                                                    <div className="border-t border-slate-100 p-4 space-y-3 bg-slate-50/50 animate-in fade-in slide-in-from-top-2">
+                                                        {cat.key === 'labResults' ? (
+                                                            <div>
+                                                                <label className="block text-xs font-semibold text-slate-600 mb-1">Показатель (маркер) *</label>
+                                                                <AutocompleteInput
+                                                                    options={labMarkersDict}
+                                                                    value={manualEntryData.name}
+                                                                    onChange={handleMarkerSelect}
+                                                                    name="name"
+                                                                    placeholder="Начните вводить: гемоглобин, глюкоза, ТТГ..."
+                                                                    colorScheme="sky"
+                                                                    icon="fa-flask"
+                                                                />
+                                                            </div>
+                                                        ) : (
+                                                            <div>
+                                                                <label className="block text-xs font-semibold text-slate-600 mb-1">Что за исследование? *</label>
+                                                                <input
+                                                                    type="text"
+                                                                    name="name"
+                                                                    value={manualEntryData.name}
+                                                                    onChange={handleManualEntryChange}
+                                                                    placeholder="Например: Осмотр терапевта"
+                                                                    className="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-400"
+                                                                />
+                                                            </div>
+                                                        )}
+
+                                                        {cat.key === 'labResults' && manualEntryData.name && (
+                                                            <div>
+                                                                <label className="block text-xs font-semibold text-slate-600 mb-1">
+                                                                    Значение {manualEntryData.unit && `(${manualEntryData.unit})`}
+                                                                </label>
+                                                                <input
+                                                                    type="text"
+                                                                    name="value"
+                                                                    value={manualEntryData.value}
+                                                                    onChange={handleManualEntryChange}
+                                                                    placeholder={manualEntryData.normalRange ? `Например: ${manualEntryData.normalRange.split('–')[0]}` : 'Введите значение'}
+                                                                    className="w-full p-2.5 bg-white border border-sky-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-sky-400"
+                                                                />
+                                                                {manualEntryData.normalRange && (
+                                                                    <p className="text-[11px] text-sky-600 font-medium mt-1">
+                                                                        <i className="fa-solid fa-circle-info mr-1"></i>
+                                                                        Норма: {manualEntryData.normalRange} {manualEntryData.unit}
+                                                                    </p>
+                                                                )}
+                                                            </div>
+                                                        )}
+
+                                                        <div>
+                                                            <label className="block text-xs font-semibold text-slate-600 mb-1">Дата (если известна)</label>
+                                                            <input
+                                                                type="date"
+                                                                name="date"
+                                                                value={manualEntryData.date}
+                                                                onChange={handleManualEntryChange}
+                                                                className="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-400 text-slate-700"
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-xs font-semibold text-slate-600 mb-1">Комментарий (по желанию)</label>
+                                                            <textarea
+                                                                name="notes"
+                                                                value={manualEntryData.notes}
+                                                                onChange={handleManualEntryChange}
+                                                                placeholder={cat.key === 'labResults' ? 'Например: пересдать через месяц' : 'Например: жалоб нет, назначено наблюдение'}
+                                                                rows="2"
+                                                                className="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
+                                                            ></textarea>
+                                                        </div>
+                                                        <button
+                                                            type="button"
+                                                            onClick={saveManualEntry}
+                                                            disabled={!manualEntryData.name.trim()}
+                                                            className={`w-full py-2.5 rounded-lg font-bold text-sm transition-colors ${manualEntryData.name.trim() ? 'bg-indigo-600 hover:bg-indigo-700 text-white' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}
+                                                        >
+                                                            <i className="fa-solid fa-check mr-1.5"></i>Сохранить запись
+                                                        </button>
+                                                    </div>
+                                                )}
+
+                                                {files.length > 0 && (
+                                                    <div className="border-t border-slate-100 p-3 space-y-2 bg-slate-50/50">
+                                                        {files.map(f => (
+                                                            <div key={f.id} className="flex items-start justify-between gap-2 bg-white px-3 py-2 rounded-lg border border-slate-100 text-xs">
+                                                                <span className="flex items-start gap-2 text-slate-600 font-medium min-w-0">
+                                                                    <i className={`fa-solid ${f.manual ? 'fa-pen-to-square' : 'fa-file-lines'} text-slate-400 mt-0.5`}></i>
+                                                                    <span className="min-w-0">
+                                                                        <span className="block truncate">
+                                                                            {f.name}
+                                                                            {f.manual && f.value && (
+                                                                                <span className="text-sky-600 font-bold"> — {f.value} {f.unit}</span>
+                                                                            )}
+                                                                        </span>
+                                                                        {f.manual && f.normalRange && (
+                                                                            <span className="block text-slate-400 font-normal mt-0.5">Норма: {f.normalRange} {f.unit}</span>
+                                                                        )}
+                                                                        {f.manual && (f.date || f.notes) && (
+                                                                            <span className="block text-slate-400 font-normal mt-0.5">
+                                                                                {f.date && formatDate(f.date)}{f.date && f.notes ? ' • ' : ''}{f.notes}
+                                                                            </span>
+                                                                        )}
+                                                                    </span>
+                                                                </span>
+                                                                <button onClick={() => removeUploadedFile(cat.key, f.id)} className="text-slate-300 hover:text-rose-500 transition-colors flex-shrink-0">
+                                                                    <i className="fa-solid fa-xmark"></i>
+                                                                </button>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            ) : (
+                                <div className="space-y-4 animate-in fade-in slide-in-from-right-4">
+                                    <div className="mb-6 px-1">
+                                        <h2 className="text-xl font-extrabold text-slate-800">Приемы и консультации</h2>
+                                        <p className="text-sm text-slate-500 mt-1">Ваши записи к врачам</p>
+                                    </div>
+
+                                    {appointments.length === 0 ? (
+                                        <div className="bg-white rounded-2xl border-2 border-dashed border-slate-200 p-8 flex flex-col items-center text-center">
+                                            <div className="w-16 h-16 bg-indigo-50 text-indigo-500 rounded-full flex items-center justify-center text-2xl mb-4">
+                                                <i className="fa-solid fa-calendar-check"></i>
+                                            </div>
+                                            <h3 className="font-bold text-slate-700 mb-1">Пока нет записей</h3>
+                                            <p className="text-sm text-slate-500 mb-5">Запишитесь к врачу на основе данных вашей анкеты</p>
+                                            <button onClick={addAppointment} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-xl shadow-md shadow-indigo-200 transition-all transform hover:scale-[1.02] active:scale-[0.98]">
+                                                <i className="fa-solid fa-plus mr-2"></i>Записаться на прием
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-3">
+                                            {appointments.map(appt => (
+                                                <div key={appt.id} className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
+                                                    <div className="w-12 h-12 bg-indigo-100 text-indigo-600 rounded-xl flex flex-col items-center justify-center flex-shrink-0">
+                                                        <span className="text-[10px] font-bold uppercase leading-none">{appt.month}</span>
+                                                        <span className="text-lg font-extrabold leading-none mt-0.5">{appt.day}</span>
+                                                    </div>
+                                                    <div className="flex-1">
+                                                        <h4 className="font-bold text-slate-800">{appt.specialty}</h4>
+                                                        <p className="text-xs text-slate-500 mt-0.5">{appt.doctor} • {appt.time}</p>
+                                                    </div>
+                                                    <button onClick={() => removeAppointment(appt.id)} className="text-slate-300 hover:text-rose-500 transition-colors p-2">
+                                                        <i className="fa-solid fa-xmark"></i>
+                                                    </button>
+                                                </div>
+                                            ))}
+                                            <button onClick={addAppointment} className="w-full bg-indigo-50 text-indigo-600 p-3.5 rounded-2xl font-bold border-2 border-dashed border-indigo-200 hover:bg-indigo-100 transition-colors text-sm">
+                                                <i className="fa-solid fa-plus mr-1.5"></i> Добавить еще запись
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Нижняя навигация (Таббар) */}
+                        <div className="fixed bottom-0 left-0 w-full bg-white border-t border-slate-200 pb-safe pt-2 px-6 flex justify-around items-center z-50 shadow-[0_-10px_40px_rgba(0,0,0,0.05)]">
+                            <button 
+                                onClick={() => setDashboardTab('main')} 
+                                className={`flex flex-col items-center gap-1 p-2 w-20 transition-colors ${dashboardTab === 'main' ? 'text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}
+                            >
+                                <i className={`text-xl fa-solid ${dashboardTab === 'main' ? 'fa-house' : 'fa-house'}`}></i>
+                                <span className="text-[10px] font-bold">Главная</span>
+                            </button>
+                            
+                            <button 
+                                onClick={() => setDashboardTab('researches')} 
+                                className={`flex flex-col items-center gap-1 p-2 w-20 transition-colors ${dashboardTab === 'researches' ? 'text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}
+                            >
+                                <div className="relative">
+                                    <i className={`text-xl fa-solid ${dashboardTab === 'researches' ? 'fa-folder-open' : 'fa-folder'}`}></i>
+                                    {dashboardTab === 'main' && reliability < 90 && <span className="absolute -top-1 -right-2 w-3 h-3 bg-rose-500 rounded-full border-2 border-white animate-pulse"></span>}
+                                </div>
+                                <span className="text-[10px] font-bold">Исследования</span>
+                            </button>
+
+                            <button
+                                onClick={() => setDashboardTab('appointments')}
+                                className={`flex flex-col items-center gap-1 p-2 w-20 transition-colors ${dashboardTab === 'appointments' ? 'text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}
+                            >
+                                <div className="relative">
+                                    <i className={`text-xl fa-solid ${dashboardTab === 'appointments' ? 'fa-calendar-check' : 'fa-calendar'}`}></i>
+                                    {appointments.length > 0 && (
+                                        <span className="absolute -top-1.5 -right-2 min-w-[16px] h-4 px-1 bg-indigo-600 rounded-full border-2 border-white text-[9px] text-white font-bold flex items-center justify-center">{appointments.length}</span>
+                                    )}
+                                </div>
+                                <span className="text-[10px] font-bold">Приемы</span>
+                            </button>
+                        </div>
+                    </div>
+                );
+            };
+
+            return (
+                <React.Fragment>
+                    {transitionConfig.isTransitioning ? (
+                        <TransitionScreen 
+                            text={transitionConfig.text}
+                            startProgress={transitionConfig.startProgress}
+                            endProgress={transitionConfig.endProgress}
+                        />
+                    ) : (
+                        <React.Fragment>
+                            {currentScreen === 1 && renderOnboardingScreen()}
+                            {currentScreen === 2 && renderMedicalScreen()}
+                            {currentScreen === 3 && renderPsychologyScreen()}
+                            {currentScreen === 4 && renderReviewScreen()}
+                            {currentScreen === 5 && renderSuccessScreen()}
+                            {currentScreen === 6 && renderDashboardScreen()}
+                            {currentScreen === 7 && renderProfileScreen()}
+                        </React.Fragment>
+                    )}
+                </React.Fragment>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
