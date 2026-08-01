@@ -38,6 +38,9 @@
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
 
+        // URL веб-приложения Google Apps Script (Deploy → Web app). Пока не вставлен — приложение работает локально, без синхронизации.
+        const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx5NaWb9m5fqr87pvIdCLya1Onji_45qy6D2cVEisnSGGrW3Z5rUPnnGwA-ZBHD5G9FAQ/exec';
+
         // Справочник МКБ-10 (Хронические заболевания)
         const mcb10Dict = [
             { code: 'I10', name: 'Эссенциальная (первичная) гипертензия' },
@@ -696,6 +699,46 @@
                 consentPersonalData: false,
                 consentMedicalData: false
             });
+
+            // ================================================
+            // СИНХРОНИЗАЦИЯ С GOOGLE ТАБЛИЦЕЙ (вместо базы данных)
+            // ================================================
+            const [dataLoaded, setDataLoaded] = useState(false);
+            const [syncStatus, setSyncStatus] = useState('idle'); // idle | syncing | saved | error
+            const isSheetConfigured = GOOGLE_SCRIPT_URL && !GOOGLE_SCRIPT_URL.includes('ВСТАВЬТЕ');
+
+            // Первичная загрузка данных из таблицы при старте приложения
+            useEffect(() => {
+                if (!isSheetConfigured) { setDataLoaded(true); return; }
+                fetch(GOOGLE_SCRIPT_URL)
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.formData) setFormData(prev => ({ ...prev, ...data.formData }));
+                        if (data.uploadedFiles) setUploadedFiles(data.uploadedFiles);
+                        if (data.appointments) setAppointments(data.appointments);
+                        if (data.checkIns) setCheckIns(data.checkIns);
+                        if (data.partnerData) setPartnerData(data.partnerData);
+                        if (typeof data.partnerSyncEnabled === 'boolean') setPartnerSyncEnabled(data.partnerSyncEnabled);
+                    })
+                    .catch(() => setSyncStatus('error'))
+                    .finally(() => setDataLoaded(true));
+            }, []);
+
+            // Автосохранение в таблицу при любом изменении данных (с задержкой, чтобы не слать запрос на каждую букву)
+            useEffect(() => {
+                if (!dataLoaded || !isSheetConfigured) return;
+                setSyncStatus('syncing');
+                const timeoutId = setTimeout(() => {
+                    fetch(GOOGLE_SCRIPT_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                        body: JSON.stringify({ formData, uploadedFiles, appointments, checkIns, partnerData, partnerSyncEnabled })
+                    })
+                        .then(() => setSyncStatus('saved'))
+                        .catch(() => setSyncStatus('error'));
+                }, 1200);
+                return () => clearTimeout(timeoutId);
+            }, [dataLoaded, formData, uploadedFiles, appointments, checkIns, partnerData, partnerSyncEnabled]);
 
             // Безопасный доступ к массивам
             const safeArray = (arr) => Array.isArray(arr) ? arr : [];
@@ -3933,8 +3976,23 @@
                 );
             };
 
+            if (!dataLoaded) {
+                return (
+                    <div className="min-h-screen bg-[#FAF7FC] flex flex-col items-center justify-center gap-4">
+                        <div className="w-10 h-10 border-4 border-fuchsia-200 border-t-fuchsia-600 rounded-full animate-spin"></div>
+                        <p className="text-sm text-gray-500 font-medium">Загружаем данные из Google Таблицы...</p>
+                    </div>
+                );
+            }
+
             return (
                 <React.Fragment>
+                    {isSheetConfigured && (
+                        <div className={`fixed bottom-3 right-3 z-[200] text-[11px] font-bold px-3 py-1.5 rounded-full shadow-lg flex items-center gap-1.5 transition-opacity ${syncStatus === 'idle' ? 'opacity-0 pointer-events-none' : 'opacity-100'} ${syncStatus === 'error' ? 'bg-rose-500 text-white' : syncStatus === 'syncing' ? 'bg-amber-500 text-white' : 'bg-emerald-500 text-white'}`}>
+                            <i className={`fa-solid ${syncStatus === 'error' ? 'fa-triangle-exclamation' : syncStatus === 'syncing' ? 'fa-arrows-rotate fa-spin' : 'fa-check'}`}></i>
+                            {syncStatus === 'error' ? 'Ошибка синхронизации' : syncStatus === 'syncing' ? 'Сохранение...' : 'Сохранено в таблицу'}
+                        </div>
+                    )}
                     {transitionConfig.isTransitioning ? (
                         <TransitionScreen 
                             text={transitionConfig.text}
