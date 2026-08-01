@@ -40,6 +40,84 @@
 
         // URL веб-приложения Google Apps Script (Deploy → Web app). Пока не вставлен — приложение работает локально, без синхронизации.
         const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx5NaWb9m5fqr87pvIdCLya1Onji_45qy6D2cVEisnSGGrW3Z5rUPnnGwA-ZBHD5G9FAQ/exec';
+        const isSheetConfigured = GOOGLE_SCRIPT_URL && !GOOGLE_SCRIPT_URL.includes('ВСТАВЬТЕ');
+
+        // Пустой профиль — с ним стартует каждый новый зарегистрированный пользователь
+        const emptyFormData = {
+            lastName: '', firstName: '', patronymic: '', dob: '', height: '', weight: '', gender: 'female',
+            bloodGroup: '', rhesusFactor: '',
+            hasAllergies: false, allergyCategory: '', allergyDetails: '',
+            hasChronic: false, chronicDiagnoses: [],
+            hasGeneralMeds: false, generalMeds: [],
+            arviFrequency: '',
+            menarcheDate: '', lastPeriodDate: '', cycleDays: '28', pmsSymptoms: [], painLevel: '', lastGynecologyVisit: '',
+            stressLevel: '', sleepQuality: '', moodState: '',
+            hasPsychiatricDisorder: false, psychDisorderDate: '', psychDoctorName: '', psychClinicName: '', psychDiagnoses: [], psychSymptoms: [],
+            hasPsychMeds: false, psychMeds: [],
+            profilePhoto: '',
+            consentPersonalData: false,
+            consentMedicalData: false
+        };
+
+        // Демо-профиль — используется только когда GOOGLE_SCRIPT_URL не настроен (локальная разработка/превью без бэкенда)
+        const demoFormData = {
+            lastName: 'Иванова',
+            firstName: 'Анна',
+            patronymic: 'Сергеевна',
+            dob: '1995-08-15',
+            height: '168',
+            weight: '62',
+            gender: 'female',
+
+            bloodGroup: 'II (A)',
+            rhesusFactor: 'Rh+',
+            hasAllergies: true,
+            allergyCategory: 'food',
+            allergyDetails: 'Пищевая аллергия (орехи, арахис)',
+            hasChronic: true,
+            chronicDiagnoses: [{ id: 1, text: 'J45 - Астма' }],
+            hasGeneralMeds: true,
+            generalMeds: [{
+                id: 1,
+                name: 'Симбикорт',
+                group: 'Препараты для лечения астмы',
+                code: 'R03A',
+                schemeType: 'daily',
+                schedule: [{ id: 11, time: 'Утро', dosage: '1 вдох' }, { id: 12, time: 'Вечер', dosage: '1 вдох' }]
+            }],
+            arviFrequency: '1-2',
+
+            menarcheDate: '2008-05-10',
+            lastPeriodDate: '2026-06-25',
+            cycleDays: '28',
+            pmsSymptoms: ['Тянущие боли внизу живота', 'Раздражительность'],
+            painLevel: '6',
+            lastGynecologyVisit: '2025-11-20',
+
+            stressLevel: '7',
+            sleepQuality: 'fair',
+            moodState: 'anxious',
+            hasPsychiatricDisorder: true,
+            psychDisorderDate: '2024-03-10',
+            psychDoctorName: 'Смирнов Петр Алексеевич',
+            psychClinicName: 'Медицинский центр "Здоровье"',
+            psychDiagnoses: [{ id: 2, text: 'F41.1 - Генерализованное тревожное расстройство' }],
+            psychSymptoms: ['Постоянная тревога', 'Бессонница'],
+            hasPsychMeds: true,
+            psychMeds: [{
+                id: 2,
+                name: 'Атаракс (Гидроксизин)',
+                group: 'Анксиолитики (Транквилизаторы)',
+                code: 'N05B',
+                schemeType: 'as_needed',
+                schedule: [{ id: 21, time: 'На ночь', dosage: '1/2 таб' }]
+            }],
+            profilePhoto: 'https://placehold.co/400x400/6366f1/ffffff?text=АИ',
+
+            // Юридические согласия
+            consentPersonalData: false,
+            consentMedicalData: false
+        };
 
         // Справочник МКБ-10 (Хронические заболевания)
         const mcb10Dict = [
@@ -641,79 +719,124 @@
             const [organDetailOpen, setOrganDetailOpen] = useState(false);
 
             // ИСПРАВЛЕННАЯ: Безопасная структура предзаполненных данных
-            const [formData, setFormData] = useState({
-                lastName: 'Иванова',
-                firstName: 'Анна',
-                patronymic: 'Сергеевна',
-                dob: '1995-08-15',
-                height: '168',
-                weight: '62',
-                gender: 'female',
+            const [formData, setFormData] = useState(isSheetConfigured ? emptyFormData : demoFormData);
 
-                bloodGroup: 'II (A)',
-                rhesusFactor: 'Rh+',
-                hasAllergies: true,
-                allergyCategory: 'food',
-                allergyDetails: 'Пищевая аллергия (орехи, арахис)',
-                hasChronic: true,
-                chronicDiagnoses: [{ id: 1, text: 'J45 - Астма' }],
-                hasGeneralMeds: true,
-                generalMeds: [{
-                    id: 1,
-                    name: 'Симбикорт',
-                    group: 'Препараты для лечения астмы',
-                    code: 'R03A',
-                    schemeType: 'daily',
-                    schedule: [{ id: 11, time: 'Утро', dosage: '1 вдох' }, { id: 12, time: 'Вечер', dosage: '1 вдох' }]
-                }],
-                arviFrequency: '1-2',
-                
-                menarcheDate: '2008-05-10',
-                lastPeriodDate: '2026-06-25',
-                cycleDays: '28',
-                pmsSymptoms: ['Тянущие боли внизу живота', 'Раздражительность'],
-                painLevel: '6',
-                lastGynecologyVisit: '2025-11-20',
-
-                stressLevel: '7',
-                sleepQuality: 'fair',
-                moodState: 'anxious',
-                hasPsychiatricDisorder: true,
-                psychDisorderDate: '2024-03-10',
-                psychDoctorName: 'Смирнов Петр Алексеевич',
-                psychClinicName: 'Медицинский центр "Здоровье"',
-                psychDiagnoses: [{ id: 2, text: 'F41.1 - Генерализованное тревожное расстройство' }],
-                psychSymptoms: ['Постоянная тревога', 'Бессонница'],
-                hasPsychMeds: true,
-                psychMeds: [{
-                    id: 2,
-                    name: 'Атаракс (Гидроксизин)',
-                    group: 'Анксиолитики (Транквилизаторы)',
-                    code: 'N05B',
-                    schemeType: 'as_needed',
-                    schedule: [{ id: 21, time: 'На ночь', dosage: '1/2 таб' }]
-                }],
-                profilePhoto: 'https://placehold.co/400x400/6366f1/ffffff?text=АИ',
-                
-                // Юридические согласия
-                consentPersonalData: false,
-                consentMedicalData: false
+            // ================================================
+            // АУТЕНТИФИКАЦИЯ (email + пароль, мульти-пользовательская)
+            // ================================================
+            const [authUser, setAuthUser] = useState(() => {
+                try {
+                    const saved = localStorage.getItem('healthAppUser');
+                    return saved ? JSON.parse(saved) : null;
+                } catch (e) {
+                    return null;
+                }
             });
+            const [authMode, setAuthMode] = useState('login'); // 'login' | 'register'
+            const [authForm, setAuthForm] = useState({ email: '', password: '', confirmPassword: '' });
+            const [authLoading, setAuthLoading] = useState(false);
+            const [authError, setAuthError] = useState('');
+
+            // Хешируем пароль на стороне браузера (SHA-256) — в открытом виде он никогда не уходит в таблицу
+            const hashPassword = async (password) => {
+                const enc = new TextEncoder().encode(password);
+                const buf = await crypto.subtle.digest('SHA-256', enc);
+                return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+            };
+
+            const handleAuthFormChange = (e) => {
+                const { name, value } = e.target;
+                setAuthForm(prev => ({ ...prev, [name]: value }));
+                setAuthError('');
+            };
+
+            const handleRegister = async () => {
+                const email = authForm.email.trim().toLowerCase();
+                if (!email || !authForm.password) { setAuthError('Заполните email и пароль'); return; }
+                if (authForm.password.length < 6) { setAuthError('Пароль должен быть не короче 6 символов'); return; }
+                if (authForm.password !== authForm.confirmPassword) { setAuthError('Пароли не совпадают'); return; }
+                setAuthLoading(true);
+                setAuthError('');
+                try {
+                    const passwordHash = await hashPassword(authForm.password);
+                    const res = await fetch(GOOGLE_SCRIPT_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                        body: JSON.stringify({ action: 'register', email, passwordHash })
+                    });
+                    const data = await res.json();
+                    if (data.status === 'ok' && data.userId && data.email) {
+                        const user = { userId: data.userId, email: data.email };
+                        setAuthUser(user);
+                        localStorage.setItem('healthAppUser', JSON.stringify(user));
+                        setFormData(emptyFormData);
+                        setAuthForm({ email: '', password: '', confirmPassword: '' });
+                    } else {
+                        setAuthError(data.message || 'Не удалось зарегистрироваться. Возможно, скрипт в Google Apps Script ещё не обновлён — обновите код по инструкции и повторите.');
+                    }
+                } catch (err) {
+                    setAuthError('Ошибка соединения. Попробуйте ещё раз.');
+                } finally {
+                    setAuthLoading(false);
+                }
+            };
+
+            const handleLogin = async () => {
+                const email = authForm.email.trim().toLowerCase();
+                if (!email || !authForm.password) { setAuthError('Заполните email и пароль'); return; }
+                setAuthLoading(true);
+                setAuthError('');
+                try {
+                    const passwordHash = await hashPassword(authForm.password);
+                    const res = await fetch(GOOGLE_SCRIPT_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                        body: JSON.stringify({ action: 'login', email, passwordHash })
+                    });
+                    const data = await res.json();
+                    if (data.status === 'ok' && data.userId && data.email) {
+                        const user = { userId: data.userId, email: data.email };
+                        setAuthUser(user);
+                        localStorage.setItem('healthAppUser', JSON.stringify(user));
+                        setAuthForm({ email: '', password: '', confirmPassword: '' });
+                    } else {
+                        setAuthError(data.message || 'Неверный email или пароль, либо скрипт в Google Apps Script ещё не обновлён.');
+                    }
+                } catch (err) {
+                    setAuthError('Ошибка соединения. Попробуйте ещё раз.');
+                } finally {
+                    setAuthLoading(false);
+                }
+            };
+
+            const handleLogout = () => {
+                localStorage.removeItem('healthAppUser');
+                setAuthUser(null);
+                setDataLoaded(false);
+                setFormData(emptyFormData);
+                setUploadedFiles({ labResults: [], doctorVisit: [], medicalReport: [], instrumentalDiag: [] });
+                setAppointments([]);
+                setCheckIns([]);
+                setPartnerData({ name: '', lastPeriodDate: '', cycleDays: '28' });
+                setPartnerSyncEnabled(false);
+                setCurrentScreen(0);
+            };
 
             // ================================================
             // СИНХРОНИЗАЦИЯ С GOOGLE ТАБЛИЦЕЙ (вместо базы данных)
             // ================================================
             const [dataLoaded, setDataLoaded] = useState(false);
             const [syncStatus, setSyncStatus] = useState('idle'); // idle | syncing | saved | error
-            const isSheetConfigured = GOOGLE_SCRIPT_URL && !GOOGLE_SCRIPT_URL.includes('ВСТАВЬТЕ');
 
-            // Первичная загрузка данных из таблицы при старте приложения
+            // Первичная загрузка данных из таблицы при старте приложения (для конкретного пользователя, после входа)
             useEffect(() => {
                 if (!isSheetConfigured) { setDataLoaded(true); return; }
-                fetch(GOOGLE_SCRIPT_URL)
+                if (!authUser) { setDataLoaded(false); return; }
+                setDataLoaded(false);
+                fetch(`${GOOGLE_SCRIPT_URL}?userId=${encodeURIComponent(authUser.userId)}`)
                     .then(res => res.json())
                     .then(data => {
-                        if (data.formData) setFormData(prev => ({ ...prev, ...data.formData }));
+                        setFormData(prev => ({ ...emptyFormData, ...data.formData }));
                         if (data.uploadedFiles) setUploadedFiles(data.uploadedFiles);
                         if (data.appointments) setAppointments(data.appointments);
                         if (data.checkIns) setCheckIns(data.checkIns);
@@ -722,23 +845,23 @@
                     })
                     .catch(() => setSyncStatus('error'))
                     .finally(() => setDataLoaded(true));
-            }, []);
+            }, [authUser]);
 
             // Автосохранение в таблицу при любом изменении данных (с задержкой, чтобы не слать запрос на каждую букву)
             useEffect(() => {
-                if (!dataLoaded || !isSheetConfigured) return;
+                if (!dataLoaded || !isSheetConfigured || !authUser) return;
                 setSyncStatus('syncing');
                 const timeoutId = setTimeout(() => {
                     fetch(GOOGLE_SCRIPT_URL, {
                         method: 'POST',
                         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                        body: JSON.stringify({ formData, uploadedFiles, appointments, checkIns, partnerData, partnerSyncEnabled })
+                        body: JSON.stringify({ userId: authUser.userId, formData, uploadedFiles, appointments, checkIns, partnerData, partnerSyncEnabled })
                     })
                         .then(() => setSyncStatus('saved'))
                         .catch(() => setSyncStatus('error'));
                 }, 1200);
                 return () => clearTimeout(timeoutId);
-            }, [dataLoaded, formData, uploadedFiles, appointments, checkIns, partnerData, partnerSyncEnabled]);
+            }, [dataLoaded, authUser, formData, uploadedFiles, appointments, checkIns, partnerData, partnerSyncEnabled]);
 
             // Безопасный доступ к массивам
             const safeArray = (arr) => Array.isArray(arr) ? arr : [];
@@ -1484,6 +1607,127 @@
 
             const removeAppointment = (id) => {
                 setAppointments(prev => prev.filter(a => a.id !== id));
+            };
+
+            // ==========================================
+            // ЭКРАН ВХОДА / РЕГИСТРАЦИИ (показывается вместо всего приложения, пока не выполнен вход)
+            // ==========================================
+            const renderAuthScreen = () => {
+                const isLogin = authMode === 'login';
+                const submitHandler = isLogin ? handleLogin : handleRegister;
+                return (
+                    <div className="min-h-screen bg-[#FAF7FC] flex flex-col items-center justify-center px-4 py-10 relative overflow-hidden">
+                        <div className="absolute inset-0 bg-[radial-gradient(120%_100%_at_50%_-10%,rgba(236,72,153,0.10),rgba(192,38,211,0.08)_45%,transparent_70%)] pointer-events-none"></div>
+
+                        <div className="w-full max-w-sm relative z-10">
+                            <div className="flex flex-col items-center text-center mb-8">
+                                <div className="p-4 bg-fuchsia-600 rounded-2xl shadow-lg shadow-fuchsia-500/25 mb-4">
+                                    <i className="fa-solid fa-heart-pulse text-2xl text-white"></i>
+                                </div>
+                                <h1 className="text-2xl font-extrabold text-[#1F1024]">Твоё здоровье под контролем</h1>
+                                <p className="text-sm text-gray-500 mt-1.5">{isLogin ? 'Войдите, чтобы продолжить' : 'Создайте аккаунт за минуту'}</p>
+                            </div>
+
+                            <div className="bg-white rounded-3xl shadow-sm p-2 flex mb-5">
+                                <button
+                                    type="button"
+                                    onClick={() => { setAuthMode('login'); setAuthError(''); }}
+                                    className={`flex-1 py-2.5 rounded-2xl text-sm font-bold transition-colors ${isLogin ? 'bg-fuchsia-600 text-white' : 'text-gray-500'}`}
+                                >
+                                    Вход
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => { setAuthMode('register'); setAuthError(''); }}
+                                    className={`flex-1 py-2.5 rounded-2xl text-sm font-bold transition-colors ${!isLogin ? 'bg-fuchsia-600 text-white' : 'text-gray-500'}`}
+                                >
+                                    Регистрация
+                                </button>
+                            </div>
+
+                            <form
+                                onSubmit={(e) => { e.preventDefault(); if (!authLoading) submitHandler(); }}
+                                className="bg-white rounded-3xl shadow-sm p-6 space-y-4"
+                            >
+                                <div>
+                                    <label className="block text-sm font-semibold text-[#1F1024] mb-1.5">Email</label>
+                                    <div className="relative">
+                                        <i className="fa-regular fa-envelope absolute left-3.5 top-3.5 text-gray-400"></i>
+                                        <input
+                                            type="email"
+                                            name="email"
+                                            required
+                                            autoComplete="email"
+                                            value={authForm.email}
+                                            onChange={handleAuthFormChange}
+                                            placeholder="you@example.com"
+                                            className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-fuchsia-400 text-sm text-[#1F1024]"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-semibold text-[#1F1024] mb-1.5">Пароль</label>
+                                    <div className="relative">
+                                        <i className="fa-solid fa-lock absolute left-3.5 top-3.5 text-gray-400"></i>
+                                        <input
+                                            type="password"
+                                            name="password"
+                                            required
+                                            autoComplete={isLogin ? 'current-password' : 'new-password'}
+                                            value={authForm.password}
+                                            onChange={handleAuthFormChange}
+                                            placeholder={isLogin ? 'Ваш пароль' : 'Не короче 6 символов'}
+                                            className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-fuchsia-400 text-sm text-[#1F1024]"
+                                        />
+                                    </div>
+                                </div>
+
+                                {!isLogin && (
+                                    <div>
+                                        <label className="block text-sm font-semibold text-[#1F1024] mb-1.5">Повторите пароль</label>
+                                        <div className="relative">
+                                            <i className="fa-solid fa-lock absolute left-3.5 top-3.5 text-gray-400"></i>
+                                            <input
+                                                type="password"
+                                                name="confirmPassword"
+                                                required
+                                                autoComplete="new-password"
+                                                value={authForm.confirmPassword}
+                                                onChange={handleAuthFormChange}
+                                                placeholder="Повторите пароль"
+                                                className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-fuchsia-400 text-sm text-[#1F1024]"
+                                            />
+                                        </div>
+                                    </div>
+                                )}
+
+                                {authError && (
+                                    <p className="text-xs text-rose-600 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2.5 flex items-center gap-1.5">
+                                        <i className="fa-solid fa-circle-exclamation flex-shrink-0"></i>{authError}
+                                    </p>
+                                )}
+
+                                <button
+                                    type="submit"
+                                    disabled={authLoading}
+                                    className="w-full bg-fuchsia-600 hover:bg-fuchsia-700 disabled:opacity-60 text-white font-bold py-3.5 rounded-full flex items-center justify-center gap-2 transition-all shadow-lg shadow-fuchsia-500/25"
+                                >
+                                    {authLoading ? (
+                                        <><i className="fa-solid fa-circle-notch fa-spin"></i>{isLogin ? 'Входим...' : 'Регистрируем...'}</>
+                                    ) : (
+                                        <>{isLogin ? 'Войти' : 'Зарегистрироваться'} <i className="fa-solid fa-arrow-right text-sm"></i></>
+                                    )}
+                                </button>
+                            </form>
+
+                            <p className="text-[11px] text-gray-400 text-center mt-5 leading-relaxed">
+                                Пароль хранится в виде хеша, а не в открытом тексте.<br />
+                                Ваши данные видны только вам — после входа под своим email.
+                            </p>
+                        </div>
+                    </div>
+                );
             };
 
             // ==========================================
@@ -2869,6 +3113,15 @@
                                 <button onClick={() => setCurrentScreen(6)} className="w-full bg-indigo-500/10 text-indigo-400 font-bold py-3.5 px-4 rounded-xl flex items-center justify-center gap-2 hover:bg-indigo-500/15 transition-colors">
                                     <i className="fa-solid fa-arrow-left"></i> Вернуться в личный кабинет
                                 </button>
+
+                                {isSheetConfigured && authUser && (
+                                    <div className="pt-4 border-t border-white/5">
+                                        <p className="text-xs text-slate-500 text-center mb-3">Вы вошли как <b className="text-slate-300">{authUser.email}</b></p>
+                                        <button onClick={handleLogout} className="w-full bg-rose-500/10 text-rose-400 font-bold py-3.5 px-4 rounded-xl flex items-center justify-center gap-2 hover:bg-rose-500/15 transition-colors">
+                                            <i className="fa-solid fa-right-from-bracket"></i> Выйти из аккаунта
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -3975,6 +4228,10 @@
                     </div>
                 );
             };
+
+            if (isSheetConfigured && !authUser) {
+                return renderAuthScreen();
+            }
 
             if (!dataLoaded) {
                 return (
