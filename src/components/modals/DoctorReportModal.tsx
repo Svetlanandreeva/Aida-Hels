@@ -86,7 +86,11 @@ export const DoctorReportModal: React.FC<DoctorReportModalProps> = ({
             <div>
               <span className="text-gray-400 print:text-slate-500 block text-[10px]">Рост / Вес / ИМТ</span>
               <strong className="text-gray-100 print:text-slate-900">
-                {user.height} см / {user.weight} кг ({ (user.weight / Math.pow(user.height / 100, 2)).toFixed(1) })
+                {user.height || '—'} см / {user.weight || '—'} кг (
+                {(user.height > 0 && user.weight > 0)
+                  ? (user.weight / Math.pow(user.height / 100, 2)).toFixed(1)
+                  : '—'}
+                )
               </strong>
             </div>
           </div>

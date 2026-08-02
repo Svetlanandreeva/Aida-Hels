@@ -15,6 +15,8 @@ import {
 } from './types';
 import {
   initialUserProfile,
+  emptyUserProfile,
+  demoUserProfile,
   initialBodySystems,
   initialDocuments,
   initialAppointments,
@@ -76,8 +78,13 @@ export default function App() {
         // ignore
       }
     }
-    return initialUserProfile;
+    return emptyUserProfile;
   });
+
+  // Reset scroll to top when changing screens
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }, [currentScreen]);
 
   useEffect(() => {
     localStorage.setItem('app_user_profile', JSON.stringify(user));
@@ -220,7 +227,7 @@ export default function App() {
 
   const handleDemoLogin = () => {
     setUser({
-      ...initialUserProfile,
+      ...demoUserProfile,
       isAuthenticated: true,
       isQuestionnaireCompleted: true,
     });

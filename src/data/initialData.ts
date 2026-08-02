@@ -1,6 +1,6 @@
 import { UserProfile, BodySystem, MedicalDocument, Appointment, DailyLogEntry, Reminder, DiaryEntry, UserMentalPatterns, WeeklyMentalReport, PressureLogEntry } from '../types';
 
-export const initialUserProfile: UserProfile = {
+export const demoUserProfile: UserProfile = {
   id: 'usr-1',
   isAuthenticated: false,
   fullName: 'Анна Сергеевна Иванова',
@@ -59,6 +59,47 @@ export const initialUserProfile: UserProfile = {
     },
   ],
 };
+
+export const emptyUserProfile: UserProfile = {
+  id: 'usr-new',
+  isAuthenticated: false,
+  fullName: '',
+  email: '',
+  password: '',
+  birthDate: '',
+  height: 0,
+  weight: 0,
+  gender: 'female',
+  bloodType: 'I (O)',
+  rhFactor: '+',
+  allergies: [],
+  chronicDiagnoses: [],
+  orviFrequency: '1-2 раза в год',
+  womenHealth: {
+    cycleLength: 28,
+    periodDuration: 5,
+    isRegular: true,
+    pmsSymptoms: [],
+    painLevel: 1,
+    lastPeriodDate: '',
+    partnerSyncCode: '',
+    isPartnerSynced: false,
+  },
+  psychology: {
+    stressLevel: 5,
+    sleepHours: 8,
+    mood: 'good',
+    hasPsychiatricHistory: false,
+  },
+  consentsAccepted: false,
+  isQuestionnaireCompleted: false,
+  registrationDate: new Date().toISOString(),
+  introCardSeen: false,
+  introCardDismissedAt: null,
+  questionnaireHistory: [],
+};
+
+export const initialUserProfile: UserProfile = emptyUserProfile;
 
 export const initialBodySystems: BodySystem[] = [
   {

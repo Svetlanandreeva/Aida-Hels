@@ -121,10 +121,10 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
-      <div className="relative w-full max-w-xl bg-[#0B1320] border border-white/10 rounded-3xl shadow-[0_25px_60px_rgba(0,0,0,0.8)] overflow-hidden text-white flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md animate-fadeIn overflow-y-auto">
+      <div className="relative w-full max-w-xl my-auto max-h-[90vh] bg-[#0B1320] border border-white/10 rounded-3xl shadow-[0_25px_60px_rgba(0,0,0,0.8)] overflow-hidden text-white flex flex-col">
         {/* Header Bar */}
-        <div className="flex items-center justify-between p-5 border-b border-white/[0.08] bg-[#0E1726]/60">
+        <div className="flex items-center justify-between p-4 sm:p-5 border-b border-white/[0.08] bg-[#0E1726]/60 shrink-0">
           <div className="flex items-center gap-2">
             <div className="p-2 rounded-xl bg-[#34F5AA]/10 text-[#34F5AA] border border-[#34F5AA]/20">
               <BookOpen className="w-4 h-4" />
@@ -144,7 +144,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
         </div>
 
         {/* Slide Body */}
-        <div className="p-6 sm:p-8 space-y-6 flex-1">
+        <div className="p-5 sm:p-8 space-y-5 sm:space-y-6 flex-1 overflow-y-auto">
           {/* Badge & Icon */}
           <div className="flex items-center justify-between">
             <span className="px-3 py-1 rounded-full bg-white/[0.06] border border-white/10 text-[11px] font-bold text-[#34F5AA]">
@@ -190,7 +190,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
         </div>
 
         {/* Footer Navigation */}
-        <div className="p-5 border-t border-white/[0.08] bg-[#0E1726]/60 flex items-center justify-between gap-3">
+        <div className="p-4 sm:p-5 border-t border-white/[0.08] bg-[#0E1726]/60 flex items-center justify-between gap-3 shrink-0">
           {/* Progress Indicators */}
           <div className="flex items-center gap-1.5">
             {steps.map((_, idx) => (

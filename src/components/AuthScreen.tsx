@@ -14,9 +14,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess, onDemoLo
   const savedCredsRaw = localStorage.getItem('app_saved_credentials');
   const savedCreds = savedCredsRaw ? JSON.parse(savedCredsRaw) : null;
 
-  const [email, setEmail] = useState(savedCreds?.email || 'anna.ivanova@health.ru');
-  const [password, setPassword] = useState(savedCreds?.password || '123456');
-  const [fullName, setFullName] = useState(savedCreds?.fullName || 'Анна Сергеевна Иванова');
+  const [email, setEmail] = useState(savedCreds?.email || '');
+  const [password, setPassword] = useState(savedCreds?.password || '');
+  const [fullName, setFullName] = useState(savedCreds?.fullName || '');
   const [rememberMe, setRememberMe] = useState(true);
   const [resetSentToast, setResetSentToast] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);

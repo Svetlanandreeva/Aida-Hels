@@ -69,16 +69,18 @@ export const MedicalProfile: React.FC<MedicalProfileProps> = ({
           <div className="grid grid-cols-2 gap-3 text-xs">
             <div className="bg-[#101C2B] p-3 rounded-xl border border-white/[0.04]">
               <span className="text-white/50 block text-[11px]">Рост</span>
-              <strong className="text-white text-sm">{user.height} см</strong>
+              <strong className="text-white text-sm">{user.height ? `${user.height} см` : 'Не указан'}</strong>
             </div>
             <div className="bg-[#101C2B] p-3 rounded-xl border border-white/[0.04]">
               <span className="text-white/50 block text-[11px]">Вес</span>
-              <strong className="text-white text-sm">{user.weight} кг</strong>
+              <strong className="text-white text-sm">{user.weight ? `${user.weight} кг` : 'Не указан'}</strong>
             </div>
             <div className="bg-[#101C2B] p-3 rounded-xl border border-white/[0.04]">
               <span className="text-white/50 block text-[11px]">ИМТ (Индекс массы)</span>
               <strong className="text-[#34F5AA] text-sm">
-                {(user.weight / Math.pow(user.height / 100, 2)).toFixed(1)} кг/м²
+                {(user.height > 0 && user.weight > 0)
+                  ? `${(user.weight / Math.pow(user.height / 100, 2)).toFixed(1)} кг/м²`
+                  : '—'}
               </strong>
             </div>
             <div className="bg-[#101C2B] p-3 rounded-xl border border-white/[0.04]">
