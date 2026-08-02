@@ -46,5 +46,6 @@ jobs:
           revision-service-account-id: ${{ secrets.YC_SA_ID }}
           revision-env: |
             GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+            GOOGLE_SHEETS_WEB_APP_URL=${{ secrets.GOOGLE_SHEETS_WEB_APP_URL }}
             NODE_ENV=production
           public: true
