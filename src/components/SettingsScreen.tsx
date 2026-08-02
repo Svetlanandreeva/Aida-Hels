@@ -256,7 +256,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   };
 
   return (
-    <div className="max-w-[1100px] mx-auto space-y-6 pb-24 text-white font-[SF Pro Display],Inter">
+    <div className="max-w-[1100px] mx-auto space-y-6 pb-32 sm:pb-36 text-white font-[SF Pro Display],Inter">
       {/* HEADER TITLE */}
       <div className="bg-[#0B1320] border border-white/[0.06] rounded-[24px] p-6 sm:p-8 shadow-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>

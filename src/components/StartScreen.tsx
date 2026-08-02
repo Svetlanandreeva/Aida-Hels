@@ -185,13 +185,13 @@ export const StartScreen: React.FC<StartScreenProps> = ({
 
       <div className="relative z-10 max-w-[1320px] mx-auto px-5 lg:px-0">
         {/* HEADER */}
-        <header className="h-[72px] sm:h-[80px] flex items-center justify-between border-b border-white/[0.05]">
+        <header className="h-[64px] sm:h-[80px] flex items-center justify-between border-b border-white/[0.05] gap-2">
           {/* Logo 48x48 + Name 24px Bold */}
-          <div className="flex items-center gap-3">
-            <div className="w-[44px] h-[44px] sm:w-[48px] sm:h-[48px] rounded-[16px] bg-[#34F5AA]/10 border border-[#34F5AA]/30 flex items-center justify-center text-[#34F5AA] shadow-[0_0_20px_rgba(52,245,170,0.15)]">
-              <Heart className="w-5 h-5 sm:w-6 sm:h-6 fill-[#34F5AA]" />
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            <div className="w-[38px] h-[38px] sm:w-[48px] sm:h-[48px] rounded-[14px] sm:rounded-[16px] bg-[#34F5AA]/10 border border-[#34F5AA]/30 flex items-center justify-center text-[#34F5AA] shadow-[0_0_20px_rgba(52,245,170,0.15)] shrink-0">
+              <Heart className="w-4 h-4 sm:w-6 sm:h-6 fill-[#34F5AA]" />
             </div>
-            <span className="text-[22px] sm:text-[24px] font-bold text-white tracking-tight">
+            <span className="text-[18px] sm:text-[24px] font-bold text-white tracking-tight">
               Здоровье
             </span>
           </div>
@@ -208,16 +208,16 @@ export const StartScreen: React.FC<StartScreenProps> = ({
           {/* Button "Начать бесплатно" */}
           <button
             onClick={isAuthenticated ? onGoToDashboard : onStartQuestionnaire}
-            className="h-[48px] sm:h-[52px] px-[24px] sm:px-[28px] rounded-[26px] bg-[#34F5AA] hover:bg-[#2ce093] text-[#050A12] font-bold text-[15px] shadow-[0_8px_20px_rgba(52,245,170,0.30)] transition-all flex items-center gap-2 cursor-pointer"
+            className="h-[40px] sm:h-[52px] px-[14px] sm:px-[28px] rounded-[20px] sm:rounded-[26px] bg-[#34F5AA] hover:bg-[#2ce093] text-[#050A12] font-bold text-xs sm:text-[15px] shadow-[0_8px_20px_rgba(52,245,170,0.30)] transition-all flex items-center gap-1.5 sm:gap-2 cursor-pointer shrink-0"
           >
             <span>{isAuthenticated ? 'Личный кабинет' : 'Начать бесплатно'}</span>
-            <ArrowRight className="w-4 h-4" />
+            <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           </button>
         </header>
 
         {/* HERO SECTION */}
-        <section className="pt-6 sm:pt-10 lg:pt-12 pb-12 lg:pb-20 relative">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
+        <section className="pt-4 sm:pt-10 lg:pt-12 pb-6 sm:pb-12 lg:pb-20 relative">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-10 items-center">
             {/* Left Block (col-span-7 on large screens for ample text width) */}
             <div className="lg:col-span-7 max-w-[640px] space-y-0 text-center lg:text-left flex flex-col items-center lg:items-start">
               {/* Badge */}
@@ -227,7 +227,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({
               </div>
 
               {/* H1 Title */}
-              <h1 className="mt-[20px] text-[36px] sm:text-[52px] lg:text-[64px] xl:text-[70px] font-bold text-white tracking-[-0.02em] leading-[1.1]">
+              <h1 className="mt-[20px] text-[32px] sm:text-[52px] lg:text-[64px] xl:text-[70px] font-bold text-white tracking-[-0.02em] leading-[1.1]">
                 Ваше здоровье —<br className="hidden sm:block" />под контролем ИИ
               </h1>
 
@@ -240,7 +240,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({
               <div className="mt-[36px] flex flex-col sm:flex-row items-center gap-[16px] w-full sm:w-auto">
                 <button
                   onClick={isAuthenticated ? onGoToDashboard : onStartQuestionnaire}
-                  className="w-full sm:w-[220px] h-[58px] rounded-[29px] bg-[#34F5AA] hover:bg-[#2ce093] text-[#050A12] font-bold text-[16px] shadow-[0_8px_24px_rgba(52,245,170,0.30)] transition-all flex items-center justify-center gap-2 cursor-pointer"
+                  className="w-full sm:w-[220px] h-[54px] sm:h-[58px] rounded-[29px] bg-[#34F5AA] hover:bg-[#2ce093] text-[#050A12] font-bold text-[16px] shadow-[0_8px_24px_rgba(52,245,170,0.30)] transition-all flex items-center justify-center gap-2 cursor-pointer"
                 >
                   <span>{isAuthenticated ? 'Личный кабинет' : 'Начать бесплатно'}</span>
                   <ArrowRight className="w-5 h-5" />
@@ -248,7 +248,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({
 
                 <button
                   onClick={onLoginClick}
-                  className="w-full sm:w-[200px] h-[58px] rounded-[29px] bg-transparent border border-white/15 hover:border-white/40 text-white font-semibold text-[16px] transition-all flex items-center justify-center cursor-pointer"
+                  className="w-full sm:w-[200px] h-[54px] sm:h-[58px] rounded-[29px] bg-transparent border border-white/15 hover:border-white/40 text-white font-semibold text-[16px] transition-all flex items-center justify-center cursor-pointer"
                 >
                   Войти в аккаунт
                 </button>
@@ -256,13 +256,13 @@ export const StartScreen: React.FC<StartScreenProps> = ({
             </div>
 
             {/* Right Block: Live State Field */}
-            <div className="lg:col-span-5 flex flex-col items-center justify-center relative mt-6 lg:mt-0">
-              <div className="relative w-[280px] h-[280px] sm:w-[380px] sm:h-[380px] lg:w-[460px] lg:h-[460px] flex items-center justify-center shrink-0">
+            <div className="lg:col-span-5 flex flex-col items-center justify-center relative mt-2 lg:mt-0">
+              <div className="relative w-[220px] h-[220px] sm:w-[380px] sm:h-[380px] lg:w-[460px] lg:h-[460px] flex items-center justify-center shrink-0">
                 <EmotionalSphere score={8.2} resourceLevel="high" />
               </div>
 
               {/* Overlaid AI Day Summary Card */}
-              <div className="relative lg:absolute lg:-bottom-2 lg:right-0 w-full sm:w-[340px] backdrop-blur-2xl bg-[#0D1624]/90 border border-white/10 p-4 sm:p-5 rounded-[24px] shadow-[0_20px_50px_rgba(0,0,0,0.5)] space-y-3 mt-4 lg:mt-0 z-20">
+              <div className="relative lg:absolute lg:-bottom-2 lg:right-0 w-full sm:w-[340px] backdrop-blur-2xl bg-[#0D1624]/90 border border-white/10 p-4 sm:p-5 rounded-[24px] shadow-[0_20px_50px_rgba(0,0,0,0.5)] space-y-3 mt-2 lg:mt-0 z-20">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 text-[#34F5AA]">
                     <Sparkles className="w-4 h-4" />
@@ -285,8 +285,8 @@ export const StartScreen: React.FC<StartScreenProps> = ({
           </div>
         </section>
 
-        {/* SECTION: «Почему это отличается» (Margin Top 100px) */}
-        <section id="why" className="mt-[100px] space-y-[48px]">
+        {/* SECTION: «Почему это отличается» (Margin Top 40px on mobile, 100px desktop) */}
+        <section id="why" className="mt-8 sm:mt-[100px] space-y-6 sm:space-y-[48px]">
           {/* H2 Title Center */}
           <div className="text-center space-y-3">
             <h2 className="text-[32px] sm:text-[48px] font-bold text-white tracking-tight">
@@ -334,7 +334,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({
         </section>
 
         {/* SECTION: «Dashboard приложения» (Height 520px desktop, Radius 32px) */}
-        <section id="dashboard" className="mt-[100px]">
+        <section id="dashboard" className="mt-8 sm:mt-[100px]">
           <div className="bg-gradient-to-br from-[#07131F] to-[#0A1E30] border border-white/[0.05] rounded-[32px] p-6 sm:p-10 lg:p-12 shadow-2xl overflow-hidden min-h-0 lg:min-h-[520px] flex flex-col justify-center">
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
               {/* Left text: Width 340px */}
@@ -406,7 +406,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({
         </section>
 
         {/* SECTION: «Как это работает» (Process Timeline, Height 220px block) */}
-        <section id="process" className="mt-[100px] space-y-[48px]">
+        <section id="process" className="mt-8 sm:mt-[100px] space-y-6 sm:space-y-[48px]">
           <div className="text-center space-y-3">
             <h2 className="text-[32px] sm:text-[48px] font-bold text-white tracking-tight">
               Как это работает
@@ -439,7 +439,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({
         </section>
 
         {/* SECTION: «Возможности приложения» (8 cards: 270x140) */}
-        <section id="features" className="mt-[100px] space-y-[48px]">
+        <section id="features" className="mt-8 sm:mt-[100px] space-y-6 sm:space-y-[48px]">
           <div className="text-center space-y-3">
             <h2 className="text-[32px] sm:text-[48px] font-bold text-white tracking-tight">
               Возможности приложения
@@ -473,7 +473,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({
         </section>
 
         {/* SECTION: «Статистика» (Height 130px, Radius 26px, Gap 80px) */}
-        <section className="mt-[100px]">
+        <section className="mt-8 sm:mt-[100px]">
           <div className="bg-[#07131F] border border-white/[0.05] rounded-[26px] p-6 sm:p-8 min-h-0 lg:min-h-[130px] flex items-center justify-center">
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-[30px] lg:gap-[80px] w-full text-center">
               {statistics.map((stat, idx) => (
@@ -493,7 +493,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({
         </section>
 
         {/* SECTION: «Отзывы» (Card: Width 400px, Height 170px, Radius 20, Stars #FFC845) */}
-        <section id="testimonials" className="mt-[100px] space-y-[48px]">
+        <section id="testimonials" className="mt-8 sm:mt-[100px] space-y-6 sm:space-y-[48px]">
           <div className="text-center space-y-3">
             <h2 className="text-[32px] sm:text-[48px] font-bold text-white tracking-tight">
               Отзывы пользователей
@@ -530,7 +530,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({
         </section>
 
         {/* SECTION: «Финальный CTA» (Height 360px, Radius 34px, Gradient Left Green Glow, Right Purple Glow, Button 260x64) */}
-        <section className="mt-[100px] mb-[80px]">
+        <section className="mt-8 sm:mt-[100px] mb-8 sm:mb-[80px]">
           <div className="relative rounded-[34px] p-8 sm:p-12 lg:p-16 min-h-[360px] flex flex-col items-center justify-center text-center overflow-hidden border border-white/10 bg-[#07131F] shadow-2xl">
             {/* Left Green Glow & Right Purple Glow */}
             <div className="absolute top-0 left-0 w-96 h-96 bg-[#34F5AA]/15 rounded-full blur-[120px] pointer-events-none" />

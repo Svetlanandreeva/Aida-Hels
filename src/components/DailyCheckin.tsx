@@ -42,7 +42,7 @@ export const DailyCheckin: React.FC<DailyCheckinProps> = ({ logs, setLogs, onOpe
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8 pb-16">
+    <div className="max-w-4xl mx-auto space-y-8 pb-32 sm:pb-36">
       {/* Title */}
       <div className="bg-[#14171C] p-6 rounded-2xl border border-gray-800 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>

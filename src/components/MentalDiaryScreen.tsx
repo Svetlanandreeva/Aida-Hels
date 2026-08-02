@@ -291,7 +291,7 @@ export const MentalDiaryScreen: React.FC<MentalDiaryScreenProps> = ({
   }, []);
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 pb-20 pt-4 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto space-y-8 select-none">
+    <div className="min-h-screen bg-slate-950 text-slate-100 pb-32 sm:pb-36 pt-4 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto space-y-8 select-none">
       {/* CRISIS BANNER IF SAFETY TRIGGERED */}
       {hasCriticalRisk && (
         <div className="bg-gradient-to-r from-rose-900/90 via-red-900/80 to-slate-900 border-2 border-rose-500/80 rounded-3xl p-6 shadow-2xl space-y-4 animate-pulse">

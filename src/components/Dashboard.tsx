@@ -300,10 +300,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
   };
 
   return (
-    <div className="space-y-6 pb-20">
+    <div className="space-y-6 pb-32 sm:pb-36">
       {/* SUB-TAB 1: ГЛАВНАЯ (PERSONAL WORK DASHBOARD - 10-BLOCK STRUCTURE) */}
       {activeTab === 'main' && (
-        <div className="space-y-6 sm:space-y-8 max-w-[1320px] mx-auto font-[SF Pro Display],Inter text-white pb-16 px-1 sm:px-2">
+        <div className="space-y-6 sm:space-y-8 max-w-[1320px] mx-auto font-[SF Pro Display],Inter text-white pb-28 px-1 sm:px-2">
           {/* BLOCK 1: COMPACT WORK HEADER */}
           <div className="bg-[#0B1320] border border-white/[0.08] rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="space-y-1">
@@ -873,24 +873,27 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   {/* Deviations Table */}
                   {doc.deviations.length > 0 && (
                     <div className="space-y-2">
-                      <span className="text-xs font-bold text-gray-200 block">Отклонения от нормативов:</span>
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-left text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-gray-200 block">Отклонения от нормативов:</span>
+                        <span className="text-[10px] text-gray-400 sm:hidden">Смахните влево →</span>
+                      </div>
+                      <div className="overflow-x-auto border border-gray-800/80 rounded-xl bg-[#0F1115]/80">
+                        <table className="w-full min-w-[500px] text-left text-xs">
                           <thead>
                             <tr className="border-b border-gray-800 text-gray-400 font-semibold bg-[#0F1115]">
-                              <th className="py-2 px-3">Показатель</th>
-                              <th className="py-2 px-3">Значение</th>
-                              <th className="py-2 px-3">Норма</th>
-                              <th className="py-2 px-3">Статус</th>
+                              <th className="py-2.5 px-3">Показатель</th>
+                              <th className="py-2.5 px-3">Значение</th>
+                              <th className="py-2.5 px-3">Норма</th>
+                              <th className="py-2.5 px-3">Статус</th>
                             </tr>
                           </thead>
                           <tbody>
                             {doc.deviations.map((dev, idx) => (
                               <tr key={idx} className="border-b border-gray-800/50">
-                                <td className="py-2 px-3 font-semibold text-gray-100">{dev.marker}</td>
-                                <td className="py-2 px-3 text-gray-200">{dev.value}</td>
-                                <td className="py-2 px-3 text-gray-400">{dev.norm}</td>
-                                <td className="py-2 px-3">
+                                <td className="py-2.5 px-3 font-semibold text-gray-100">{dev.marker}</td>
+                                <td className="py-2.5 px-3 text-gray-200">{dev.value}</td>
+                                <td className="py-2.5 px-3 text-gray-400">{dev.norm}</td>
+                                <td className="py-2.5 px-3">
                                   <span
                                     className={`px-2 py-0.5 rounded-md font-bold text-[10px] ${
                                       dev.status === 'Ниже' || dev.status === 'Выше'

@@ -12,6 +12,7 @@ import {
   Sparkles,
   CheckSquare,
   Settings,
+  User,
 } from 'lucide-react';
 
 interface NavigationProps {
@@ -277,14 +278,14 @@ export const Navigation: React.FC<NavigationProps> = ({
 
       {/* FLOATING BOTTOM MENU (НИЖНЕЕ МЕНЮ - ИКОНКИ НА МОБИЛЬНОМ, ИКОНКИ+ТЕКСТ НА ДЕСКТОПЕ) */}
       {isAppView && (
-        <nav className="fixed bottom-3 sm:bottom-6 left-1/2 -translate-x-1/2 z-50 bg-[#0B1320]/95 backdrop-blur-2xl border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.7)] rounded-[24px] sm:rounded-[32px] px-2 sm:px-4 py-1.5 sm:py-2.5 flex items-center justify-between gap-1 sm:gap-2 w-[95vw] max-w-[620px] select-none [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+        <nav className="fixed bottom-3 sm:bottom-6 left-1/2 -translate-x-1/2 z-50 bg-[#0B1320]/95 backdrop-blur-2xl border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.7)] rounded-[24px] sm:rounded-[32px] px-1.5 sm:px-4 py-1.5 sm:py-2.5 flex items-center justify-between gap-1 sm:gap-2 w-[96vw] max-w-[680px] select-none [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
           <button
             onClick={() => {
               setCurrentScreen('dashboard');
               setDashboardTab('main');
             }}
             title="Главная"
-            className={`flex-1 flex items-center justify-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-2 rounded-xl sm:rounded-2xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap min-h-[40px] min-w-[40px] ${
+            className={`flex-1 flex items-center justify-center gap-1 sm:gap-2 px-1.5 sm:px-3 py-2 rounded-xl sm:rounded-2xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap min-h-[40px] min-w-[36px] ${
               isTabActive('main')
                 ? 'bg-[#34F5A4] text-[#050A12] shadow-lg shadow-[#34F5A4]/25 font-bold'
                 : 'text-white/68 hover:text-white hover:bg-white/[0.06]'
@@ -297,7 +298,7 @@ export const Navigation: React.FC<NavigationProps> = ({
           <button
             onClick={() => setCurrentScreen('mental_diary')}
             title="Дневник эмоций"
-            className={`flex-1 flex items-center justify-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-2 rounded-xl sm:rounded-2xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap min-h-[40px] min-w-[40px] ${
+            className={`flex-1 flex items-center justify-center gap-1 sm:gap-2 px-1.5 sm:px-3 py-2 rounded-xl sm:rounded-2xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap min-h-[40px] min-w-[36px] ${
               isTabActive('diary')
                 ? 'bg-[#34F5A4] text-[#050A12] shadow-lg shadow-[#34F5A4]/25 font-bold'
                 : 'text-white/68 hover:text-white hover:bg-white/[0.06]'
@@ -310,7 +311,7 @@ export const Navigation: React.FC<NavigationProps> = ({
           <button
             onClick={() => setCurrentScreen('pressure_diary')}
             title="Дневник давления"
-            className={`flex-1 flex items-center justify-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-2 rounded-xl sm:rounded-2xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap min-h-[40px] min-w-[40px] ${
+            className={`flex-1 flex items-center justify-center gap-1 sm:gap-2 px-1.5 sm:px-3 py-2 rounded-xl sm:rounded-2xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap min-h-[40px] min-w-[36px] ${
               isTabActive('pressure_diary')
                 ? 'bg-[#34F5A4] text-[#050A12] shadow-lg shadow-[#34F5A4]/25 font-bold'
                 : 'text-white/68 hover:text-white hover:bg-white/[0.06]'
@@ -321,12 +322,25 @@ export const Navigation: React.FC<NavigationProps> = ({
           </button>
 
           <button
+            onClick={() => setCurrentScreen('body_map')}
+            title="Карта тела"
+            className={`flex-1 flex items-center justify-center gap-1 sm:gap-2 px-1.5 sm:px-3 py-2 rounded-xl sm:rounded-2xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap min-h-[40px] min-w-[36px] ${
+              isTabActive('body_map')
+                ? 'bg-[#34F5A4] text-[#050A12] shadow-lg shadow-[#34F5A4]/25 font-bold'
+                : 'text-white/68 hover:text-white hover:bg-white/[0.06]'
+            }`}
+          >
+            <User className="w-5 h-5 sm:w-4 sm:h-4 shrink-0" />
+            <span className="hidden sm:inline">Карта тела</span>
+          </button>
+
+          <button
             onClick={() => {
               setCurrentScreen('dashboard');
               setDashboardTab('lab');
             }}
             title="Лабораторные анализы"
-            className={`flex-1 flex items-center justify-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-2 rounded-xl sm:rounded-2xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap min-h-[40px] min-w-[40px] ${
+            className={`flex-1 flex items-center justify-center gap-1 sm:gap-2 px-1.5 sm:px-3 py-2 rounded-xl sm:rounded-2xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap min-h-[40px] min-w-[36px] ${
               isTabActive('analytics')
                 ? 'bg-[#34F5A4] text-[#050A12] shadow-lg shadow-[#34F5A4]/25 font-bold'
                 : 'text-white/68 hover:text-white hover:bg-white/[0.06]'
@@ -339,7 +353,7 @@ export const Navigation: React.FC<NavigationProps> = ({
           <button
             onClick={() => setCurrentScreen('ai_chat')}
             title="ИИ Помощник"
-            className={`flex-1 flex items-center justify-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-2 rounded-xl sm:rounded-2xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap min-h-[40px] min-w-[40px] ${
+            className={`flex-1 flex items-center justify-center gap-1 sm:gap-2 px-1.5 sm:px-3 py-2 rounded-xl sm:rounded-2xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap min-h-[40px] min-w-[36px] ${
               isTabActive('ai_chat')
                 ? 'bg-[#34F5A4] text-[#050A12] shadow-lg shadow-[#34F5A4]/25 font-bold'
                 : 'text-white/68 hover:text-white hover:bg-white/[0.06]'
@@ -352,7 +366,7 @@ export const Navigation: React.FC<NavigationProps> = ({
           <button
             onClick={() => setCurrentScreen('daily_checkin')}
             title="Ежедневный опрос"
-            className={`flex-1 flex items-center justify-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-2 rounded-xl sm:rounded-2xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap min-h-[40px] min-w-[40px] ${
+            className={`flex-1 flex items-center justify-center gap-1 sm:gap-2 px-1.5 sm:px-3 py-2 rounded-xl sm:rounded-2xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap min-h-[40px] min-w-[36px] ${
               isTabActive('daily_checkin')
                 ? 'bg-[#34F5A4] text-[#050A12] shadow-lg shadow-[#34F5A4]/25 font-bold'
                 : 'text-white/68 hover:text-white hover:bg-white/[0.06]'

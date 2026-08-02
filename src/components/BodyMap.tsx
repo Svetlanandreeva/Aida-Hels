@@ -60,7 +60,7 @@ export const BodyMap: React.FC<BodyMapProps> = ({
   };
 
   return (
-    <div className="max-w-5xl mx-auto space-y-8 pb-20">
+    <div className="max-w-5xl mx-auto space-y-8 pb-32 sm:pb-36">
       {/* Header & Main Auto-Analyze Trigger */}
       <div className="bg-[#0F1115] border border-gray-800 text-white p-6 sm:p-8 rounded-3xl shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
         <div className="space-y-2 max-w-xl">

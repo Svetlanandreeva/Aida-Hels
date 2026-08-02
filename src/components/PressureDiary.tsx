@@ -290,7 +290,7 @@ export const PressureDiary: React.FC<PressureDiaryProps> = ({
   };
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 pb-24 px-3 sm:px-6">
+    <div className="max-w-6xl mx-auto space-y-6 pb-32 sm:pb-36 px-3 sm:px-6">
       {/* HEADER BAR */}
       <div className="bg-[#14171C] p-5 sm:p-7 rounded-3xl border border-gray-800 shadow-md flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div className="space-y-1">
