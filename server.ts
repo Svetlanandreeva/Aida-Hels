@@ -17,7 +17,7 @@ import {
 dotenv.config();
 
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
 
 app.use(express.json({ limit: '10mb' }));
 
@@ -292,9 +292,10 @@ app.post('/api/research/recognize', async (req, res) => {
 // Proxy to Google Apps Script Web App
 app.post('/api/sheets/proxy', async (req, res) => {
   try {
-    const { webAppUrl, action, userId, payload, authToken } = req.body;
-    
-    // If user provided a custom Google Apps Script Web App URL
+    const { action, userId, payload, authToken } = req.body;
+    const webAppUrl = req.body.webAppUrl || process.env.GOOGLE_SHEETS_WEB_APP_URL;
+
+    // If a Google Apps Script Web App URL is configured (per-request or server-wide)
     if (webAppUrl && webAppUrl.startsWith('https://script.google.com/')) {
       const response = await fetch(webAppUrl, {
         method: 'POST',
