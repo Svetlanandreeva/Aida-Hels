@@ -875,9 +875,34 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-bold text-gray-200 block">Отклонения от нормативов:</span>
-                        <span className="text-[10px] text-gray-400 sm:hidden">Смахните влево →</span>
+                        <span className="text-[10px] text-gray-400 sm:hidden">Качественный анализ</span>
                       </div>
-                      <div className="overflow-x-auto border border-gray-800/80 rounded-xl bg-[#0F1115]/80">
+
+                      {/* Mobile Cards View */}
+                      <div className="space-y-2 sm:hidden">
+                        {doc.deviations.map((dev, idx) => (
+                          <div key={idx} className="bg-[#0F1115] border border-gray-800/80 rounded-xl p-3 flex items-center justify-between gap-2">
+                            <div className="space-y-0.5">
+                              <span className="font-bold text-gray-100 text-xs block">{dev.marker}</span>
+                              <div className="text-[11px] text-gray-400">
+                                Значение: <span className="text-gray-200 font-semibold">{dev.value}</span> • Норма: <span className="text-gray-400">{dev.norm}</span>
+                              </div>
+                            </div>
+                            <span
+                              className={`px-2.5 py-1 rounded-md font-bold text-[10px] shrink-0 ${
+                                dev.status === 'Ниже' || dev.status === 'Выше'
+                                  ? 'bg-rose-500/15 border border-rose-500/30 text-rose-300'
+                                  : 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-300'
+                              }`}
+                            >
+                              {dev.status}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Desktop Table View */}
+                      <div className="hidden sm:block overflow-x-auto border border-gray-800/80 rounded-xl bg-[#0F1115]/80">
                         <table className="w-full min-w-[500px] text-left text-xs">
                           <thead>
                             <tr className="border-b border-gray-800 text-gray-400 font-semibold bg-[#0F1115]">

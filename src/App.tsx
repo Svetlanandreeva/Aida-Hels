@@ -46,6 +46,7 @@ import { SecurityLockModal } from './components/SecurityLockModal';
 import { BodyMapOverviewModal } from './components/modals/BodyMapOverviewModal';
 import { SystemDetailModal } from './components/modals/SystemDetailModal';
 import { DoctorReportModal } from './components/modals/DoctorReportModal';
+import { OnboardingModal } from './components/modals/OnboardingModal';
 
 export default function App() {
   // Navigation State
@@ -89,19 +90,19 @@ export default function App() {
   const [reminders, setReminders] = useState<Reminder[]>(initialReminders);
   const [pressureLogs, setPressureLogs] = useState<PressureLogEntry[]>(initialPressureLogs);
 
-  // Biometric Protection & App Lock States
+  // Biometric Protection & App Lock States (Disabled by default)
   const [biometricsEnabled, setBiometricsEnabled] = useState<boolean>(() => {
     const saved = localStorage.getItem('app_biometrics_enabled');
-    return saved !== null ? JSON.parse(saved) : true;
+    return saved !== null ? JSON.parse(saved) : false;
   });
   const [userPin, setUserPin] = useState<string>(() => {
-    return localStorage.getItem('app_pin_code') || '1234';
+    return localStorage.getItem('app_pin_code') || '';
   });
   const [isAppLocked, setIsAppLocked] = useState<boolean>(() => {
     const savedBio = localStorage.getItem('app_biometrics_enabled');
-    const bioEnabled = savedBio !== null ? JSON.parse(savedBio) : true;
+    const bioEnabled = savedBio !== null ? JSON.parse(savedBio) : false;
     const savedUser = localStorage.getItem('app_user_profile');
-    if (savedUser) {
+    if (savedUser && bioEnabled) {
       try {
         const parsed = JSON.parse(savedUser);
         return bioEnabled && !!parsed.isAuthenticated;
@@ -205,6 +206,7 @@ export default function App() {
   const [isOverviewModalOpen, setIsOverviewModalOpen] = useState(false);
   const [selectedSystemDetail, setSelectedSystemDetail] = useState<BodySystem | null>(null);
   const [isDoctorReportOpen, setIsDoctorReportOpen] = useState(false);
+  const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
 
   // Handlers
   const handleAuthSuccess = (userData?: Partial<UserProfile>) => {
@@ -230,10 +232,78 @@ export default function App() {
     setCurrentScreen('auth');
   };
 
+  const handleDeleteProfile = async () => {
+    const currentUserId = user.id || 'usr-1';
+    const savedSheetUrl = localStorage.getItem('app_google_sheet_url') || '';
+
+    // a) Reset all local React states to empty/defaults
+    setUser(initialUserProfile);
+    setBodySystems(initialBodySystems);
+    setDocuments([]);
+    setAppointments([]);
+    setDailyLogs([]);
+    setReminders([]);
+    setPressureLogs([]);
+    setDiaryEntries([]);
+    setMentalPatterns(initialMentalPatterns);
+    setWeeklyReport(initialWeeklyReport);
+    setBiometricsEnabled(false);
+    setUserPin('');
+    setIsAppLocked(false);
+
+    // b) Clear all localStorage keys
+    try {
+      localStorage.removeItem('app_user_profile');
+      localStorage.removeItem('app_biometrics_enabled');
+      localStorage.removeItem('app_pin_code');
+      localStorage.removeItem('app_saved_credentials');
+      localStorage.removeItem('app_google_sheet_url');
+      localStorage.removeItem('app_sync_status');
+      localStorage.clear();
+    } catch (err) {
+      console.error('Error clearing localStorage during account deletion:', err);
+    }
+
+    // c) Call server endpoint /api/sheets/proxy with deleteUserAccount action
+    let serverSuccess = true;
+    try {
+      const res = await fetch('/api/sheets/proxy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'deleteUserAccount',
+          userId: currentUserId,
+          webAppUrl: savedSheetUrl,
+        }),
+      });
+      if (!res.ok) {
+        serverSuccess = false;
+      } else {
+        const data = await res.json();
+        if (!data.success) {
+          serverSuccess = false;
+        }
+      }
+    } catch (err) {
+      console.error('Server deleteUserAccount request error:', err);
+      serverSuccess = false;
+    }
+
+    // e) Redirect user to start screen as a brand new user
+    setCurrentScreen('start');
+    setDashboardTab('main');
+
+    if (!serverSuccess) {
+      setTimeout(() => {
+        alert('Локальные данные профиля полностью удалены. Часть данных в облаке могла не удалиться из-за отсутствия связи с сервером.');
+      }, 300);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#0A0B0D] text-gray-100 font-sans flex flex-col selection:bg-emerald-500/20 selection:text-emerald-300">
-      {/* Top Header & Mobile Navigation (Only for inside app screens, not landing StartScreen) */}
-      {currentScreen !== 'start' && (
+      {/* Top Header & Mobile Navigation (Only for logged-in inside app screens) */}
+      {currentScreen !== 'start' && currentScreen !== 'auth' && user.isAuthenticated && (
         <Navigation
           currentScreen={currentScreen}
           setCurrentScreen={setCurrentScreen}
@@ -241,6 +311,7 @@ export default function App() {
           setDashboardTab={setDashboardTab}
           user={user}
           onLogout={handleLogout}
+          onOpenTutorial={() => setIsOnboardingOpen(true)}
           activeRemindersCount={reminders.filter((r) => r.isEnabled).length}
         />
       )}
@@ -273,6 +344,7 @@ export default function App() {
             user={user}
             setUser={setUser}
             onComplete={() => {
+              setIsOnboardingOpen(true);
               setCurrentScreen('dashboard');
               setDashboardTab('main');
             }}
@@ -316,6 +388,7 @@ export default function App() {
             documents={documents}
             setDocuments={setDocuments}
             onLogout={handleLogout}
+            onDeleteProfile={handleDeleteProfile}
             onNavigate={(screen) => setCurrentScreen(screen)}
             biometricsEnabled={biometricsEnabled}
             setBiometricsEnabled={(enabled) => {
@@ -423,6 +496,16 @@ export default function App() {
         user={user}
         documents={documents}
         systems={bodySystems}
+      />
+
+      {/* Modal 4: Onboarding & Interactive Tutorial */}
+      <OnboardingModal
+        isOpen={isOnboardingOpen}
+        onClose={() => setIsOnboardingOpen(false)}
+        onFinish={() => {
+          setIsOnboardingOpen(false);
+          setUser((prev) => ({ ...prev, hasCompletedTutorial: true }));
+        }}
       />
 
       {/* FULL-APP SECURITY LOCK SCREEN OVERLAY */}

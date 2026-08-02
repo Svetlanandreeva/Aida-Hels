@@ -86,6 +86,7 @@ export const MentalDiaryScreen: React.FC<MentalDiaryScreenProps> = ({
   const [isWhyForecastOpen, setIsWhyForecastOpen] = useState(false);
   const [selectedInsightModal, setSelectedInsightModal] = useState<{ title: string; desc: string; detail: string } | null>(null);
   const [recActionDone, setRecActionDone] = useState(false);
+  const [walkScheduled, setWalkScheduled] = useState(false);
 
   // Filters State
   const [searchQuery, setSearchQuery] = useState('');
@@ -828,10 +829,17 @@ export const MentalDiaryScreen: React.FC<MentalDiaryScreenProps> = ({
                   </button>
 
                   <button
-                    onClick={() => alert('Напоминание о прогулке запланировано на 18:00')}
-                    className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition"
+                    onClick={() => {
+                      setWalkScheduled(true);
+                      setTimeout(() => setWalkScheduled(false), 4000);
+                    }}
+                    className={`px-4 py-2.5 rounded-xl text-xs font-semibold border transition ${
+                      walkScheduled
+                        ? 'bg-[#34F5AA]/20 border-[#34F5AA] text-[#34F5AA]'
+                        : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
+                    }`}
                   >
-                    Напомнить вечером
+                    {walkScheduled ? 'Напоминание на 18:00 установлено ✓' : 'Напомнить вечером (18:00)'}
                   </button>
                 </div>
               </div>

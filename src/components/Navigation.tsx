@@ -22,6 +22,7 @@ interface NavigationProps {
   setDashboardTab: (tab: DashboardTab) => void;
   user: UserProfile;
   onLogout: () => void;
+  onOpenTutorial?: () => void;
   activeRemindersCount?: number;
 }
 
@@ -32,6 +33,7 @@ export const Navigation: React.FC<NavigationProps> = ({
   setDashboardTab,
   user,
   onLogout,
+  onOpenTutorial,
   activeRemindersCount = 3,
 }) => {
   const [showBellDropdown, setShowBellDropdown] = useState(false);
@@ -249,6 +251,17 @@ export const Navigation: React.FC<NavigationProps> = ({
                 </div>
               )}
             </div>
+
+            {onOpenTutorial && (
+              <button
+                onClick={onOpenTutorial}
+                className="px-2.5 sm:px-3 py-2 rounded-2xl bg-[#34F5A4]/10 border border-[#34F5A4]/20 hover:bg-[#34F5A4]/20 text-[#34F5A4] transition-all cursor-pointer min-h-[40px] flex items-center justify-center gap-1.5 text-xs font-bold"
+                title="Обучение по функционалу"
+              >
+                <Sparkles className="w-4 h-4 shrink-0" />
+                <span className="hidden sm:inline">Обучение</span>
+              </button>
+            )}
 
             <button
               onClick={() => setCurrentScreen('settings')}

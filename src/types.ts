@@ -116,6 +116,8 @@ export interface UserProfile {
 
   consentsAccepted: boolean;
   isQuestionnaireCompleted: boolean;
+  password?: string;
+  hasCompletedTutorial?: boolean;
   registrationDate?: string; // ISO date string e.g. "2026-08-01"
   introCardSeen?: boolean;
   introCardDismissedAt?: string | null;

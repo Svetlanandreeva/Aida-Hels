@@ -15,6 +15,10 @@ import {
   AlertCircle,
   Brain,
   Sparkles,
+  Lock,
+  Mail,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 
 interface QuestionnaireProps {
@@ -37,6 +41,13 @@ export const Questionnaire: React.FC<QuestionnaireProps> = ({
   const [newDiagnosisName, setNewDiagnosisName] = useState('');
   const [newMedication, setNewMedication] = useState('');
   const [newDiagnosisYear, setNewDiagnosisYear] = useState('2024');
+
+  // Login credentials local states
+  const [loginEmail, setLoginEmail] = useState(user.email || '');
+  const [loginPassword, setLoginPassword] = useState(user.password || '');
+  const [confirmPassword, setConfirmPassword] = useState(user.password || '');
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
 
   // Psychiatric local states
   const [newPsychDiagnosis, setNewPsychDiagnosis] = useState('');
@@ -63,10 +74,34 @@ export const Questionnaire: React.FC<QuestionnaireProps> = ({
 
   // Step 4 Submit
   const handleConfirmAll = () => {
-    if (!user.consentsAccepted) {
-      alert('Пожалуйста, подтвердите согласие на обработку персональных данных');
+    if (!loginEmail || !loginEmail.includes('@')) {
+      setAuthError('Пожалуйста, укажите корректный адрес электронной почты (email)');
       return;
     }
+    if (!loginPassword || loginPassword.length < 6) {
+      setAuthError('Пароль должен содержать не менее 6 символов');
+      return;
+    }
+    if (loginPassword !== confirmPassword) {
+      setAuthError('Пароли не совпадают. Пожалуйста, проверьте введённый пароль');
+      return;
+    }
+    if (!user.consentsAccepted) {
+      setAuthError('Пожалуйста, подтвердите согласие на обработку персональных данных');
+      return;
+    }
+
+    setAuthError(null);
+
+    // Persist registered credentials to localStorage for AuthScreen login
+    localStorage.setItem(
+      'app_saved_credentials',
+      JSON.stringify({
+        email: loginEmail.trim(),
+        password: loginPassword,
+        fullName: user.fullName,
+      })
+    );
 
     const newSnapshot = {
       survey_id: `survey-${Date.now()}`,
@@ -92,6 +127,8 @@ export const Questionnaire: React.FC<QuestionnaireProps> = ({
 
     setUser((prev) => ({
       ...prev,
+      email: loginEmail.trim(),
+      password: loginPassword,
       isAuthenticated: true,
       isQuestionnaireCompleted: true,
       introCardDismissedAt: new Date().toISOString(),
@@ -903,6 +940,95 @@ export const Questionnaire: React.FC<QuestionnaireProps> = ({
               <div className="grid grid-cols-2 gap-2 text-gray-400">
                 <div>Уровень стресса: <strong className="text-gray-200">{user.psychology.stressLevel} / 10</strong></div>
                 <div>Сон: <strong className="text-gray-200">{user.psychology.sleepHours} ч/сутки</strong></div>
+              </div>
+            </div>
+
+            {/* Sec 4: Account Credentials (Login & Password) */}
+            <div className="bg-[#0F1115] p-5 rounded-2xl border border-emerald-500/30 space-y-4">
+              <div className="flex items-center gap-2.5 border-b border-gray-800 pb-3">
+                <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                  <Lock className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-gray-100">4. Создание аккаунта (Логин и Пароль)</h3>
+                  <p className="text-[11px] text-gray-400">Укажите адрес электронной почты и пароль для авторизации</p>
+                </div>
+              </div>
+
+              {authError && (
+                <div className="p-3 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs font-semibold flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+                  <span>{authError}</span>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-300 mb-1">
+                    Email / Логин <span className="text-rose-400">*</span>
+                  </label>
+                  <div className="relative">
+                    <Mail className="w-4 h-4 text-gray-500 absolute left-3 top-3" />
+                    <input
+                      type="email"
+                      required
+                      value={loginEmail}
+                      onChange={(e) => {
+                        setLoginEmail(e.target.value);
+                        if (authError) setAuthError(null);
+                      }}
+                      placeholder="anna.ivanova@health.ru"
+                      className="w-full pl-9 pr-3 py-2.5 bg-gray-900 border border-gray-700 rounded-xl text-xs text-gray-100 placeholder-gray-500 focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-300 mb-1">
+                    Придумайте пароль <span className="text-rose-400">*</span>
+                  </label>
+                  <div className="relative">
+                    <Lock className="w-4 h-4 text-gray-500 absolute left-3 top-3" />
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      required
+                      value={loginPassword}
+                      onChange={(e) => {
+                        setLoginPassword(e.target.value);
+                        if (authError) setAuthError(null);
+                      }}
+                      placeholder="Минимум 6 символов"
+                      className="w-full pl-9 pr-10 py-2.5 bg-gray-900 border border-gray-700 rounded-xl text-xs text-gray-100 placeholder-gray-500 focus:outline-none focus:border-emerald-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-3 text-gray-400 hover:text-white"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-gray-300 mb-1">
+                    Повторите пароль <span className="text-rose-400">*</span>
+                  </label>
+                  <div className="relative">
+                    <Lock className="w-4 h-4 text-gray-500 absolute left-3 top-3" />
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      required
+                      value={confirmPassword}
+                      onChange={(e) => {
+                        setConfirmPassword(e.target.value);
+                        if (authError) setAuthError(null);
+                      }}
+                      placeholder="Повторите введённый пароль"
+                      className="w-full pl-9 pr-3 py-2.5 bg-gray-900 border border-gray-700 rounded-xl text-xs text-gray-100 placeholder-gray-500 focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                </div>
               </div>
             </div>
 

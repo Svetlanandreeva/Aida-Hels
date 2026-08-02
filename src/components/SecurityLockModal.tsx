@@ -13,7 +13,7 @@ interface SecurityLockModalProps {
 export const SecurityLockModal: React.FC<SecurityLockModalProps> = ({
   isOpen,
   mode = 'verify',
-  currentPin = '1234',
+  currentPin = '',
   onSuccess,
   onCancel,
   allowCancel = false,
@@ -47,7 +47,7 @@ export const SecurityLockModal: React.FC<SecurityLockModalProps> = ({
         const nextPin = pin + digit;
         setPin(nextPin);
         if (nextPin.length === 4) {
-          if (nextPin === currentPin) {
+          if (!currentPin || nextPin === currentPin) {
             setScanSuccess(true);
             setTimeout(() => {
               onSuccess();

@@ -294,8 +294,8 @@ app.post('/api/sheets/proxy', async (req, res) => {
   try {
     const { action, userId, payload, authToken } = req.body;
     const webAppUrl = req.body.webAppUrl || process.env.GOOGLE_SHEETS_WEB_APP_URL;
-
-    // If a Google Apps Script Web App URL is configured (per-request or server-wide)
+    
+    // If user provided a custom Google Apps Script Web App URL
     if (webAppUrl && webAppUrl.startsWith('https://script.google.com/')) {
       const response = await fetch(webAppUrl, {
         method: 'POST',

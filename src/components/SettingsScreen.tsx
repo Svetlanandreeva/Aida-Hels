@@ -38,6 +38,7 @@ interface SettingsScreenProps {
   documents?: MedicalDocument[];
   setDocuments?: React.Dispatch<React.SetStateAction<MedicalDocument[]>>;
   onLogout: () => void;
+  onDeleteProfile?: () => Promise<void> | void;
   onNavigate?: (screen: ScreenId) => void;
   biometricsEnabled?: boolean;
   setBiometricsEnabled?: (enabled: boolean) => void;
@@ -56,6 +57,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   documents = [],
   setDocuments,
   onLogout,
+  onDeleteProfile,
   onNavigate,
   biometricsEnabled: externalBiometricsEnabled,
   setBiometricsEnabled: externalSetBiometricsEnabled,
@@ -66,6 +68,8 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   const [activeTab, setActiveTab] = useState<TabType>('all');
   const [copied, setCopied] = useState(false);
   const [partnerCodeInput, setPartnerCodeInput] = useState('');
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [isDeletingProfile, setIsDeletingProfile] = useState(false);
 
   // Notification settings states
   const [notifMedication, setNotifMedication] = useState(true);
@@ -80,16 +84,22 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   // Biometrics & PIN state synced with localStorage / external props
   const [localBiometrics, setLocalBiometrics] = useState<boolean>(() => {
     const saved = localStorage.getItem('app_biometrics_enabled');
-    return saved !== null ? JSON.parse(saved) : true;
+    return saved !== null ? JSON.parse(saved) : false;
   });
   const [localPin, setLocalPin] = useState<string>(() => {
-    return localStorage.getItem('app_pin_code') || '1234';
+    return localStorage.getItem('app_pin_code') || '';
   });
 
   const biometricsEnabled = externalBiometricsEnabled ?? localBiometrics;
   const userPin = externalUserPin ?? localPin;
 
   const handleToggleBiometrics = (enabled: boolean) => {
+    if (enabled && !userPin) {
+      // Require user to set PIN code first when enabling
+      setLockModalMode('setup');
+      setShowLockModal(true);
+      return;
+    }
     setLocalBiometrics(enabled);
     localStorage.setItem('app_biometrics_enabled', JSON.stringify(enabled));
     if (externalSetBiometricsEnabled) {
@@ -812,19 +822,37 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               </div>
             )}
 
-            {/* Logout Row */}
-            <div className="flex items-center justify-between p-4 bg-rose-500/10 rounded-2xl border border-rose-500/20 mt-2">
-              <div className="space-y-0.5">
-                <span className="text-sm font-bold text-white block">Выход из системы</span>
-                <p className="text-xs text-white/60">Текущий сеанс: {user.email || 'user@health.ai'}</p>
+            {/* Account Management & Logout / Delete Rows */}
+            <div className="space-y-3 mt-2">
+              <div className="flex items-center justify-between p-4 bg-rose-500/10 rounded-2xl border border-rose-500/20">
+                <div className="space-y-0.5">
+                  <span className="text-sm font-bold text-white block">Выход из системы</span>
+                  <p className="text-xs text-white/60">Текущий сеанс: {user.email || 'user@health.ai'}</p>
+                </div>
+                <button
+                  onClick={onLogout}
+                  className="px-5 py-2.5 bg-rose-500 hover:bg-rose-600 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center gap-2 cursor-pointer"
+                >
+                  <LogOut className="w-4 h-4" />
+                  <span>Выйти</span>
+                </button>
               </div>
-              <button
-                onClick={onLogout}
-                className="px-5 py-2.5 bg-rose-500 hover:bg-rose-600 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center gap-2 cursor-pointer"
-              >
-                <LogOut className="w-4 h-4" />
-                <span>Выйти</span>
-              </button>
+
+              {onDeleteProfile && (
+                <div className="flex items-center justify-between p-4 bg-red-950/40 rounded-2xl border border-red-500/30">
+                  <div className="space-y-0.5">
+                    <span className="text-sm font-bold text-red-300 block">Удалить профиль</span>
+                    <p className="text-xs text-red-200/60">Полное невозвратное удаление профиля и всех медицинских данных</p>
+                  </div>
+                  <button
+                    onClick={() => setShowDeleteModal(true)}
+                    className="px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center gap-2 cursor-pointer"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    <span>Удалить профиль</span>
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1024,6 +1052,65 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
         onCancel={() => setShowLockModal(false)}
         allowCancel={true}
       />
+
+      {/* MODAL: DELETE PROFILE CONFIRMATION */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-[#0B1320] border border-red-500/30 rounded-[24px] max-w-md w-full p-6 space-y-5 shadow-2xl relative">
+            <div className="flex items-center gap-3 text-red-400">
+              <div className="w-10 h-10 rounded-xl bg-red-500/15 border border-red-500/30 flex items-center justify-center shrink-0">
+                <AlertCircle className="w-6 h-6 text-red-400" />
+              </div>
+              <div>
+                <h3 className="font-bold text-lg text-white">Удалить профиль?</h3>
+                <p className="text-xs text-red-300/80">Это действие необратимо</p>
+              </div>
+            </div>
+
+            <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl space-y-2">
+              <p className="text-xs text-red-200 leading-relaxed font-medium">
+                Вы уверены? Это действие необратимо и удалит все ваши данные: личный профиль, анкеты, дневники самочувствия, лекарства, анализы и медицинские выписки.
+              </p>
+            </div>
+
+            <div className="pt-2 flex justify-end gap-3">
+              <button
+                type="button"
+                disabled={isDeletingProfile}
+                onClick={() => setShowDeleteModal(false)}
+                className="px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white text-xs rounded-xl font-semibold cursor-pointer"
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingProfile}
+                onClick={async () => {
+                  setIsDeletingProfile(true);
+                  if (onDeleteProfile) {
+                    await onDeleteProfile();
+                  }
+                  setIsDeletingProfile(false);
+                  setShowDeleteModal(false);
+                }}
+                className="px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl shadow-md cursor-pointer flex items-center gap-2 disabled:opacity-50"
+              >
+                {isDeletingProfile ? (
+                  <>
+                    <Sparkles className="w-4 h-4 animate-spin" />
+                    <span>Удаление...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    <span>Удалить профиль</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

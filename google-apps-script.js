@@ -122,6 +122,9 @@ function doPost(e) {
       case 'getDashboardData':
         result = handleGetDashboardData(userId);
         break;
+      case 'deleteUserAccount':
+        result = handleDeleteUserAccount(userId);
+        break;
       default:
         return createJsonResponse(false, null, { code: 'UNKNOWN_ACTION', message: 'Неизвестное действие: ' + action });
     }
@@ -576,4 +579,35 @@ function handleGetDashboardData(userId) {
     recentDocuments: documents.slice(0, 5),
     recentDiary: diaryEntries.slice(0, 5)
   };
+}
+
+function deleteRowsForUser(sheetName, userIdFieldIndex, userId) {
+  var sheet = getSs().getSheetByName(sheetName);
+  if (!sheet) return 0;
+  var rows = findRowsByField(sheetName, userIdFieldIndex, userId);
+  var count = 0;
+  rows.sort(function(a, b) { return b._rowIndex - a._rowIndex; });
+  for (var i = 0; i < rows.length; i++) {
+    sheet.deleteRow(rows[i]._rowIndex);
+    count++;
+  }
+  return count;
+}
+
+function handleDeleteUserAccount(userId) {
+  if (!userId) {
+    return { deleted: false, reason: 'Не указан ID пользователя' };
+  }
+  var deletedCounts = {};
+  deletedCounts.USERS = deleteRowsForUser(SHEET_NAMES.USERS, 0, userId);
+  deletedCounts.PROFILE = deleteRowsForUser(SHEET_NAMES.PROFILE, 1, userId);
+  deletedCounts.MEDICATIONS = deleteRowsForUser(SHEET_NAMES.MEDICATIONS, 1, userId);
+  deletedCounts.DIARY = deleteRowsForUser(SHEET_NAMES.DIARY, 1, userId);
+  deletedCounts.RESEARCH_DOCUMENTS = deleteRowsForUser(SHEET_NAMES.RESEARCH_DOCUMENTS, 1, userId);
+  deletedCounts.LAB_RESULTS = deleteRowsForUser(SHEET_NAMES.LAB_RESULTS, 2, userId);
+  deletedCounts.APPOINTMENTS = deleteRowsForUser(SHEET_NAMES.APPOINTMENTS, 1, userId);
+  deletedCounts.NOTIFICATIONS = deleteRowsForUser(SHEET_NAMES.NOTIFICATIONS, 1, userId);
+  deletedCounts.AI_INSIGHTS = deleteRowsForUser(SHEET_NAMES.AI_INSIGHTS, 1, userId);
+
+  return { deleted: true, userId: userId, deletedCounts: deletedCounts };
 }

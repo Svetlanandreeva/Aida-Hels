@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Heart, Lock, Mail, User, ShieldCheck, ArrowRight, Sparkles } from 'lucide-react';
+import { Heart, Lock, Mail, User, ShieldCheck, ArrowRight, Sparkles, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { UserProfile } from '../types';
 
 interface AuthScreenProps {
@@ -9,21 +9,51 @@ interface AuthScreenProps {
 
 export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess, onDemoLogin }) => {
   const [tab, setTab] = useState<'login' | 'register'>('login');
-  const [email, setEmail] = useState('anna.ivanova@health.ru');
-  const [password, setPassword] = useState('••••••••');
-  const [fullName, setFullName] = useState('Анна Сергеевна Иванова');
+  
+  // Check for stored credentials
+  const savedCredsRaw = localStorage.getItem('app_saved_credentials');
+  const savedCreds = savedCredsRaw ? JSON.parse(savedCredsRaw) : null;
+
+  const [email, setEmail] = useState(savedCreds?.email || 'anna.ivanova@health.ru');
+  const [password, setPassword] = useState(savedCreds?.password || '123456');
+  const [fullName, setFullName] = useState(savedCreds?.fullName || 'Анна Сергеевна Иванова');
   const [rememberMe, setRememberMe] = useState(true);
+  const [resetSentToast, setResetSentToast] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setAuthError(null);
+
+    if (!email.includes('@')) {
+      setAuthError('Укажите корректный email');
+      return;
+    }
+    if (password.length < 4) {
+      setAuthError('Пароль слишком короткий');
+      return;
+    }
+
+    // Save newly created or logged credentials
+    localStorage.setItem(
+      'app_saved_credentials',
+      JSON.stringify({ email, password, fullName })
+    );
+
     onLoginSuccess({
       email,
+      password,
       fullName: tab === 'register' ? fullName : (fullName || email.split('@')[0]),
       isAuthenticated: true,
       isQuestionnaireCompleted: tab === 'register' ? false : true,
       registrationDate: tab === 'register' ? new Date().toISOString() : '2026-06-20T10:00:00.000Z',
       introCardDismissedAt: null,
     });
+  };
+
+  const handleForgotPassword = () => {
+    setResetSentToast(true);
+    setTimeout(() => setResetSentToast(false), 5000);
   };
 
   return (
@@ -45,7 +75,10 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess, onDemoLo
         <div className="flex border border-gray-800 bg-[#0F1115] p-1.5 m-4 rounded-xl">
           <button
             type="button"
-            onClick={() => setTab('login')}
+            onClick={() => {
+              setTab('login');
+              setAuthError(null);
+            }}
             className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all ${
               tab === 'login'
                 ? 'bg-gray-800 text-emerald-400 border border-gray-700 shadow-sm'
@@ -56,7 +89,10 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess, onDemoLo
           </button>
           <button
             type="button"
-            onClick={() => setTab('register')}
+            onClick={() => {
+              setTab('register');
+              setAuthError(null);
+            }}
             className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all ${
               tab === 'register'
                 ? 'bg-gray-800 text-emerald-400 border border-gray-700 shadow-sm'
@@ -66,6 +102,21 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess, onDemoLo
             Регистрация
           </button>
         </div>
+
+        {/* Toast Notification */}
+        {resetSentToast && (
+          <div className="mx-4 p-3 bg-emerald-500/15 border border-emerald-500/30 rounded-xl text-xs text-emerald-300 font-semibold flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+            <span>Инструкция по сбросу пароля отправлена на адрес {email}</span>
+          </div>
+        )}
+
+        {authError && (
+          <div className="mx-4 p-3 bg-rose-500/15 border border-rose-500/30 rounded-xl text-xs text-rose-300 font-semibold flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+            <span>{authError}</span>
+          </div>
+        )}
 
         {/* Auth Form */}
         <form onSubmit={handleSubmit} className="p-6 space-y-4 pt-2">
@@ -133,8 +184,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess, onDemoLo
             {tab === 'login' && (
               <button
                 type="button"
-                className="text-emerald-400 hover:underline font-medium"
-                onClick={() => alert('Ссылка для восстановления отправлена на почту.')}
+                className="text-emerald-400 hover:underline font-medium cursor-pointer"
+                onClick={handleForgotPassword}
               >
                 Забыли пароль?
               </button>
@@ -143,7 +194,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess, onDemoLo
 
           <button
             type="submit"
-            className="w-full py-2.5 px-4 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-sm rounded-xl shadow-lg shadow-emerald-500/20 transition-all flex items-center justify-center gap-2 mt-2"
+            className="w-full py-2.5 px-4 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-sm rounded-xl shadow-lg shadow-emerald-500/20 transition-all flex items-center justify-center gap-2 mt-2 cursor-pointer"
           >
             <span>{tab === 'login' ? 'Войти в систему' : 'Создать аккаунт'}</span>
             <ArrowRight className="w-4 h-4" />
@@ -162,10 +213,10 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess, onDemoLo
           <button
             type="button"
             onClick={onDemoLogin}
-            className="w-full py-2.5 px-4 bg-gray-800 border border-emerald-500/30 hover:bg-emerald-500/10 text-emerald-300 font-medium text-xs rounded-xl shadow-sm transition-all flex items-center justify-center gap-2"
+            className="w-full py-2.5 px-4 bg-gray-800 border border-emerald-500/30 hover:bg-emerald-500/10 text-emerald-300 font-medium text-xs rounded-xl shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer"
           >
             <Sparkles className="w-4 h-4 text-emerald-400" />
-            <span>Войти в демо-режим с готовыми данными</span>
+            <span>Быстрый ознакомительный вход</span>
           </button>
 
           <p className="text-[11px] text-center text-gray-500 mt-3 flex items-center justify-center gap-1">
