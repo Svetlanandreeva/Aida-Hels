@@ -90,7 +90,7 @@ export const Navigation: React.FC<NavigationProps> = ({
           </button>
 
           {/* CENTER: TABS (Главная, Дневник, Аналитика, Карта тела, Помощник) */}
-          <nav className="hidden lg:flex items-center gap-1 sm:gap-6 h-full">
+          <nav className="hidden md:flex items-center gap-1 sm:gap-6 h-full">
             <button
               onClick={() => {
                 setCurrentScreen('dashboard');
@@ -291,7 +291,7 @@ export const Navigation: React.FC<NavigationProps> = ({
 
       {/* FLOATING BOTTOM MENU (НИЖНЕЕ МЕНЮ - ИКОНКИ НА МОБИЛЬНОМ, ИКОНКИ+ТЕКСТ НА ДЕСКТОПЕ) */}
       {isAppView && (
-        <nav className="fixed bottom-3 sm:bottom-6 left-1/2 -translate-x-1/2 z-50 bg-[#0B1320]/95 backdrop-blur-2xl border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.7)] rounded-[24px] sm:rounded-[32px] px-1.5 sm:px-4 py-1.5 sm:py-2.5 flex items-center justify-between gap-1 sm:gap-2 w-[96vw] max-w-[680px] select-none [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+        <nav className="md:hidden fixed bottom-3 sm:bottom-6 left-1/2 -translate-x-1/2 z-50 bg-[#0B1320]/95 backdrop-blur-2xl border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.7)] rounded-[24px] sm:rounded-[32px] px-1.5 sm:px-4 py-1.5 sm:py-2.5 flex items-center justify-between gap-1 sm:gap-2 w-[96vw] max-w-[680px] select-none [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
           <button
             onClick={() => {
               setCurrentScreen('dashboard');

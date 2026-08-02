@@ -185,7 +185,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({
 
       <div className="relative z-10 max-w-[1320px] mx-auto px-4 sm:px-5 lg:px-0">
         {/* HEADER */}
-        <header className="min-h-[60px] sm:h-[80px] py-2 flex flex-wrap items-center justify-between border-b border-white/[0.05] gap-2">
+        <header className="min-h-[60px] sm:h-[80px] py-2 flex items-center justify-between border-b border-white/[0.05] gap-2">
           {/* Logo 48x48 + Name 24px Bold */}
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             <div className="w-[36px] h-[36px] sm:w-[48px] sm:h-[48px] rounded-[12px] sm:rounded-[16px] bg-[#34F5AA]/10 border border-[#34F5AA]/30 flex items-center justify-center text-[#34F5AA] shadow-[0_0_20px_rgba(52,245,170,0.15)] shrink-0">
@@ -204,15 +204,6 @@ export const StartScreen: React.FC<StartScreenProps> = ({
             <a href="#features" className="hover:text-white transition-colors">Возможности</a>
             <a href="#testimonials" className="hover:text-white transition-colors">Отзывы</a>
           </nav>
-
-          {/* Button "Начать бесплатно" */}
-          <button
-            onClick={isAuthenticated ? onGoToDashboard : onStartQuestionnaire}
-            className="h-[38px] sm:h-[52px] px-3 sm:px-[28px] rounded-[18px] sm:rounded-[26px] bg-[#34F5AA] hover:bg-[#2ce093] text-[#050A12] font-bold text-[11px] sm:text-[15px] shadow-[0_8px_20px_rgba(52,245,170,0.30)] transition-all flex items-center gap-1.5 sm:gap-2 cursor-pointer shrink-0 whitespace-nowrap"
-          >
-            <span>{isAuthenticated ? 'Личный кабинет' : 'Начать бесплатно'}</span>
-            <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-          </button>
         </header>
 
         {/* HERO SECTION */}
@@ -221,9 +212,9 @@ export const StartScreen: React.FC<StartScreenProps> = ({
             {/* Left Block (col-span-7 on large screens for ample text width) */}
             <div className="lg:col-span-7 max-w-[640px] space-y-0 text-center lg:text-left flex flex-col items-center lg:items-start">
               {/* Badge */}
-              <div className="h-[34px] px-[16px] rounded-[18px] bg-[#34F5AA]/10 border border-[#34F5AA]/30 text-[#34F5AA] text-[12px] sm:text-[13px] font-medium flex items-center gap-2">
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>Цифровой ассистент здоровья нового поколения</span>
+              <div className="min-h-[32px] sm:h-[34px] px-2.5 sm:px-[16px] rounded-[18px] bg-[#34F5AA]/10 border border-[#34F5AA]/30 text-[#34F5AA] text-[10px] xs:text-[11px] sm:text-[13px] font-medium flex items-center gap-1.5 sm:gap-2 whitespace-nowrap max-w-full overflow-hidden">
+                <Sparkles className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
+                <span className="truncate">Цифровой ассистент здоровья нового поколения</span>
               </div>
 
               {/* H1 Title */}
@@ -237,7 +228,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({
               </p>
 
               {/* Buttons */}
-              <div className="mt-[24px] sm:mt-[36px] flex flex-col sm:flex-row items-center gap-[12px] sm:gap-[16px] w-full sm:w-auto">
+              <div className="mt-[24px] sm:mt-[36px] flex flex-col sm:flex-row items-center gap-[12px] sm:gap-[20px] w-full sm:w-auto">
                 <button
                   onClick={isAuthenticated ? onGoToDashboard : onStartQuestionnaire}
                   className="w-full sm:w-[220px] h-[50px] sm:h-[58px] rounded-[29px] bg-[#34F5AA] hover:bg-[#2ce093] text-[#050A12] font-bold text-[15px] sm:text-[16px] shadow-[0_8px_24px_rgba(52,245,170,0.30)] transition-all flex items-center justify-center gap-2 cursor-pointer"
@@ -246,12 +237,15 @@ export const StartScreen: React.FC<StartScreenProps> = ({
                   <ArrowRight className="w-5 h-5" />
                 </button>
 
-                <button
-                  onClick={onLoginClick}
-                  className="w-full sm:w-[200px] h-[50px] sm:h-[58px] rounded-[29px] bg-transparent border border-white/15 hover:border-white/40 text-white font-semibold text-[15px] sm:text-[16px] transition-all flex items-center justify-center cursor-pointer"
-                >
-                  Войти в аккаунт
-                </button>
+                {!isAuthenticated && (
+                  <button
+                    onClick={onLoginClick}
+                    className="text-white/70 hover:text-white font-medium text-[15px] sm:text-[16px] transition-colors py-2 px-3 flex items-center gap-1 cursor-pointer hover:underline underline-offset-4"
+                  >
+                    <span>Войти в аккаунт</span>
+                    <ChevronRight className="w-4 h-4 text-white/50" />
+                  </button>
+                )}
               </div>
             </div>
 
