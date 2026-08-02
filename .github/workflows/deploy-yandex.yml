@@ -1,0 +1,50 @@
+name: Deploy to Yandex Cloud
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+env:
+  YC_REGISTRY_ID: ${{ secrets.YC_REGISTRY_ID }}
+  YC_FOLDER_ID: ${{ secrets.YC_FOLDER_ID }}
+  IMAGE_NAME: helt-aida
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Login to Yandex Container Registry
+        uses: yc-actions/yc-cr-login@v2
+        with:
+          yc-sa-json-credentials: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
+
+      - name: Build image
+        run: |
+          docker build -t cr.yandex/${{ env.YC_REGISTRY_ID }}/${{ env.IMAGE_NAME }}:${{ github.sha }} .
+          docker tag cr.yandex/${{ env.YC_REGISTRY_ID }}/${{ env.IMAGE_NAME }}:${{ github.sha }} cr.yandex/${{ env.YC_REGISTRY_ID }}/${{ env.IMAGE_NAME }}:latest
+
+      - name: Push image
+        run: |
+          docker push cr.yandex/${{ env.YC_REGISTRY_ID }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          docker push cr.yandex/${{ env.YC_REGISTRY_ID }}/${{ env.IMAGE_NAME }}:latest
+
+      - name: Deploy revision to Serverless Container
+        uses: yc-actions/yc-sls-container-deploy@v3
+        with:
+          yc-sa-json-credentials: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
+          folder-id: ${{ env.YC_FOLDER_ID }}
+          container-name: helt-aida
+          revision-image-url: cr.yandex/${{ env.YC_REGISTRY_ID }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          revision-cores: 1
+          revision-memory: 512Mb
+          revision-concurrency: 8
+          revision-execution-timeout: 60
+          revision-service-account-id: ${{ secrets.YC_SA_ID }}
+          revision-env: |
+            GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+            NODE_ENV=production
+          public: true
