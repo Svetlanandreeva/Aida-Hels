@@ -720,7 +720,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                       placeholder="Код партнёра (PARTNER-XXXX)"
                       value={partnerCodeInput}
                       onChange={(e) => setPartnerCodeInput(e.target.value)}
-                      className="flex-1 px-3 py-2 bg-black/40 border border-white/10 rounded-xl text-xs text-white placeholder-white/30 focus:outline-none focus:border-pink-400"
+                      className="flex-1 min-w-0 px-3 py-2 bg-black/40 border border-white/10 rounded-xl text-xs text-white placeholder-white/30 focus:outline-none focus:border-pink-400"
                     />
                     <button
                       onClick={handleLinkPartnerCode}

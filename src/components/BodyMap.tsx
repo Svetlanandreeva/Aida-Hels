@@ -93,14 +93,14 @@ export const BodyMap: React.FC<BodyMapProps> = ({
             onClick={() => onSelectSystem(sys)}
             className="bg-[#14171C] p-5 rounded-2xl border border-gray-800 shadow-sm hover:border-emerald-500/50 hover:shadow-md transition-all cursor-pointer flex items-center justify-between gap-4 group"
           >
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-4 min-w-0">
               <div className="w-12 h-12 rounded-2xl bg-[#0F1115] border border-gray-800 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
                 {getSystemIcon(sys.iconName)}
               </div>
 
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <h3 className="font-bold text-gray-100 text-sm">{sys.name}</h3>
+              <div className="space-y-1 min-w-0">
+                <div className="flex items-center flex-wrap gap-2">
+                  <h3 className="font-bold text-gray-100 text-sm break-words">{sys.name}</h3>
                   <span
                     className={`px-2 py-0.5 rounded text-[10px] font-extrabold ${
                       sys.status === 'norm'

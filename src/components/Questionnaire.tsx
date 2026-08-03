@@ -578,7 +578,7 @@ export const Questionnaire: React.FC<QuestionnaireProps> = ({
                   value={newAllergy}
                   onChange={(e) => setNewAllergy(e.target.value)}
                   placeholder="Например: Ампициллин"
-                  className="flex-1 px-3.5 py-2 bg-gray-900 border border-gray-700 rounded-xl text-xs text-gray-100 placeholder-gray-500 focus:outline-none focus:border-emerald-500"
+                  className="flex-1 min-w-0 px-3.5 py-2 bg-gray-900 border border-gray-700 rounded-xl text-xs text-gray-100 placeholder-gray-500 focus:outline-none focus:border-emerald-500"
                 />
                 <button
                   type="button"

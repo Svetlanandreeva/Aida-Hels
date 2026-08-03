@@ -66,7 +66,7 @@ export const Navigation: React.FC<NavigationProps> = ({
   return (
     <>
       {/* TOP NAVIGATION (ВЕРХНЯЯ НАВИГАЦИЯ - 80px) */}
-      <header className="sticky top-0 z-40 bg-[#050A12]/90 backdrop-blur-xl border-b border-white/[0.06] h-16 sm:h-20 px-4 sm:px-12">
+      <header className="sticky top-0 z-40 bg-[#050A12]/90 backdrop-blur-xl border-b border-white/[0.06] h-16 sm:h-20 px-3 sm:px-12 overflow-hidden">
         <div className="max-w-[1320px] mx-auto h-full flex items-center justify-between gap-2">
           {/* LEFT: LOGO + TITLE + BADGE */}
           <button
@@ -83,7 +83,7 @@ export const Navigation: React.FC<NavigationProps> = ({
               <span className="font-bold text-white tracking-tight text-lg sm:text-xl font-[SF Pro Display],Inter">
                 Здоровье
               </span>
-              <span className="px-1.5 sm:px-2 py-0.5 text-[10px] sm:text-[11px] font-extrabold bg-[#34F5A4]/15 text-[#34F5A4] border border-[#34F5A4]/30 rounded-md uppercase tracking-wider">
+              <span className="hidden sm:inline-block px-1.5 sm:px-2 py-0.5 text-[10px] sm:text-[11px] font-extrabold bg-[#34F5A4]/15 text-[#34F5A4] border border-[#34F5A4]/30 rounded-md uppercase tracking-wider">
                 ИИ 2.0
               </span>
             </div>
@@ -255,7 +255,7 @@ export const Navigation: React.FC<NavigationProps> = ({
             {onOpenTutorial && (
               <button
                 onClick={onOpenTutorial}
-                className="px-2.5 sm:px-3 py-2 rounded-2xl bg-[#34F5A4]/10 border border-[#34F5A4]/20 hover:bg-[#34F5A4]/20 text-[#34F5A4] transition-all cursor-pointer min-h-[40px] flex items-center justify-center gap-1.5 text-xs font-bold"
+                className="hidden sm:flex px-2.5 sm:px-3 py-2 rounded-2xl bg-[#34F5A4]/10 border border-[#34F5A4]/20 hover:bg-[#34F5A4]/20 text-[#34F5A4] transition-all cursor-pointer min-h-[40px] items-center justify-center gap-1.5 text-xs font-bold"
                 title="Обучение по функционалу"
               >
                 <Sparkles className="w-4 h-4 shrink-0" />
@@ -282,7 +282,7 @@ export const Navigation: React.FC<NavigationProps> = ({
               <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-gradient-to-tr from-[#34F5A4] to-[#4DEBFF] text-[#050A12] font-black text-xs sm:text-sm flex items-center justify-center shadow-md">
                 {userName.charAt(0)}
               </div>
-              <span className="text-xs sm:text-sm font-medium text-white hidden xs:inline sm:inline">{userName}</span>
+              <span className="text-xs sm:text-sm font-medium text-white hidden sm:inline">{userName}</span>
               <ChevronDown className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white/40" />
             </button>
           </div>

@@ -675,7 +675,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 return (
                   <div className="bg-[#0B1320] border border-white/[0.08] rounded-2xl sm:rounded-3xl p-5 sm:p-7 shadow-xl space-y-5 flex flex-col justify-between">
                     <div className="space-y-4">
-                      <div className="flex items-center justify-between border-b border-white/[0.06] pb-4">
+                      <div className="flex items-center flex-wrap gap-2 justify-between border-b border-white/[0.06] pb-4">
                         <div className="flex items-center gap-2.5">
                           <div className="w-8 h-8 rounded-xl bg-[#4DEBFF]/10 border border-[#4DEBFF]/20 text-[#4DEBFF] flex items-center justify-center">
                             <Brain className="w-4 h-4" />
@@ -738,7 +738,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               return (
                 <div className="bg-[#0B1320] border border-white/[0.08] rounded-2xl sm:rounded-3xl p-5 sm:p-7 shadow-xl space-y-5 flex flex-col justify-between">
                   <div className="space-y-4">
-                    <div className="flex items-center justify-between border-b border-white/[0.06] pb-4">
+                    <div className="flex items-center flex-wrap gap-2 justify-between border-b border-white/[0.06] pb-4">
                       <div className="flex items-center gap-2.5">
                         <div className="w-8 h-8 rounded-xl bg-[#4DEBFF]/10 border border-[#4DEBFF]/20 text-[#4DEBFF] flex items-center justify-center">
                           <Brain className="w-4 h-4" />

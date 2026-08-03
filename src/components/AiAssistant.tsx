@@ -222,7 +222,7 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Спроси Аиду о своём самочувствии, сне или давлении..."
-            className="flex-1 px-4 py-2.5 bg-gray-900 border border-gray-700 rounded-xl text-xs sm:text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-emerald-500"
+            className="flex-1 min-w-0 px-4 py-2.5 bg-gray-900 border border-gray-700 rounded-xl text-xs sm:text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-emerald-500"
           />
           <button
             type="submit"
