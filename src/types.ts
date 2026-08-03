@@ -187,7 +187,7 @@ export interface BodySystem {
   name: string;
   iconName: string;
   score: number; // 0 - 100
-  status: 'norm' | 'warning' | 'critical' | 'insufficient_data';
+  status: 'norm' | 'warning' | 'critical';
   statusText: string;
   description: string;
   attentionLevel: 'Низкий' | 'Умеренный' | 'Высокий';

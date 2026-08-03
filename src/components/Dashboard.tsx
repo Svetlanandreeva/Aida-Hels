@@ -8,6 +8,10 @@ import {
   ScreenId,
   Reminder,
   StructuredHealthAnalysis,
+  DailyLogEntry,
+  DiaryEntry,
+  PressureLogEntry,
+  UserMentalPatterns,
 } from '../types';
 import {
   LayoutDashboard,
@@ -80,6 +84,10 @@ interface DashboardProps {
   onOpenDoctorReport: () => void;
   reminders?: Reminder[];
   setReminders?: React.Dispatch<React.SetStateAction<Reminder[]>>;
+  dailyLogs?: DailyLogEntry[];
+  diaryEntries?: DiaryEntry[];
+  pressureLogs?: PressureLogEntry[];
+  mentalPatterns?: UserMentalPatterns;
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({
@@ -95,6 +103,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onOpenDoctorReport,
   reminders = [],
   setReminders,
+  dailyLogs = [],
+  diaryEntries = [],
+  pressureLogs = [],
+  mentalPatterns,
 }) => {
   // Structured AI Health Analysis state
   const [healthAnalysis, setHealthAnalysis] = useState<StructuredHealthAnalysis | null>(null);
@@ -150,15 +162,74 @@ export const Dashboard: React.FC<DashboardProps> = ({
   useEffect(() => {
     fetchHealthAnalysis();
   }, [documents, user]);
-  const metricsTrendData = [
-    { day: 'Пн', energy: 65, sleep: 70, stress: 45, mood: 60 },
-    { day: 'Вт', energy: 70, sleep: 75, stress: 40, mood: 68 },
-    { day: 'Ср', energy: 58, sleep: 60, stress: 55, mood: 55 },
-    { day: 'Чт', energy: 80, sleep: 82, stress: 30, mood: 80 },
-    { day: 'Пт', energy: 85, sleep: 80, stress: 35, mood: 85 },
-    { day: 'Сб', energy: 90, sleep: 88, stress: 25, mood: 90 },
-    { day: 'Вс', energy: 78, sleep: 85, stress: 35, mood: 82 },
-  ];
+
+  const { metricsTrendData, hasEnoughChartData } = React.useMemo(() => {
+    const totalRecords = (diaryEntries?.length || 0) + (dailyLogs?.length || 0) + (pressureLogs?.length || 0);
+    if (totalRecords < 2) {
+      return { metricsTrendData: [], hasEnoughChartData: false };
+    }
+
+    const daysCount = chartPeriod === '7d' ? 7 : chartPeriod === '14d' ? 14 : 30;
+    const dayLabels = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
+    const result: Array<{ day: string; energy: number; sleep: number; stress: number; mood: number }> = [];
+
+    const now = new Date();
+    for (let i = daysCount - 1; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      const dateStr = d.toISOString().split('T')[0];
+      const dayName = daysCount === 7 ? dayLabels[d.getDay()] : `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}`;
+
+      const dayDiary = (diaryEntries || []).filter((e) => {
+        const eDate = e.event_datetime || e.created_at;
+        return eDate && eDate.startsWith(dateStr);
+      });
+
+      const dayLogs = (dailyLogs || []).filter((l) => l.date === dateStr || l.date === dayName);
+
+      if (dayDiary.length > 0) {
+        const avgEnergy = Math.round(
+          (dayDiary.reduce((acc, curr) => acc + (curr.energy_score || 5), 0) / dayDiary.length) * 10
+        );
+        const avgStress = Math.round(
+          (dayDiary.reduce((acc, curr) => acc + (curr.stress_score || curr.anxiety_score || 3), 0) / dayDiary.length) * 10
+        );
+        const avgMood = Math.round(
+          (dayDiary.reduce((acc, curr) => acc + (curr.state_score || 6), 0) / dayDiary.length) * 10
+        );
+        const sleepEntry = dayDiary.find((e) => e.physical_factors?.sleepDurationHours !== undefined);
+        const avgSleep = sleepEntry?.physical_factors?.sleepDurationHours
+          ? Math.min(100, Math.round((sleepEntry.physical_factors.sleepDurationHours / 8) * 100))
+          : 70;
+
+        result.push({ day: dayName, energy: avgEnergy, sleep: avgSleep, stress: avgStress, mood: avgMood });
+      } else if (dayLogs.length > 0) {
+        const lastL = dayLogs[dayLogs.length - 1];
+        result.push({
+          day: dayName,
+          energy: lastL.energy,
+          sleep: lastL.sleep,
+          stress: lastL.stress,
+          mood: lastL.mood,
+        });
+      } else {
+        result.push({
+          day: dayName,
+          energy: 0,
+          sleep: 0,
+          stress: 0,
+          mood: 0,
+        });
+      }
+    }
+
+    const activeDays = result.filter((r) => r.energy > 0 || r.sleep > 0 || r.stress > 0 || r.mood > 0).length;
+    if (activeDays < 2) {
+      return { metricsTrendData: [], hasEnoughChartData: false };
+    }
+
+    return { metricsTrendData: result, hasEnoughChartData: true };
+  }, [diaryEntries, dailyLogs, pressureLogs, chartPeriod]);
 
   // Real Document Upload & Verification State
   const [uploadStatusStep, setUploadStatusStep] = useState('Загружаем документ...');
@@ -419,16 +490,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </div>
               <div className="mt-3">
                 <div className="text-2xl sm:text-3xl font-black text-white tracking-tight leading-none mb-1">
-                  {healthAnalysis?.overallStatus === 'insufficient_data'
+                  {!healthAnalysis || healthAnalysis.overallStatus === 'insufficient_data'
                     ? 'Начинаем сбор'
-                    : healthAnalysis
-                    ? `${Math.round(healthAnalysis.overallScore * 10)}%`
-                    : '84%'}
+                    : `${Math.round(healthAnalysis.overallScore * 10)}%`}
                 </div>
                 <div className="text-xs text-[#34F5A4] font-medium flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-[#34F5A4]" />
                   <span>
-                    {healthAnalysis?.overallStatus === 'insufficient_data'
+                    {!healthAnalysis || healthAnalysis.overallStatus === 'insufficient_data'
                       ? 'Начальный этап'
                       : user.isQuestionnaireCompleted
                       ? 'Оценка по опросу'
@@ -439,42 +508,87 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
 
             {/* Card 2: Энергия */}
-            <div className="bg-[#0B1320] border border-white/[0.08] hover:border-white/20 rounded-2xl sm:rounded-3xl p-5 shadow-xl transition-all flex flex-col justify-between group">
-              <div className="flex items-center justify-between">
-                <span className="text-xs sm:text-sm font-bold text-white/70">Энергия</span>
-                <div className="w-9 h-9 rounded-xl bg-[#4DEBFF]/10 border border-[#4DEBFF]/20 text-[#4DEBFF] flex items-center justify-center group-hover:scale-110 transition-transform">
-                  <Zap className="w-4.5 h-4.5 fill-[#4DEBFF]" />
+            {(() => {
+              const hasDiary = diaryEntries && diaryEntries.length > 0;
+              const hasLogs = dailyLogs && dailyLogs.length > 0;
+
+              let valText = '';
+              let subText = '';
+
+              if (hasDiary) {
+                const last = diaryEntries[diaryEntries.length - 1];
+                valText = `${Math.round((last.energy_score || 5) * 10)}%`;
+                subText = 'По записям дневника';
+              } else if (hasLogs) {
+                const last = dailyLogs[dailyLogs.length - 1];
+                valText = `${Math.round(last.energy)}%`;
+                subText = 'По записям дневника';
+              } else if (user.psychology?.stressLevel) {
+                valText = `${(10 - user.psychology.stressLevel) * 10}%`;
+                subText = 'По данным анкеты';
+              } else {
+                valText = '—';
+                subText = 'Добавьте первую запись';
+              }
+
+              return (
+                <div className="bg-[#0B1320] border border-white/[0.08] hover:border-white/20 rounded-2xl sm:rounded-3xl p-5 shadow-xl transition-all flex flex-col justify-between group">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs sm:text-sm font-bold text-white/70">Энергия</span>
+                    <div className="w-9 h-9 rounded-xl bg-[#4DEBFF]/10 border border-[#4DEBFF]/20 text-[#4DEBFF] flex items-center justify-center group-hover:scale-110 transition-transform">
+                      <Zap className="w-4.5 h-4.5 fill-[#4DEBFF]" />
+                    </div>
+                  </div>
+                  <div className="mt-3">
+                    <div className="text-2xl sm:text-3xl font-black text-white tracking-tight leading-none mb-1">
+                      {valText}
+                    </div>
+                    <div className="text-xs text-[#4DEBFF] font-medium flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#4DEBFF]" />
+                      <span>{subText}</span>
+                    </div>
+                  </div>
                 </div>
-              </div>
-              <div className="mt-3">
-                <div className="text-2xl sm:text-3xl font-black text-white tracking-tight leading-none mb-1">
-                  {user.psychology?.stressLevel ? `${(10 - user.psychology.stressLevel) * 10}%` : 'Добавьте запись'}
-                </div>
-                <div className="text-xs text-[#4DEBFF] font-medium flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#4DEBFF]" />
-                  <span>По записям дневника</span>
-                </div>
-              </div>
-            </div>
+              );
+            })()}
 
             {/* Card 3: Сон */}
-            <div className="bg-[#0B1320] border border-white/[0.08] hover:border-white/20 rounded-2xl sm:rounded-3xl p-5 shadow-xl transition-all flex flex-col justify-between group">
-              <div className="flex items-center justify-between">
-                <span className="text-xs sm:text-sm font-bold text-white/70">Сон</span>
-                <div className="w-9 h-9 rounded-xl bg-[#8E74FF]/10 border border-[#8E74FF]/20 text-[#8E74FF] flex items-center justify-center group-hover:scale-110 transition-transform">
-                  <Moon className="w-4.5 h-4.5 fill-[#8E74FF]" />
+            {(() => {
+              const lastDiaryWithSleep = diaryEntries?.slice().reverse().find(e => e.physical_factors?.sleepDurationHours !== undefined);
+              let valText = '';
+              let subText = '';
+
+              if (lastDiaryWithSleep?.physical_factors?.sleepDurationHours !== undefined) {
+                valText = `${lastDiaryWithSleep.physical_factors.sleepDurationHours}ч`;
+                subText = 'По записям дневника';
+              } else if (user.psychology?.sleepHours) {
+                valText = `${user.psychology.sleepHours}ч`;
+                subText = 'По данным анкеты';
+              } else {
+                valText = '—';
+                subText = 'Добавьте первую запись о сне';
+              }
+
+              return (
+                <div className="bg-[#0B1320] border border-white/[0.08] hover:border-white/20 rounded-2xl sm:rounded-3xl p-5 shadow-xl transition-all flex flex-col justify-between group">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs sm:text-sm font-bold text-white/70">Сон</span>
+                    <div className="w-9 h-9 rounded-xl bg-[#8E74FF]/10 border border-[#8E74FF]/20 text-[#8E74FF] flex items-center justify-center group-hover:scale-110 transition-transform">
+                      <Moon className="w-4.5 h-4.5 fill-[#8E74FF]" />
+                    </div>
+                  </div>
+                  <div className="mt-3">
+                    <div className="text-2xl sm:text-3xl font-black text-white tracking-tight leading-none mb-1">
+                      {valText}
+                    </div>
+                    <div className="text-xs text-[#8E74FF] font-medium flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#8E74FF]" />
+                      <span>{subText}</span>
+                    </div>
+                  </div>
                 </div>
-              </div>
-              <div className="mt-3">
-                <div className="text-2xl sm:text-3xl font-black text-white tracking-tight leading-none mb-1">
-                  {user.psychology?.sleepHours ? `${user.psychology.sleepHours}ч` : 'Пока нет данных'}
-                </div>
-                <div className="text-xs text-[#8E74FF] font-medium flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#8E74FF]" />
-                  <span>{user.psychology?.sleepHours ? 'Среднесуточный отдых' : 'Добавьте первую запись о сне'}</span>
-                </div>
-              </div>
-            </div>
+              );
+            })()}
 
             {/* Card 4: Прогноз ресурса */}
             <div className="bg-[#0B1320] border border-white/[0.08] hover:border-white/20 rounded-2xl sm:rounded-3xl p-5 shadow-xl transition-all flex flex-col justify-between group">
@@ -486,16 +600,20 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </div>
               <div className="mt-3">
                 <div className="text-xl sm:text-2xl font-black text-white tracking-tight leading-none mb-1">
-                  {healthAnalysis?.resourceForecast?.level === 'insufficient_data'
+                  {!healthAnalysis || healthAnalysis.resourceForecast?.level === 'insufficient_data'
                     ? 'Появится позже'
-                    : healthAnalysis?.resourceForecast?.level === 'high'
+                    : healthAnalysis.resourceForecast?.level === 'high'
                     ? 'Высокий'
-                    : 'Хороший'}
+                    : healthAnalysis.resourceForecast?.level === 'medium'
+                    ? 'Умеренный'
+                    : healthAnalysis.resourceForecast?.level === 'low'
+                    ? 'Низкий'
+                    : 'Появится позже'}
                 </div>
                 <div className="text-xs text-[#FF8C42] font-medium flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-[#FF8C42]" />
                   <span>
-                    {healthAnalysis?.resourceForecast?.level === 'insufficient_data'
+                    {!healthAnalysis || healthAnalysis.resourceForecast?.level === 'insufficient_data'
                       ? 'После накопления динамики'
                       : 'На ближайшие 3 дня'}
                   </span>
@@ -550,73 +668,152 @@ export const Dashboard: React.FC<DashboardProps> = ({
           {/* BLOCK 7 & 8: PSYCHOEMOTIONAL & INDICATOR DYNAMICS GRID */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 sm:gap-6">
             {/* BLOCK 7: ПСИХОЭМОЦИОНАЛЬНОЕ СОСТОЯНИЕ */}
-            <div className="bg-[#0B1320] border border-white/[0.08] rounded-2xl sm:rounded-3xl p-5 sm:p-7 shadow-xl space-y-5 flex flex-col justify-between">
-              <div className="space-y-4">
-                <div className="flex items-center justify-between border-b border-white/[0.06] pb-4">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-xl bg-[#4DEBFF]/10 border border-[#4DEBFF]/20 text-[#4DEBFF] flex items-center justify-center">
-                      <Brain className="w-4 h-4" />
-                    </div>
-                    <h3 className="font-bold text-white text-base sm:text-lg">Психоэмоциональный баланс</h3>
-                  </div>
-                  <span className="text-xs text-[#34F5A4] font-bold bg-[#34F5A4]/10 border border-[#34F5A4]/20 px-2.5 py-0.5 rounded-full">
-                    Стабилен
-                  </span>
-                </div>
+            {(() => {
+              const hasDiaryEntries = diaryEntries && diaryEntries.length > 0;
 
-                <div className="flex flex-col sm:flex-row items-center justify-around gap-4 py-2">
-                  <div className="relative w-32 h-32 flex items-center justify-center shrink-0">
-                    <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
-                      <path
-                        className="text-white/10"
-                        strokeWidth="3.5"
-                        stroke="currentColor"
-                        fill="none"
-                        d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                      />
-                      <path
-                        className="text-[#34F5A4]"
-                        strokeDasharray="82, 100"
-                        strokeWidth="3.5"
-                        strokeLinecap="round"
-                        stroke="currentColor"
-                        fill="none"
-                        d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                      />
-                    </svg>
-                    <div className="absolute flex flex-col items-center justify-center text-center">
-                      <span className="text-3xl font-black text-white">82%</span>
-                      <span className="text-[10px] text-[#34F5A4] font-semibold uppercase">Баланс</span>
-                    </div>
-                  </div>
+              if (!hasDiaryEntries) {
+                return (
+                  <div className="bg-[#0B1320] border border-white/[0.08] rounded-2xl sm:rounded-3xl p-5 sm:p-7 shadow-xl space-y-5 flex flex-col justify-between">
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between border-b border-white/[0.06] pb-4">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-xl bg-[#4DEBFF]/10 border border-[#4DEBFF]/20 text-[#4DEBFF] flex items-center justify-center">
+                            <Brain className="w-4 h-4" />
+                          </div>
+                          <h3 className="font-bold text-white text-base sm:text-lg">Психоэмоциональный баланс</h3>
+                        </div>
+                        <span className="text-xs text-white/50 font-bold bg-white/5 border border-white/10 px-2.5 py-0.5 rounded-full">
+                          Нет данных
+                        </span>
+                      </div>
 
-                  <div className="space-y-2 text-xs flex-1 w-full">
-                    <div className="bg-[#101A28] p-3 rounded-xl border border-white/[0.04] space-y-1">
-                      <span className="text-white/60 block text-[10px]">Уровень стресса:</span>
-                      <span className="font-bold text-white block text-sm">3 / 10 (Умеренный)</span>
+                      <div className="bg-[#101A28] p-6 rounded-2xl border border-white/[0.04] text-center space-y-3 my-2">
+                        <Brain className="w-8 h-8 text-white/30 mx-auto" />
+                        <p className="text-xs text-white/70 font-medium max-w-sm mx-auto">
+                          Пока недостаточно записей. Заполните дневник ментального здоровья, чтобы увидеть анализ
+                        </p>
+                      </div>
                     </div>
-                    <div className="bg-[#101A28] p-3 rounded-xl border border-white/[0.04] space-y-1">
-                      <span className="text-white/60 block text-[10px]">Ключевые триггеры:</span>
-                      <div className="flex flex-wrap gap-1">
-                        <span className="px-2 py-0.5 bg-[#FF8C42]/10 text-[#FF8C42] rounded text-[10px] font-medium">Недосып</span>
-                        <span className="px-2 py-0.5 bg-[#8E74FF]/10 text-[#8E74FF] rounded text-[10px] font-medium">Дедлайны</span>
+
+                    <button
+                      onClick={() => onNavigate('mental_diary')}
+                      className="w-full py-3 px-4 bg-[#101A28] hover:bg-white/[0.06] text-[#34F5A4] border border-[#34F5A4]/30 font-bold text-xs rounded-2xl transition-all flex items-center justify-center gap-2 cursor-pointer mt-2"
+                    >
+                      <span>Открыть дневник ментального здоровья</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                );
+              }
+
+              const avgState = Math.round(
+                diaryEntries.reduce((acc, curr) => acc + (curr.state_score || 5), 0) / diaryEntries.length
+              );
+              const balancePercent = Math.min(100, Math.max(0, avgState * 10));
+
+              const avgStressVal = Math.round(
+                diaryEntries.reduce((acc, curr) => acc + (curr.stress_score || curr.anxiety_score || 3), 0) / diaryEntries.length
+              );
+
+              const stressLabel = avgStressVal <= 3 ? 'Низкий' : avgStressVal <= 6 ? 'Умеренный' : 'Повышенный';
+              const badgeText = avgStressVal > 6 ? 'Внимание' : avgState >= 7 ? 'Стабилен' : 'Наблюдение';
+              const badgeClass =
+                avgStressVal > 6
+                  ? 'text-amber-400 bg-amber-400/10 border-amber-400/20'
+                  : avgState >= 7
+                  ? 'text-[#34F5A4] bg-[#34F5A4]/10 border-[#34F5A4]/20'
+                  : 'text-sky-400 bg-sky-400/10 border-sky-400/20';
+
+              const negativeTriggers = mentalPatterns?.negative_triggers?.map((t) => t.text) || [];
+              const diaryMoodTriggers = Array.from(
+                new Set(
+                  diaryEntries
+                    .flatMap((e) => e.moods || [])
+                    .filter((m) => ['тревога', 'раздражение', 'грусть', 'апатия', 'усталость', 'злость', 'страх'].includes(m))
+                )
+              );
+
+              const combinedTriggers = Array.from(new Set([...negativeTriggers, ...diaryMoodTriggers])).slice(0, 3);
+
+              return (
+                <div className="bg-[#0B1320] border border-white/[0.08] rounded-2xl sm:rounded-3xl p-5 sm:p-7 shadow-xl space-y-5 flex flex-col justify-between">
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between border-b border-white/[0.06] pb-4">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-xl bg-[#4DEBFF]/10 border border-[#4DEBFF]/20 text-[#4DEBFF] flex items-center justify-center">
+                          <Brain className="w-4 h-4" />
+                        </div>
+                        <h3 className="font-bold text-white text-base sm:text-lg">Психоэмоциональный баланс</h3>
+                      </div>
+                      <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full border ${badgeClass}`}>
+                        {badgeText}
+                      </span>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row items-center justify-around gap-4 py-2">
+                      <div className="relative w-32 h-32 flex items-center justify-center shrink-0">
+                        <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
+                          <path
+                            className="text-white/10"
+                            strokeWidth="3.5"
+                            stroke="currentColor"
+                            fill="none"
+                            d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                          />
+                          <path
+                            className="text-[#34F5A4]"
+                            strokeDasharray={`${balancePercent}, 100`}
+                            strokeWidth="3.5"
+                            strokeLinecap="round"
+                            stroke="currentColor"
+                            fill="none"
+                            d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                          />
+                        </svg>
+                        <div className="absolute flex flex-col items-center justify-center text-center">
+                          <span className="text-3xl font-black text-white">{balancePercent}%</span>
+                          <span className="text-[10px] text-[#34F5A4] font-semibold uppercase">Баланс</span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2 text-xs flex-1 w-full">
+                        <div className="bg-[#101A28] p-3 rounded-xl border border-white/[0.04] space-y-1">
+                          <span className="text-white/60 block text-[10px]">Уровень стресса:</span>
+                          <span className="font-bold text-white block text-sm">
+                            {avgStressVal} / 10 ({stressLabel})
+                          </span>
+                        </div>
+                        <div className="bg-[#101A28] p-3 rounded-xl border border-white/[0.04] space-y-1">
+                          <span className="text-white/60 block text-[10px]">Ключевые триггеры:</span>
+                          <div className="flex flex-wrap gap-1">
+                            {combinedTriggers.length > 0 ? (
+                              combinedTriggers.map((trig, idx) => (
+                                <span key={idx} className="px-2 py-0.5 bg-[#FF8C42]/10 text-[#FF8C42] rounded text-[10px] font-medium">
+                                  {trig}
+                                </span>
+                              ))
+                            ) : (
+                              <span className="text-white/40 text-[10px]">Не выявлены</span>
+                            )}
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              </div>
 
-              <button
-                onClick={() => onNavigate('mental_diary')}
-                className="w-full py-3 px-4 bg-[#101A28] hover:bg-white/[0.06] text-[#34F5A4] border border-[#34F5A4]/30 font-bold text-xs rounded-2xl transition-all flex items-center justify-center gap-2 cursor-pointer mt-2"
-              >
-                <span>Открыть дневник ментального здоровья</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            </div>
+                  <button
+                    onClick={() => onNavigate('mental_diary')}
+                    className="w-full py-3 px-4 bg-[#101A28] hover:bg-white/[0.06] text-[#34F5A4] border border-[#34F5A4]/30 font-bold text-xs rounded-2xl transition-all flex items-center justify-center gap-2 cursor-pointer mt-2"
+                  >
+                    <span>Открыть дневник ментального здоровья</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                </div>
+              );
+            })()}
 
             {/* BLOCK 8: ДИНАМИКА ПОКАЗАТЕЛЕЙ (TREND CHART) */}
-            <div className="bg-[#0B1320] border border-white/[0.08] rounded-2xl sm:rounded-3xl p-5 sm:p-7 shadow-xl space-y-4">
+            <div className="bg-[#0B1320] border border-white/[0.08] rounded-2xl sm:rounded-3xl p-5 sm:p-7 shadow-xl space-y-4 flex flex-col justify-between">
               <div className="flex items-center justify-between border-b border-white/[0.06] pb-3">
                 <h3 className="font-bold text-white text-base sm:text-lg">Динамика самочувствия</h3>
                 <select
@@ -630,47 +827,61 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 </select>
               </div>
 
-              <div className="h-44 w-full pt-1">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={metricsTrendData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" vertical={false} />
-                    <XAxis dataKey="day" stroke="rgba(255,255,255,0.38)" fontSize={11} tickLine={false} />
-                    <YAxis stroke="rgba(255,255,255,0.38)" fontSize={11} tickLine={false} domain={[0, 100]} />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: '#101A28',
-                        borderColor: 'rgba(255,255,255,0.1)',
-                        borderRadius: '1rem',
-                        fontSize: '12px',
-                        color: '#fff',
-                      }}
-                    />
-                    <Line type="monotone" dataKey="energy" stroke="#34F5A4" strokeWidth={2.5} dot={false} name="Энергия" />
-                    <Line type="monotone" dataKey="sleep" stroke="#4DEBFF" strokeWidth={2.5} dot={false} name="Сон" />
-                    <Line type="monotone" dataKey="stress" stroke="#8E74FF" strokeWidth={2.5} dot={false} name="Стресс" />
-                    <Line type="monotone" dataKey="mood" stroke="#FF8C42" strokeWidth={2.5} dot={false} name="Настроение" />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
+              {!hasEnoughChartData ? (
+                <div className="h-48 w-full flex flex-col items-center justify-center bg-[#101A28] rounded-2xl border border-white/[0.04] p-6 text-center space-y-2.5 my-auto">
+                  <Activity className="w-8 h-8 text-white/30 mx-auto" />
+                  <p className="text-xs font-semibold text-white/80 max-w-xs">
+                    Недостаточно записей для построения графика динамики
+                  </p>
+                  <p className="text-[11px] text-white/40 max-w-xs">
+                    Вносите записи в дневник ментального здоровья, чтобы отслеживать тренд самочувствия
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="h-44 w-full pt-1">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={metricsTrendData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" vertical={false} />
+                        <XAxis dataKey="day" stroke="rgba(255,255,255,0.38)" fontSize={11} tickLine={false} />
+                        <YAxis stroke="rgba(255,255,255,0.38)" fontSize={11} tickLine={false} domain={[0, 100]} />
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: '#101A28',
+                            borderColor: 'rgba(255,255,255,0.1)',
+                            borderRadius: '1rem',
+                            fontSize: '12px',
+                            color: '#fff',
+                          }}
+                        />
+                        <Line type="monotone" dataKey="energy" stroke="#34F5A4" strokeWidth={2.5} dot={false} name="Энергия" />
+                        <Line type="monotone" dataKey="sleep" stroke="#4DEBFF" strokeWidth={2.5} dot={false} name="Сон" />
+                        <Line type="monotone" dataKey="stress" stroke="#8E74FF" strokeWidth={2.5} dot={false} name="Стресс" />
+                        <Line type="monotone" dataKey="mood" stroke="#FF8C42" strokeWidth={2.5} dot={false} name="Настроение" />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
 
-              <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-white/60 pt-2 border-t border-white/[0.06]">
-                <div className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-[#34F5A4]" />
-                  <span>Энергия</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-[#4DEBFF]" />
-                  <span>Сон</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-[#8E74FF]" />
-                  <span>Стресс</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-[#FF8C42]" />
-                  <span>Настроение</span>
-                </div>
-              </div>
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-white/60 pt-2 border-t border-white/[0.06]">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-[#34F5A4]" />
+                      <span>Энергия</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-[#4DEBFF]" />
+                      <span>Сон</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-[#8E74FF]" />
+                      <span>Стресс</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-[#FF8C42]" />
+                      <span>Настроение</span>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           </div>
 

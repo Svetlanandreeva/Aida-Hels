@@ -271,7 +271,7 @@ export const emptyMentalPatterns: UserMentalPatterns = {
   average_anxiety: 0,
   average_stress: 0,
   trend_direction: 'stable',
-  resource_forecast: 'insufficient_data',
+  resource_forecast: 'moderate',
   forecast_reasoning: 'Недостаточно данных для формирования прогноза. Сделайте первые записи в дневнике.',
   forecast_drivers: [],
   prediction_confidence: 'low',
