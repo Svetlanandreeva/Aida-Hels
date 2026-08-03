@@ -222,18 +222,46 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     setDocuments((prev) => prev.filter((d) => d.id !== id));
   };
 
-  const handleUploadDocument = (e: React.FormEvent) => {
+  const handleUploadDocument = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!docTitle.trim() || !setDocuments) return;
+    if (!docTitle.trim() || !setDocuments || !selectedFile) return;
 
     setIsAnalyzingFile(true);
 
-    setTimeout(() => {
-      const categoryLabels: Record<string, string> = {
-        lab: 'Лабораторные анализы',
-        ultrasound: 'УЗИ и МРТ',
-        instrumental: 'Инструментальная диагностика',
-        consultations: 'Консультации врачей',
+    const categoryLabels: Record<string, string> = {
+      lab: 'Лабораторные анализы',
+      ultrasound: 'УЗИ и МРТ',
+      instrumental: 'Инструментальная диагностика',
+      consultations: 'Консультации врачей',
+    };
+
+    try {
+      const fileBase64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve((reader.result as string).split(',')[1] || '');
+        reader.onerror = reject;
+        reader.readAsDataURL(selectedFile);
+      });
+
+      const res = await fetch('/api/research/recognize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fileBase64,
+          mimeType: selectedFile.type || 'image/png',
+          fileName: selectedFile.name,
+          userId: user.id || 'usr-1',
+        }),
+      });
+      const data = await res.json();
+
+      if (!data.success || !data.data) {
+        throw new Error('Ошибка распознавания документа');
+      }
+
+      const recognized = data.data as {
+        results: Array<{ originalName: string; value: number | string; unit: string; referenceText?: string; referenceMin?: number; referenceMax?: number; status: string }>;
+        laboratoryName?: string;
       };
 
       const newDoc: MedicalDocument = {
@@ -242,26 +270,30 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
         date: new Date().toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }),
         category: docCategory,
         categoryLabel: categoryLabels[docCategory] || 'Лабораторные анализы',
-        summary: 'Загруженный документ обработан ИИ. Основные показатели находятся в пределах возрастной нормы.',
-        fileUrl: selectedFile ? URL.createObjectURL(selectedFile) : undefined,
-        deviations: [
-          {
-            marker: 'Общий статус',
-            value: 'В норме',
-            norm: '100%',
-            status: 'В норме',
-            explanation: 'Показатели исследования не содержат критических отклонений.',
-          },
-        ],
-        recommendations: ['Сохраняйте регулярность профилактических осмотров.'],
+        summary: `Исследование проанализировано. Проверено показателей: ${recognized.results.length}.${recognized.laboratoryName ? ` Лаборатория: ${recognized.laboratoryName}.` : ''}`,
+        fileUrl: URL.createObjectURL(selectedFile),
+        deviations: recognized.results
+          .filter((item) => item.status !== 'normal')
+          .map((item) => ({
+            marker: item.originalName,
+            value: `${item.value} ${item.unit}`.trim(),
+            norm: item.referenceText || `${item.referenceMin ?? ''} - ${item.referenceMax ?? ''}`,
+            status: item.status === 'low' ? 'Ниже' : item.status === 'high' ? 'Выше' : 'Внимание',
+            explanation: item.status === 'low' ? 'Ниже референсного диапазона лаборатории.' : 'Выше референсного диапазона лаборатории.',
+          })),
+        recommendations: ['Для полной интерпретации обратитесь к лечащему врачу.'],
       };
 
       setDocuments((prev) => [newDoc, ...prev]);
-      setIsAnalyzingFile(false);
       setShowAddDocModal(false);
       setDocTitle('');
       setSelectedFile(null);
-    }, 1200);
+    } catch (err) {
+      console.error('Document recognition error:', err);
+      alert('Не удалось распознать документ. Попробуйте загрузить его ещё раз.');
+    } finally {
+      setIsAnalyzingFile(false);
+    }
   };
 
   return (
@@ -1012,7 +1044,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 </button>
                 <button
                   type="submit"
-                  disabled={isAnalyzingFile}
+                  disabled={isAnalyzingFile || !selectedFile}
                   className="px-5 py-2 bg-[#4DEBFF] hover:bg-[#38d8ec] text-[#050A12] text-xs font-bold rounded-xl shadow-md cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
                 >
                   {isAnalyzingFile ? (

@@ -196,6 +196,13 @@ export function generateFallbackHealthAnalysis(data: any): StructuredHealthAnaly
     });
 
     (doc.deviations || []).forEach((dev: any, idx: number) => {
+      // Only real deviations belong here — a "normal"/"В норме" entry isn't
+      // something requiring attention and must never be surfaced as one.
+      const normalStatuses = ['в норме', 'normal', 'норма'];
+      if (normalStatuses.includes(String(dev.status || '').trim().toLowerCase())) {
+        return;
+      }
+
       const marker = dev.marker || 'Показатель';
       const markerLower = marker.toLowerCase();
 
