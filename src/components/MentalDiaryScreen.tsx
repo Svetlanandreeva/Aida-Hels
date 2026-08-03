@@ -1294,7 +1294,14 @@ export const MentalDiaryScreen: React.FC<MentalDiaryScreenProps> = ({
               </div>
 
               <span className="px-3.5 py-1.5 rounded-xl bg-teal-500/20 text-teal-300 font-bold text-xs border border-teal-500/40">
-                Прогноз: {patterns.resource_forecast === 'high' ? 'Высокий ресурс' : 'Средний ресурс'}
+                Прогноз:{' '}
+                {patterns.resource_forecast === 'insufficient_data'
+                  ? 'Появится позже'
+                  : patterns.resource_forecast === 'high'
+                  ? 'Высокий ресурс'
+                  : patterns.resource_forecast === 'low'
+                  ? 'Низкий ресурс'
+                  : 'Средний ресурс'}
               </span>
             </div>
 
