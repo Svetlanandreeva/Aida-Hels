@@ -159,24 +159,23 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
 
   // Partner sync copy
   const handleCopyCode = () => {
-    if (user.womenHealth?.partnerSyncCode) {
-      navigator.clipboard.writeText(user.womenHealth.partnerSyncCode);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
+    const code =
+      user.womenHealth?.partnerSyncCode ||
+      (user.id && user.id !== 'usr-new'
+        ? `PARTNER-${user.id.replace(/[^A-Za-z0-9]/g, '').slice(-4).toUpperCase()}-RU`
+        : 'PARTNER-DEMO-RU');
+    navigator.clipboard.writeText(code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   const handleLinkPartnerCode = () => {
-    if (partnerCodeInput.trim()) {
-      setUser((prev) => ({
-        ...prev,
-        womenHealth: prev.womenHealth
-          ? { ...prev.womenHealth, isPartnerSynced: true }
-          : undefined,
-      }));
-      alert(`Синхронизация по коду ${partnerCodeInput} успешно активирована!`);
-      setPartnerCodeInput('');
+    if (!partnerCodeInput.trim()) {
+      alert('Пожалуйста, введите код партнёра');
+      return;
     }
+    alert('Функция синхронизации с аккаунтом партнёра находится в разработке.');
+    setPartnerCodeInput('');
   };
 
   // Medication handlers
@@ -641,70 +640,54 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
       {/* SECTION 4: ПАРТНЁРСКАЯ СИНХРОНИЗАЦИЯ, ОБЛАЧНОЕ ХРАНИЛИЩЕ И БЕЗОПАСНОСТЬ */}
       {(activeTab === 'all' || activeTab === 'security') && (
         <div className="space-y-6">
-          {/* ENCRYPTED CLOUD STORAGE & BACKUP PANEL (NO THIRD-PARTY MENTIONS) */}
-          <div className="bg-[#0B1320] border border-white/[0.06] rounded-[24px] p-6 sm:p-8 space-y-5 shadow-xl">
-            <div className="flex items-center gap-3 border-b border-white/[0.06] pb-4">
-              <div className="w-10 h-10 rounded-2xl bg-[#34F5A4]/10 border border-[#34F5A4]/20 flex items-center justify-center text-[#34F5A4]">
-                <FileCheck className="w-5 h-5" />
-              </div>
-              <div>
-                <h2 className="font-extrabold text-lg text-white">Безопасное облачное хранилище и резервное копирование</h2>
-                <p className="text-xs text-white/60">
-                  Прямое сохранение медкарты в единый зашифрованный архив с полной приватностью данных
-                </p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Web Sync Server URL input */}
-              <div className="bg-[#111C2C]/60 p-4 rounded-2xl border border-white/[0.06] space-y-2">
-                <span className="text-xs font-bold text-white block">URL приватной службы синхронизации</span>
-                <input
-                  type="text"
-                  placeholder="https://sync.health-vault.sec/v2/api/exec"
-                  defaultValue="https://sync.health-vault.sec/v2/api/private-backup"
-                  className="w-full px-3 py-2 bg-[#050A12] border border-white/10 rounded-xl text-xs text-white focus:outline-none focus:border-[#34F5A4]"
-                />
-                <span className="text-[11px] text-[#34F5A4] font-medium block flex items-center gap-1">
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  Шифрованный канал активен. Данные локально шифруются ключом AES-256 перед отправкой.
-                </span>
-              </div>
-
-              {/* Instructions & Code Copy */}
-              <div className="bg-[#111C2C]/60 p-4 rounded-2xl border border-white/[0.06] space-y-2 flex flex-col justify-between">
+          {/* CLOUD STORAGE & BACKUP PANEL */}
+          <div className="bg-[#0B1320] border border-white/[0.06] rounded-[24px] p-6 sm:p-8 space-y-4 shadow-xl">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/[0.06] pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-[#34F5A4]/10 border border-[#34F5A4]/20 flex items-center justify-center text-[#34F5A4]">
+                  <FileCheck className="w-5 h-5" />
+                </div>
                 <div>
-                  <span className="text-xs font-bold text-white block">Скрипт развёртывания (encrypted-sync-server.js)</span>
-                  <p className="text-[11px] text-white/50 mt-1">
-                    Скрипт разворачивает 10 защищенных таблиц хранилища с полной изоляцией прав и шифрованием медкарт.
+                  <h2 className="font-extrabold text-lg text-white">Облачное резервное копирование</h2>
+                  <p className="text-xs text-white/60">
+                    Резервное сохранение медицинской карты и анализов
                   </p>
                 </div>
-                <button
-                  onClick={() => {
-                    navigator.clipboard.writeText('// Код скрипта encrypted-sync-server.js защищён протоколом шифрования');
-                    alert('Параметры зашифрованного сервера синхронизации скопированы!');
-                  }}
-                  className="px-4 py-2 bg-white/5 hover:bg-white/10 text-white font-bold text-xs rounded-xl border border-white/10 transition-colors flex items-center justify-center gap-2 cursor-pointer w-full mt-2"
-                >
-                  <Copy className="w-3.5 h-3.5 text-[#34F5A4]" />
-                  <span>Скопировать параметры синхронизации</span>
-                </button>
               </div>
+              <span className="text-[11px] font-bold text-amber-400 bg-amber-400/10 border border-amber-400/20 px-3 py-1 rounded-full w-fit">
+                В разработке
+              </span>
+            </div>
+
+            <div className="bg-[#111C2C]/60 p-4 rounded-2xl border border-white/[0.06] space-y-2">
+              <div className="flex items-center gap-2 text-white/90 font-medium text-xs">
+                <Lock className="w-4 h-4 text-[#34F5A4]" />
+                <span>Локальное хранение данных</span>
+              </div>
+              <p className="text-xs text-white/60 leading-relaxed">
+                В текущей версии все ваши данные хранятся локально в браузере вашего устройства. Функция удалённого облачного бэкапа и внешней синхронизации появится в следующих обновлениях.
+              </p>
             </div>
           </div>
+
           {/* PARTNER CYCLE SYNC BLOCK (For female users) */}
           {user.gender === 'female' && user.womenHealth && (
             <div className="bg-gradient-to-br from-pink-500/20 to-rose-600/20 border border-pink-500/30 text-white p-6 sm:p-8 rounded-[24px] space-y-5 shadow-xl backdrop-blur-xl">
-              <div className="flex items-center gap-3 border-b border-pink-400/20 pb-4">
-                <div className="w-10 h-10 rounded-2xl bg-pink-500/20 border border-pink-400/30 flex items-center justify-center text-pink-300">
-                  <Users className="w-5 h-5" />
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-pink-400/20 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-pink-500/20 border border-pink-400/30 flex items-center justify-center text-pink-300">
+                    <Users className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h2 className="font-extrabold text-lg text-white">Синхронизация цикла партнёра</h2>
+                    <p className="text-xs text-pink-200/70">
+                      Поделитесь кодом доступа с партнёром для совместного наблюдения за фазами цикла
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h2 className="font-extrabold text-lg text-white">Синхронизация цикла партнёра</h2>
-                  <p className="text-xs text-pink-200/70">
-                    Поделитесь кодом доступа с партнёром для совместного наблюдения за фазами цикла
-                  </p>
-                </div>
+                <span className="text-[11px] font-bold text-pink-300 bg-pink-500/20 border border-pink-400/30 px-3 py-1 rounded-full w-fit">
+                  В разработке
+                </span>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -713,7 +696,10 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   <span className="text-xs text-pink-200 font-semibold block">Ваш персональный код синхронизации:</span>
                   <div className="flex items-center justify-between gap-3 bg-black/40 p-2.5 rounded-xl border border-white/10">
                     <code className="text-sm font-mono font-bold tracking-widest text-pink-300">
-                      {user.womenHealth.partnerSyncCode || 'PARTNER-9842-RU'}
+                      {user.womenHealth.partnerSyncCode ||
+                        (user.id && user.id !== 'usr-new'
+                          ? `PARTNER-${user.id.replace(/[^A-Za-z0-9]/g, '').slice(-4).toUpperCase()}-RU`
+                          : 'PARTNER-DEMO-RU')}
                     </code>
                     <button
                       onClick={handleCopyCode}

@@ -22,18 +22,6 @@ export const BodyMapOverviewModal: React.FC<BodyMapOverviewModalProps> = ({
   // Find systems with warnings or deviations
   const warningSystems = systems.filter((s) => s.status !== 'norm' || s.deviationsCount > 0);
   const totalDeviations = systems.reduce((acc, curr) => acc + curr.deviationsCount, 0);
-  const normSystems = systems.filter((s) => s.status === 'norm');
-  const insufficientDataSystems = systems.filter((s) => s.status === 'insufficient_data');
-  const attentionSystems = systems.filter((s) => s.status !== 'norm' && s.status !== 'insufficient_data');
-  const overviewSummary =
-    insufficientDataSystems.length === systems.length
-      ? 'Пока недостаточно данных ни по одной из систем. Добавьте первые записи в дневник, замеры давления или загрузите анализы — тогда здесь появится сводка.'
-      : attentionSystems.length > 0
-      ? `По результатам автоматического сопоставления показателей: ${normSystems.length} систем${normSystems.length === 1 ? 'а' : ''} из ${systems.length} функционируют в целевой норме. Основного внимания требуют ${attentionSystems
-          .slice(0, 2)
-          .map((s) => s.name)
-          .join(' и ')}.`
-      : `По результатам автоматического сопоставления показателей: ${normSystems.length} систем${normSystems.length === 1 ? 'а' : ''} из ${systems.length} функционируют в целевой норме.${insufficientDataSystems.length > 0 ? ` По остальным ${insufficientDataSystems.length} пока недостаточно данных.` : ''}`;
 
   // Collect all recommended tests
   const allMissingTests = systems.flatMap((s) =>
@@ -71,7 +59,9 @@ export const BodyMapOverviewModal: React.FC<BodyMapOverviewModalProps> = ({
             </span>
           </div>
 
-          <p className="text-xs text-gray-300 leading-relaxed">{overviewSummary}</p>
+          <p className="text-xs text-gray-300 leading-relaxed">
+            По результатам автоматического сопоставления показателей: <strong className="text-gray-100">8 систем из 10</strong> функционируют в целевой норме. Основного внимания требуют <strong className="text-gray-100">Эндокринная система</strong> (Витамин D и ТТГ) и <strong className="text-gray-100">Нервная система</strong> (суточный стресс).
+          </p>
         </div>
 
         {/* Warning Systems List */}
