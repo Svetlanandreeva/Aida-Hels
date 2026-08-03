@@ -391,6 +391,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
           {/* BLOCK 1.8: "ЛЕКАРСТВА СЕГОДНЯ" (MEDICATION TODAY CHECKLIST BLOCK) */}
           <MedicationTodaySection
+            user={user}
             reminders={reminders}
             onNavigate={onNavigate}
             onOpenAddMedication={() => onNavigate('reminders')}

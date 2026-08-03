@@ -13,8 +13,23 @@ export const demoUserProfile: UserProfile = {
   rhFactor: '+',
   allergies: ['Пенициллин', 'Цветение березы', 'Арахис'],
   chronicDiagnoses: [
-    { id: '1', name: 'Субклинический гипотиреоз', medication: 'L-тироксин 50 мкг', sinceYear: '2022' },
-    { id: '2', name: 'Синдром раздраженного кишечника', medication: 'Дюспаталин при обострении', sinceYear: '2021' },
+    {
+      id: '1',
+      name: 'Субклинический гипотиреоз',
+      medication: 'L-тироксин 50 мкг',
+      sinceYear: '2022',
+      schedule: { morning: { enabled: true, time: '08:00' } },
+    },
+    {
+      id: '2',
+      name: 'Синдром раздраженного кишечника',
+      medication: 'Дюспаталин при обострении',
+      sinceYear: '2021',
+      schedule: {
+        morning: { enabled: true, time: '08:00' },
+        evening: { enabled: true, time: '20:00' },
+      },
+    },
   ],
   orviFrequency: '1-2 раза в год',
   womenHealth: {

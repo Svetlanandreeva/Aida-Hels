@@ -1,7 +1,13 @@
 import React, { useState } from 'react';
-import { UserProfile, ScreenId } from '../types';
+import { UserProfile, ScreenId, MedicationSchedule, PsychiatricMedication } from '../types';
 import { AutocompleteInput } from './AutocompleteInput';
-import { DIAGNOSES_SUGGESTIONS, MEDICATIONS_SUGGESTIONS } from '../data/medicalSuggestions';
+import { MedicationSchedulePicker } from './MedicationSchedulePicker';
+import {
+  DIAGNOSES_SUGGESTIONS,
+  MEDICATIONS_SUGGESTIONS,
+  PSYCHIATRIC_DIAGNOSES_SUGGESTIONS,
+  PSYCHOTROPIC_MEDICATIONS_SUGGESTIONS,
+} from '../data/medicalSuggestions';
 import {
   User,
   Calendar,
@@ -21,6 +27,7 @@ import {
   Mail,
   Eye,
   EyeOff,
+  Info,
 } from 'lucide-react';
 
 interface QuestionnaireProps {
@@ -160,6 +167,7 @@ export const Questionnaire: React.FC<QuestionnaireProps> = ({
   // Diagnosis helper
   const addDiagnosis = () => {
     if (newDiagnosisName.trim()) {
+      const hasMed = newMedication.trim() && newMedication.trim() !== 'Без медикаментов';
       setUser((prev) => ({
         ...prev,
         chronicDiagnoses: [
@@ -169,6 +177,7 @@ export const Questionnaire: React.FC<QuestionnaireProps> = ({
             name: newDiagnosisName.trim(),
             medication: newMedication.trim() || 'Без медикаментов',
             sinceYear: newDiagnosisYear,
+            schedule: hasMed ? { morning: { enabled: true, time: '08:00' } } : undefined,
           },
         ],
       }));
@@ -182,6 +191,145 @@ export const Questionnaire: React.FC<QuestionnaireProps> = ({
       ...prev,
       chronicDiagnoses: prev.chronicDiagnoses.filter((d) => d.id !== id),
     }));
+  };
+
+  const updateDiagnosisSchedule = (id: string, updatedSchedule: MedicationSchedule) => {
+    setUser((prev) => ({
+      ...prev,
+      chronicDiagnoses: prev.chronicDiagnoses.map((d) =>
+        d.id === id ? { ...d, schedule: updatedSchedule } : d
+      ),
+    }));
+  };
+
+  // Psychiatric Diagnosis helpers
+  const addPsychiatricDiagnosis = (valToAdd?: string) => {
+    const nameToAdd = valToAdd || newPsychDiagnosis;
+    if (nameToAdd.trim()) {
+      setUser((prev) => {
+        const currentData = prev.psychology.psychiatricData || {
+          diagnoses: [],
+          symptoms: [],
+          medications: [],
+          psychiatricMedications: [],
+          specialistInfo: '',
+        };
+        if (currentData.diagnoses.includes(nameToAdd.trim())) return prev;
+        return {
+          ...prev,
+          psychology: {
+            ...prev.psychology,
+            psychiatricData: {
+              ...currentData,
+              diagnoses: [...currentData.diagnoses, nameToAdd.trim()],
+            },
+          },
+        };
+      });
+      setNewPsychDiagnosis('');
+    }
+  };
+
+  const removePsychiatricDiagnosis = (index: number) => {
+    setUser((prev) => {
+      if (!prev.psychology.psychiatricData) return prev;
+      return {
+        ...prev,
+        psychology: {
+          ...prev.psychology,
+          psychiatricData: {
+            ...prev.psychology.psychiatricData,
+            diagnoses: prev.psychology.psychiatricData.diagnoses.filter((_, i) => i !== index),
+          },
+        },
+      };
+    });
+  };
+
+  // Psychiatric Medication helpers
+  const addPsychiatricMedication = (valToAdd?: string) => {
+    const nameToAdd = valToAdd || newPsychMed;
+    if (nameToAdd.trim()) {
+      const newMedObj: PsychiatricMedication = {
+        id: `psych-med-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+        name: nameToAdd.trim(),
+        schedule: {
+          morning: { enabled: true, time: '08:00' },
+        },
+      };
+
+      setUser((prev) => {
+        const currentData = prev.psychology.psychiatricData || {
+          diagnoses: [],
+          symptoms: [],
+          medications: [],
+          psychiatricMedications: [],
+          specialistInfo: '',
+        };
+        const updatedList = [...(currentData.psychiatricMedications || []), newMedObj];
+        const updatedNames = currentData.medications.includes(nameToAdd.trim())
+          ? currentData.medications
+          : [...currentData.medications, nameToAdd.trim()];
+
+        return {
+          ...prev,
+          psychology: {
+            ...prev.psychology,
+            psychiatricData: {
+              ...currentData,
+              psychiatricMedications: updatedList,
+              medications: updatedNames,
+            },
+          },
+        };
+      });
+      setNewPsychMed('');
+    }
+  };
+
+  const removePsychiatricMedication = (id: string) => {
+    setUser((prev) => {
+      if (!prev.psychology.psychiatricData) return prev;
+      const currentList = prev.psychology.psychiatricData.psychiatricMedications || [];
+      const itemToRemove = currentList.find((m) => m.id === id);
+      const updatedList = currentList.filter((m) => m.id !== id);
+      const updatedNames = itemToRemove
+        ? prev.psychology.psychiatricData.medications.filter((n) => n !== itemToRemove.name)
+        : prev.psychology.psychiatricData.medications;
+
+      return {
+        ...prev,
+        psychology: {
+          ...prev.psychology,
+          psychiatricData: {
+            ...prev.psychology.psychiatricData,
+            psychiatricMedications: updatedList,
+            medications: updatedNames,
+          },
+        },
+      };
+    });
+  };
+
+  const updatePsychiatricMedicationSchedule = (id: string, updatedSchedule: MedicationSchedule) => {
+    setUser((prev) => {
+      if (!prev.psychology.psychiatricData) return prev;
+      const currentList = prev.psychology.psychiatricData.psychiatricMedications || [];
+      const updatedList = currentList.map((m) =>
+        m.id === id ? { ...m, schedule: updatedSchedule } : m
+      );
+
+      return {
+        ...prev,
+        psychology: {
+          ...prev.psychology,
+          psychiatricData: {
+            ...prev.psychology.psychiatricData,
+            psychiatricMedications: updatedList,
+          },
+        },
+      };
+    });
   };
 
   return (
@@ -306,7 +454,7 @@ export const Questionnaire: React.FC<QuestionnaireProps> = ({
                     min="100"
                     max="230"
                     required
-                    value={user.height}
+                    value={user.height || ''}
                     onChange={(e) => setUser({ ...user, height: Number(e.target.value) })}
                     className="w-full px-3.5 py-2.5 bg-gray-900 border border-gray-700 rounded-xl text-sm text-gray-100 focus:outline-none focus:border-emerald-500"
                   />
@@ -324,7 +472,7 @@ export const Questionnaire: React.FC<QuestionnaireProps> = ({
                     min="30"
                     max="200"
                     required
-                    value={user.weight}
+                    value={user.weight || ''}
                     onChange={(e) => setUser({ ...user, weight: Number(e.target.value) })}
                     className="w-full px-3.5 py-2.5 bg-gray-900 border border-gray-700 rounded-xl text-sm text-gray-100 focus:outline-none focus:border-emerald-500"
                   />
@@ -337,7 +485,9 @@ export const Questionnaire: React.FC<QuestionnaireProps> = ({
             <div className="bg-[#0F1115] p-3.5 rounded-xl border border-gray-800 flex items-center justify-between text-xs">
               <span className="text-gray-400 font-medium">Расчетный Индекс Массы Тела (ИМТ):</span>
               <span className="font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-lg">
-                {(user.weight / Math.pow(user.height / 100, 2)).toFixed(1)} кг/м²
+                {user.height > 0 && user.weight > 0
+                  ? `${(user.weight / Math.pow(user.height / 100, 2)).toFixed(1)} кг/м²`
+                  : '—'}
               </span>
             </div>
           </div>
@@ -498,24 +648,35 @@ export const Questionnaire: React.FC<QuestionnaireProps> = ({
               </div>
 
               {/* Diagnosis List */}
-              <div className="space-y-2 pt-2">
+              <div className="space-y-3 pt-2">
                 {user.chronicDiagnoses.map((d) => (
                   <div
                     key={d.id}
-                    className="flex items-center justify-between p-3 bg-[#0F1115] border border-gray-800 rounded-xl text-xs"
+                    className="p-3.5 bg-[#0F1115] border border-gray-800 rounded-xl text-xs space-y-2"
                   >
-                    <div>
-                      <span className="font-bold text-gray-100">{d.name}</span>
-                      <span className="text-gray-400 ml-2">({d.sinceYear} г.)</span>
-                      <p className="text-emerald-400 mt-0.5">Препарат: {d.medication}</p>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="font-bold text-gray-100">{d.name}</span>
+                        <span className="text-gray-400 ml-2">({d.sinceYear} г.)</span>
+                        <p className="text-emerald-400 font-medium mt-0.5">Препарат: {d.medication}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeDiagnosis(d.id)}
+                        className="text-gray-500 hover:text-rose-400 p-1 cursor-pointer transition-colors"
+                        title="Удалить запись"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => removeDiagnosis(d.id)}
-                      className="text-gray-500 hover:text-rose-400 p-1"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+
+                    {d.medication && d.medication !== 'Без медикаментов' && (
+                      <MedicationSchedulePicker
+                        schedule={d.schedule}
+                        onChange={(updatedSchedule) => updateDiagnosisSchedule(d.id, updatedSchedule)}
+                        label="Расписание приёма препарата:"
+                      />
+                    )}
                   </div>
                 ))}
               </div>
@@ -750,9 +911,15 @@ export const Questionnaire: React.FC<QuestionnaireProps> = ({
 
             {/* OPTIONAL PSYCHIATRIC BLOCK */}
             <div className="bg-[#0F1115] p-5 rounded-2xl border border-gray-800 space-y-4">
+              {/* DISCLAIMER BEFORE PSYCHIATRIC SECTION */}
+              <div className="bg-gray-900/80 p-3 rounded-xl border border-emerald-500/20 text-xs text-emerald-300/90 flex items-start gap-2.5">
+                <Info className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                <span>Уточняем только диагнозы, установленные врачом-психиатром</span>
+              </div>
+
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Brain className="w-4 h-4 text-gray-400" />
+                  <Brain className="w-4 h-4 text-emerald-400" />
                   <span className="text-xs font-bold text-gray-200">
                     Опционально: Психиатрический анамнез
                   </span>
@@ -769,10 +936,11 @@ export const Questionnaire: React.FC<QuestionnaireProps> = ({
                           hasPsychiatricHistory: e.target.checked,
                           psychiatricData: e.target.checked
                             ? user.psychology.psychiatricData || {
-                                diagnoses: ['Тревожно-депрессивное расстройство'],
-                                symptoms: ['Бессонница'],
-                                medications: ['Сертралин 50 мг'],
-                                specialistInfo: 'Д-р Васильев Н. А.',
+                                diagnoses: [],
+                                symptoms: [],
+                                medications: [],
+                                psychiatricMedications: [],
+                                specialistInfo: '',
                               }
                             : undefined,
                         },
@@ -785,57 +953,124 @@ export const Questionnaire: React.FC<QuestionnaireProps> = ({
               </div>
 
               {user.psychology.hasPsychiatricHistory && (
-                <div className="space-y-3 pt-2 text-xs border-t border-gray-800">
+                <div className="space-y-4 pt-2 text-xs border-t border-gray-800">
                   <p className="text-[11px] text-gray-400">
                     Эти данные будут видны только вам и врачу в печатном отчете.
                   </p>
 
+                  {/* 1. MULTI-SELECT DIAGNOSES CHIPS */}
                   <div>
-                    <label className="block text-[11px] font-medium text-gray-300 mb-1">
+                    <label className="block text-[11px] font-bold text-gray-300 mb-1.5">
                       Установленные диагнозы / Наблюдение
                     </label>
-                    <AutocompleteInput
-                      value={user.psychology.psychiatricData?.diagnoses.join(', ') || ''}
-                      onChange={(val) =>
-                        setUser({
-                          ...user,
-                          psychology: {
-                            ...user.psychology,
-                            psychiatricData: {
-                              ...user.psychology.psychiatricData!,
-                              diagnoses: val.split(',').map((s) => s.trim()),
-                            },
-                          },
-                        })
-                      }
-                      options={DIAGNOSES_SUGGESTIONS}
-                      placeholder="Например: ГТР, Депрессивный эпизод"
-                      className="w-full px-3 py-2 bg-gray-900 border border-gray-700 text-gray-100 rounded-lg placeholder-gray-500 focus:outline-none focus:border-emerald-500 text-xs"
-                    />
+                    <div className="flex gap-2 mb-2">
+                      <div className="flex-1">
+                        <AutocompleteInput
+                          value={newPsychDiagnosis}
+                          onChange={setNewPsychDiagnosis}
+                          options={PSYCHIATRIC_DIAGNOSES_SUGGESTIONS}
+                          placeholder="Например: ГТР, Депрессивный эпизод"
+                          className="w-full px-3 py-2 bg-gray-900 border border-gray-700 text-gray-100 rounded-xl placeholder-gray-500 focus:outline-none focus:border-emerald-500 text-xs"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => addPsychiatricDiagnosis()}
+                        className="px-3 py-2 bg-emerald-500 text-slate-950 font-bold rounded-xl text-xs hover:bg-emerald-400 flex items-center gap-1 cursor-pointer shrink-0"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Добавить</span>
+                      </button>
+                    </div>
+
+                    {/* Tag / Chip List */}
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      {user.psychology.psychiatricData?.diagnoses.map((diag, idx) => (
+                        <span
+                          key={idx}
+                          className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-xs font-semibold"
+                        >
+                          <span>{diag}</span>
+                          <button
+                            type="button"
+                            onClick={() => removePsychiatricDiagnosis(idx)}
+                            className="text-emerald-400 hover:text-emerald-100 cursor-pointer font-bold ml-1"
+                            title="Удалить"
+                          >
+                            ✕
+                          </button>
+                        </span>
+                      ))}
+                      {(!user.psychology.psychiatricData?.diagnoses ||
+                        user.psychology.psychiatricData.diagnoses.length === 0) && (
+                        <span className="text-[11px] text-gray-500 italic">
+                          Диагнозы не добавлены
+                        </span>
+                      )}
+                    </div>
                   </div>
 
+                  {/* 2. MULTI-SELECT PHARMACEUTICALS WITH SCHEDULE */}
                   <div>
-                    <label className="block text-[11px] font-medium text-gray-300 mb-1">
-                      Принимаемые фармакопрепараты
+                    <label className="block text-[11px] font-bold text-gray-300 mb-1.5">
+                      Принимаемые фармакопрепараты и расписание
                     </label>
-                    <AutocompleteInput
-                      value={user.psychology.psychiatricData?.medications.join(', ') || ''}
-                      onChange={(val) =>
-                        setUser({
-                          ...user,
-                          psychology: {
-                            ...user.psychology,
-                            psychiatricData: {
-                              ...user.psychology.psychiatricData!,
-                              medications: val.split(',').map((s) => s.trim()),
-                            },
-                          },
-                        })
-                      }
-                      options={MEDICATIONS_SUGGESTIONS}
-                      placeholder="Например: Сертралин 50 мг"
-                      className="w-full px-3 py-2 bg-gray-900 border border-gray-700 text-gray-100 rounded-lg placeholder-gray-500 focus:outline-none focus:border-emerald-500 text-xs"
-                    />
+                    <div className="flex gap-2 mb-3">
+                      <div className="flex-1">
+                        <AutocompleteInput
+                          value={newPsychMed}
+                          onChange={setNewPsychMed}
+                          options={PSYCHOTROPIC_MEDICATIONS_SUGGESTIONS}
+                          placeholder="Например: Сертралин 50 мг"
+                          className="w-full px-3 py-2 bg-gray-900 border border-gray-700 text-gray-100 rounded-xl placeholder-gray-500 focus:outline-none focus:border-emerald-500 text-xs"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => addPsychiatricMedication()}
+                        className="px-3 py-2 bg-emerald-500 text-slate-950 font-bold rounded-xl text-xs hover:bg-emerald-400 flex items-center gap-1 cursor-pointer shrink-0"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Добавить</span>
+                      </button>
+                    </div>
+
+                    {/* Medication List Cards */}
+                    <div className="space-y-3">
+                      {user.psychology.psychiatricData?.psychiatricMedications?.map((m) => (
+                        <div
+                          key={m.id}
+                          className="p-3.5 bg-gray-900/90 border border-gray-800 rounded-xl text-xs space-y-2"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-emerald-300 text-sm">
+                              {m.name}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => removePsychiatricMedication(m.id)}
+                              className="text-gray-500 hover:text-rose-400 p-1 cursor-pointer transition-colors"
+                              title="Удалить препарат"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+
+                          <MedicationSchedulePicker
+                            schedule={m.schedule}
+                            onChange={(updated) => updatePsychiatricMedicationSchedule(m.id, updated)}
+                            label="Расписание приёма препарата:"
+                          />
+                        </div>
+                      ))}
+
+                      {(!user.psychology.psychiatricData?.psychiatricMedications ||
+                        user.psychology.psychiatricData.psychiatricMedications.length === 0) && (
+                        <span className="text-[11px] text-gray-500 italic block">
+                          Препараты не добавлены
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}

@@ -67,6 +67,7 @@ export default function App() {
     return 'start';
   });
   const [dashboardTab, setDashboardTab] = useState<DashboardTab>('main');
+  const [authTab, setAuthTab] = useState<'login' | 'register'>('register');
 
   // Application Data States
   const [user, setUser] = useState<UserProfile>(() => {
@@ -217,12 +218,21 @@ export default function App() {
 
   // Handlers
   const handleAuthSuccess = (userData?: Partial<UserProfile>) => {
-    setUser((prev) => ({
-      ...prev,
-      ...userData,
-      isAuthenticated: true,
-    }));
-    setCurrentScreen('dashboard');
+    const isNewRegistration = userData?.isQuestionnaireCompleted === false;
+    setUser((prev) => {
+      const base = isNewRegistration ? emptyUserProfile : prev;
+      return {
+        ...base,
+        ...userData,
+        isAuthenticated: true,
+      };
+    });
+
+    if (isNewRegistration) {
+      setCurrentScreen('q1');
+    } else {
+      setCurrentScreen('dashboard');
+    }
   };
 
   const handleDemoLogin = () => {
@@ -236,6 +246,7 @@ export default function App() {
 
   const handleLogout = () => {
     setUser((prev) => ({ ...prev, isAuthenticated: false }));
+    setAuthTab('login');
     setCurrentScreen('auth');
   };
 
@@ -328,6 +339,7 @@ export default function App() {
         {/* GATE / AUTH SCREEN */}
         {currentScreen === 'auth' && (
           <AuthScreen
+            initialTab={authTab}
             onLoginSuccess={handleAuthSuccess}
             onDemoLogin={handleDemoLogin}
           />
@@ -336,9 +348,15 @@ export default function App() {
         {/* SCREEN 0: START HERO SCREEN */}
         {currentScreen === 'start' && (
           <StartScreen
-            onStartQuestionnaire={() => setCurrentScreen('q1')}
+            onStartQuestionnaire={() => {
+              setAuthTab('register');
+              setCurrentScreen('auth');
+            }}
             onGoToDashboard={() => setCurrentScreen('dashboard')}
-            onLoginClick={() => setCurrentScreen('auth')}
+            onLoginClick={() => {
+              setAuthTab('login');
+              setCurrentScreen('auth');
+            }}
             isAuthenticated={user.isAuthenticated}
           />
         )}

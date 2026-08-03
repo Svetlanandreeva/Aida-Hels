@@ -23,7 +23,8 @@ var SHEET_NAMES = {
   APPOINTMENTS: 'APPOINTMENTS',
   NOTIFICATIONS: 'NOTIFICATIONS',
   AI_INSIGHTS: 'AI_INSIGHTS',
-  AUDIT_LOG: 'AUDIT_LOG'
+  AUDIT_LOG: 'AUDIT_LOG',
+  EMAIL_VERIFICATIONS: 'EMAIL_VERIFICATIONS'
 };
 
 // Заголовки листов
@@ -37,7 +38,8 @@ var HEADERS = {
   APPOINTMENTS: ['appointment_id', 'user_id', 'doctor_name', 'specialization', 'appointment_datetime', 'clinic', 'notes', 'status', 'created_at', 'updated_at'],
   NOTIFICATIONS: ['notification_id', 'user_id', 'type', 'title', 'message', 'scheduled_at', 'status', 'related_entity_id', 'created_at'],
   AI_INSIGHTS: ['insight_id', 'user_id', 'insight_type', 'period_start', 'period_end', 'title', 'description', 'supporting_factors', 'confidence', 'created_at'],
-  AUDIT_LOG: ['log_id', 'user_id', 'action', 'entity_type', 'entity_id', 'timestamp', 'result', 'error_message']
+  AUDIT_LOG: ['log_id', 'user_id', 'action', 'entity_type', 'entity_id', 'timestamp', 'result', 'error_message'],
+  EMAIL_VERIFICATIONS: ['email', 'code', 'created_at', 'verified']
 };
 
 function doPost(e) {
@@ -124,6 +126,15 @@ function doPost(e) {
         break;
       case 'deleteUserAccount':
         result = handleDeleteUserAccount(userId);
+        break;
+      case 'sendVerificationCode':
+        result = handleSendVerificationCode(payload);
+        break;
+      case 'verifyEmailCode':
+        result = handleVerifyEmailCode(payload);
+        break;
+      case 'checkEmailVerified':
+        result = handleCheckEmailVerified(payload);
         break;
       default:
         return createJsonResponse(false, null, { code: 'UNKNOWN_ACTION', message: 'Неизвестное действие: ' + action });
@@ -610,4 +621,94 @@ function handleDeleteUserAccount(userId) {
   deletedCounts.AI_INSIGHTS = deleteRowsForUser(SHEET_NAMES.AI_INSIGHTS, 1, userId);
 
   return { deleted: true, userId: userId, deletedCounts: deletedCounts };
+}
+
+function handleSendVerificationCode(payload) {
+  var sheet = getSs().getSheetByName(SHEET_NAMES.EMAIL_VERIFICATIONS);
+  var email = (payload.email || '').toString().trim().toLowerCase();
+  if (!email) {
+    throw new Error('Email не указан');
+  }
+
+  // Сгенерировать случайный 6-значный код
+  var code = Math.floor(100000 + Math.random() * 900000).toString();
+  var now = new Date().toISOString();
+
+  var rows = findRowsByField(SHEET_NAMES.EMAIL_VERIFICATIONS, 0, email);
+  if (rows.length > 0) {
+    var rowIndex = rows[0]._rowIndex;
+    sheet.getRange(rowIndex, 2).setValue(code);
+    sheet.getRange(rowIndex, 3).setValue(now);
+    sheet.getRange(rowIndex, 4).setValue(false);
+  } else {
+    sheet.appendRow([email, code, now, false]);
+  }
+
+  // Отправка письма с кодом через MailApp
+  var emailSent = false;
+  var emailError = '';
+  try {
+    var subject = 'Код подтверждения регистрации — «Здоровье»';
+    var body = 'Здравствуйте!\n\n' +
+               'Ваш 6-значный код подтверждения для входа в медицинский профиль «Здоровье»:\n\n' +
+               '   ' + code + '\n\n' +
+               'Код действителен в течение 15 минут.\n' +
+               'Если вы не регистрировались в системе, просто проигнорируйте это письмо.';
+    MailApp.sendEmail(email, subject, body);
+    emailSent = true;
+  } catch (err) {
+    emailError = err.toString();
+  }
+
+  return {
+    sent: true,
+    email: email,
+    code: code,
+    emailSent: emailSent,
+    emailError: emailError
+  };
+}
+
+function handleVerifyEmailCode(payload) {
+  var sheet = getSs().getSheetByName(SHEET_NAMES.EMAIL_VERIFICATIONS);
+  var email = (payload.email || '').toString().trim().toLowerCase();
+  var code = (payload.code || '').toString().trim();
+
+  if (!email || !code) {
+    return { verified: false, message: 'Укажите email и 6-значный код' };
+  }
+
+  var rows = findRowsByField(SHEET_NAMES.EMAIL_VERIFICATIONS, 0, email);
+  if (rows.length === 0) {
+    return { verified: false, message: 'Код не найден. Запросите код повторно.' };
+  }
+
+  var row = rows[0];
+  var storedCode = String(row.code || '').trim();
+  if (storedCode !== code) {
+    return { verified: false, message: 'Неверный код подтверждения' };
+  }
+
+  // Проверка срока действия (15 минут)
+  var createdAt = new Date(row.created_at).getTime();
+  var now = new Date().getTime();
+  if (isNaN(createdAt) || (now - createdAt > 15 * 60 * 1000)) {
+    return { verified: false, message: 'Срок действия кода истёк (15 минут). Запросите новый код.' };
+  }
+
+  // Пометить как подтвержденный
+  var rowIndex = row._rowIndex;
+  sheet.getRange(rowIndex, 4).setValue(true);
+
+  return { verified: true, email: email };
+}
+
+function handleCheckEmailVerified(payload) {
+  var email = (payload.email || '').toString().trim().toLowerCase();
+  var rows = findRowsByField(SHEET_NAMES.EMAIL_VERIFICATIONS, 0, email);
+  if (rows.length > 0) {
+    var isVerified = rows[0].verified === true || String(rows[0].verified).toLowerCase() === 'true';
+    return { isVerified: isVerified, email: email };
+  }
+  return { isVerified: false, email: email };
 }

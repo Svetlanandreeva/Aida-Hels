@@ -71,6 +71,32 @@ export type DataMaturityLevel =
   | 'developing_picture' // 15-29 days: Развитие понятной картины
   | 'sufficient_data'; // 30+ days: Данных достаточно для персональной картины
 
+export interface MedicationScheduleSlot {
+  enabled: boolean;
+  time: string; // "HH:MM" e.g. "08:00"
+}
+
+export interface MedicationSchedule {
+  morning?: MedicationScheduleSlot;
+  afternoon?: MedicationScheduleSlot;
+  evening?: MedicationScheduleSlot;
+}
+
+export interface ChronicDiagnosisItem {
+  id: string;
+  name: string;
+  medication: string;
+  sinceYear: string;
+  schedule?: MedicationSchedule;
+}
+
+export interface PsychiatricMedication {
+  id: string;
+  name: string;
+  dosage?: string;
+  schedule?: MedicationSchedule;
+}
+
 export interface UserProfile {
   id?: string;
   isAuthenticated: boolean;
@@ -85,7 +111,7 @@ export interface UserProfile {
   bloodType: string;
   rhFactor: '+' | '-';
   allergies: string[];
-  chronicDiagnoses: Array<{ id: string; name: string; medication: string; sinceYear: string }>;
+  chronicDiagnoses: ChronicDiagnosisItem[];
   orviFrequency: string; // e.g., "1-2 раза в год"
   
   // Women Health
@@ -110,6 +136,7 @@ export interface UserProfile {
       diagnoses: string[];
       symptoms: string[];
       medications: string[];
+      psychiatricMedications?: PsychiatricMedication[];
       specialistInfo: string;
     };
   };
@@ -465,7 +492,11 @@ export type FoodRelation =
   | 'После еды'
   | 'Независимо от еды'
   | 'По схеме врача'
-  | 'Связь с едой не указана';
+  | 'Связь с едой не указана'
+  | 'Утренний приём'
+  | 'Дневной приём'
+  | 'Вечерний приём'
+  | 'Напоминание';
 
 export interface MedicationIntake {
   intake_id: string;

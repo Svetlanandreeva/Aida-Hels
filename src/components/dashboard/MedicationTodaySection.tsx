@@ -6,6 +6,8 @@ import {
   FoodRelation,
   Reminder,
   ScreenId,
+  UserProfile,
+  MedicationSchedule,
 } from '../../types';
 import {
   Pill,
@@ -32,89 +34,193 @@ import {
 } from 'lucide-react';
 
 interface MedicationTodaySectionProps {
+  user?: UserProfile;
   reminders: Reminder[];
   onNavigate: (screen: ScreenId) => void;
   onOpenAddMedication?: () => void;
   onStatusChanged?: (intake: MedicationIntake, message: string) => void;
 }
 
-// Initial mock intakes for today if no saved data
-const defaultInitialIntakes: MedicationIntake[] = [
-  {
-    intake_id: 'intake-101',
-    intake_schedule_id: 'rem-1',
-    user_id: 'user-1',
-    medication_id: 'med-1',
-    medication_name: 'L-тироксина',
-    dose: '50 мкг',
-    dose_unit: 'таблетка',
-    quantity: '1 таблетка',
-    scheduled_date: new Date().toISOString().split('T')[0],
-    scheduled_time: '07:30',
-    scheduled_datetime: `${new Date().toISOString().split('T')[0]}T07:30:00`,
-    status: 'Запланировано',
-    food_relation: 'За 30 минут до еды',
-    instructionsUrl: 'Принимать строго натощак за 30 минут до завтрака, запивая чистой водой.',
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    intake_id: 'intake-102',
-    intake_schedule_id: 'rem-2',
-    user_id: 'user-1',
-    medication_id: 'med-2',
-    medication_name: 'Витамин D3 (Детримакс / Вигантол)',
-    dose: '5000 МЕ',
-    dose_unit: 'капсула',
-    quantity: '1 капсула',
-    scheduled_date: new Date().toISOString().split('T')[0],
-    scheduled_time: '09:00',
-    scheduled_datetime: `${new Date().toISOString().split('T')[0]}T09:00:00`,
-    status: 'Запланировано',
-    food_relation: 'Во время еды',
-    instructionsUrl: 'Жирорастворимый витамин, лучше всего усваивается с завтраком (авокадо, яйца, масло).',
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    intake_id: 'intake-103',
-    intake_schedule_id: 'rem-3',
-    user_id: 'user-1',
-    medication_id: 'med-3',
-    medication_name: 'Омепразол',
-    dose: '20 мг',
-    dose_unit: 'капсула',
-    quantity: '1 капсула',
-    scheduled_date: new Date().toISOString().split('T')[0],
-    scheduled_time: '13:00',
-    scheduled_datetime: `${new Date().toISOString().split('T')[0]}T13:00:00`,
-    status: 'Запланировано',
-    food_relation: 'За 30 минут до еды',
-    instructionsUrl: 'Препарат для защиты слизистой желудка. Не разжевывать.',
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    intake_id: 'intake-104',
-    intake_schedule_id: 'rem-4',
-    user_id: 'user-1',
-    medication_id: 'med-4',
-    medication_name: 'Магний B6 Форте',
-    dose: '100 мг',
-    dose_unit: 'таблетка',
-    quantity: '2 таблетки',
-    scheduled_date: new Date().toISOString().split('T')[0],
-    scheduled_time: '21:00',
-    scheduled_datetime: `${new Date().toISOString().split('T')[0]}T21:00:00`,
-    status: 'Запланировано',
-    food_relation: 'После еды',
-    instructionsUrl: 'Поддержка нервной системы и нормализации глубокого сна.',
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-];
+// Build real user intakes for today from user profile and reminders
+function buildTodayIntakesFromUser(
+  user?: UserProfile,
+  reminders: Reminder[] = []
+): MedicationIntake[] {
+  const todayStr = new Date().toISOString().split('T')[0];
+  const list: MedicationIntake[] = [];
+
+  const processMedicationItem = (
+    medId: string,
+    medName: string,
+    doseText: string,
+    schedule?: MedicationSchedule
+  ) => {
+    if (!medName || medName === 'Без медикаментов') return;
+
+    // If schedule is missing or no slot enabled, default to morning 08:00
+    const effSchedule: MedicationSchedule =
+      schedule && (schedule.morning?.enabled || schedule.afternoon?.enabled || schedule.evening?.enabled)
+        ? schedule
+        : { morning: { enabled: true, time: '08:00' } };
+
+    if (effSchedule.morning?.enabled) {
+      const time = effSchedule.morning.time || '08:00';
+      list.push({
+        intake_id: `intake-${medId}-morning`,
+        intake_schedule_id: `sched-${medId}-m`,
+        user_id: user?.id || 'usr-1',
+        medication_id: medId,
+        medication_name: medName,
+        dose: doseText || '1 доза',
+        dose_unit: 'приём',
+        quantity: '1 приём',
+        scheduled_date: todayStr,
+        scheduled_time: time,
+        scheduled_datetime: `${todayStr}T${time}:00`,
+        status: 'Запланировано',
+        food_relation: 'Утренний приём',
+        instructionsUrl: 'Принимать строго по инструкции врача.',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+    }
+
+    if (effSchedule.afternoon?.enabled) {
+      const time = effSchedule.afternoon.time || '13:00';
+      list.push({
+        intake_id: `intake-${medId}-afternoon`,
+        intake_schedule_id: `sched-${medId}-a`,
+        user_id: user?.id || 'usr-1',
+        medication_id: medId,
+        medication_name: medName,
+        dose: doseText || '1 доза',
+        dose_unit: 'приём',
+        quantity: '1 приём',
+        scheduled_date: todayStr,
+        scheduled_time: time,
+        scheduled_datetime: `${todayStr}T${time}:00`,
+        status: 'Запланировано',
+        food_relation: 'Дневной приём',
+        instructionsUrl: 'Принимать строго по инструкции врача.',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+    }
+
+    if (effSchedule.evening?.enabled) {
+      const time = effSchedule.evening.time || '20:00';
+      list.push({
+        intake_id: `intake-${medId}-evening`,
+        intake_schedule_id: `sched-${medId}-e`,
+        user_id: user?.id || 'usr-1',
+        medication_id: medId,
+        medication_name: medName,
+        dose: doseText || '1 доза',
+        dose_unit: 'приём',
+        quantity: '1 приём',
+        scheduled_date: todayStr,
+        scheduled_time: time,
+        scheduled_datetime: `${todayStr}T${time}:00`,
+        status: 'Запланировано',
+        food_relation: 'Вечерний приём',
+        instructionsUrl: 'Принимать строго по инструкции врача.',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+    }
+  };
+
+  // 1. Process Physical Chronic Diagnoses Medications
+  if (user?.chronicDiagnoses) {
+    user.chronicDiagnoses.forEach((d) => {
+      if (d.medication && d.medication !== 'Без медикаментов') {
+        processMedicationItem(
+          `cd-${d.id}`,
+          d.medication,
+          d.name ? `Диагноз: ${d.name}` : 'По назначению',
+          d.schedule
+        );
+      }
+    });
+  }
+
+  // 2. Process Psychiatric Medications
+  if (user?.psychology?.psychiatricData) {
+    const psychData = user.psychology.psychiatricData;
+    if (psychData.psychiatricMedications && psychData.psychiatricMedications.length > 0) {
+      psychData.psychiatricMedications.forEach((pm) => {
+        processMedicationItem(
+          `pm-${pm.id}`,
+          pm.name,
+          pm.dosage || 'Психиатрический анамнез',
+          pm.schedule
+        );
+      });
+    } else if (psychData.medications && psychData.medications.length > 0) {
+      psychData.medications.forEach((medName, idx) => {
+        if (medName.trim()) {
+          processMedicationItem(
+            `pm-legacy-${idx}`,
+            medName.trim(),
+            'Психиатрический анамнез',
+            { morning: { enabled: true, time: '08:00' } }
+          );
+        }
+      });
+    }
+  }
+
+  // 3. Process Reminders (category: 'medication')
+  if (reminders && reminders.length > 0) {
+    reminders
+      .filter((r) => r.category === 'medication' && r.isEnabled !== false)
+      .forEach((r) => {
+        const time = r.time || '08:00';
+        list.push({
+          intake_id: `rem-intake-${r.id}`,
+          intake_schedule_id: r.id,
+          user_id: user?.id || 'usr-1',
+          medication_id: r.id,
+          medication_name: r.title,
+          dose: r.dosage || '1 доза',
+          dose_unit: 'приём',
+          quantity: '1 приём',
+          scheduled_date: todayStr,
+          scheduled_time: time,
+          scheduled_datetime: `${todayStr}T${time}:00`,
+          status: 'Запланировано',
+          food_relation: 'Напоминание',
+          instructionsUrl: r.notes || 'Напоминание из личного календаря.',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        });
+      });
+  }
+
+  // Sort list by scheduled_time asc
+  list.sort((a, b) => a.scheduled_time.localeCompare(b.scheduled_time));
+
+  // 4. Registration day time filter
+  const regIsoStr = user?.registrationDate;
+  if (regIsoStr) {
+    const regDate = new Date(regIsoStr);
+    const regDateStr = regDate.toISOString().split('T')[0];
+
+    if (regDateStr === todayStr) {
+      const regMinutes = regDate.getHours() * 60 + regDate.getMinutes();
+      return list.filter((item) => {
+        const [h, m] = item.scheduled_time.split(':').map(Number);
+        const itemMinutes = (h || 0) * 60 + (m || 0);
+        return itemMinutes >= regMinutes;
+      });
+    }
+  }
+
+  return list;
+}
 
 export const MedicationTodaySection: React.FC<MedicationTodaySectionProps> = ({
+  user,
   reminders,
   onNavigate,
   onOpenAddMedication,
@@ -124,14 +230,50 @@ export const MedicationTodaySection: React.FC<MedicationTodaySectionProps> = ({
 
   // Load or sync intakes
   const [intakes, setIntakes] = useState<MedicationIntake[]>(() => {
+    const baseList = buildTodayIntakesFromUser(user, reminders);
     try {
-      const saved = localStorage.getItem(`medication_intakes_${todayStr}`);
-      if (saved) return JSON.parse(saved);
+      const savedRaw = localStorage.getItem(`medication_intakes_${todayStr}`);
+      if (savedRaw) {
+        const savedList: MedicationIntake[] = JSON.parse(savedRaw);
+        const savedMap = new Map<string, MedicationIntake>(savedList.map((i) => [i.intake_id, i]));
+        return baseList.map((bi) => {
+          const saved = savedMap.get(bi.intake_id);
+          if (saved) {
+            return {
+              ...bi,
+              status: saved.status,
+              taken_at: saved.taken_at,
+              comment: saved.comment,
+            };
+          }
+          return bi;
+        });
+      }
     } catch (e) {
       console.error('Error loading medication intakes', e);
     }
-    return defaultInitialIntakes;
+    return baseList;
   });
+
+  // Keep intakes synced with user profile and reminders updates
+  useEffect(() => {
+    const baseList = buildTodayIntakesFromUser(user, reminders);
+    setIntakes((prev) => {
+      const prevMap = new Map<string, MedicationIntake>(prev.map((i) => [i.intake_id, i]));
+      return baseList.map((bi) => {
+        const existing = prevMap.get(bi.intake_id);
+        if (existing) {
+          return {
+            ...bi,
+            status: existing.status,
+            taken_at: existing.taken_at,
+            comment: existing.comment,
+          };
+        }
+        return bi;
+      });
+    });
+  }, [user, reminders, todayStr]);
 
   const [audits, setAudits] = useState<MedicationIntakeAudit[]>(() => {
     try {
