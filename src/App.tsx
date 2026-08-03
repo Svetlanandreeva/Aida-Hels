@@ -101,29 +101,6 @@ export default function App() {
     localStorage.setItem('app_user_profile', JSON.stringify(user));
   }, [user]);
 
-  // Biometric Protection & App Lock States (disabled by default; PIN must be set explicitly)
-  const [biometricsEnabled, setBiometricsEnabled] = useState<boolean>(() => {
-    const saved = localStorage.getItem('app_biometrics_enabled');
-    return saved !== null ? JSON.parse(saved) : false;
-  });
-  const [userPin, setUserPin] = useState<string>(() => {
-    return localStorage.getItem('app_pin_code') || '';
-  });
-  const [isAppLocked, setIsAppLocked] = useState<boolean>(() => {
-    const savedBio = localStorage.getItem('app_biometrics_enabled');
-    const bioEnabled = savedBio !== null ? JSON.parse(savedBio) : false;
-    const savedUser = localStorage.getItem('app_user_profile');
-    if (savedUser) {
-      try {
-        const parsed = JSON.parse(savedUser);
-        return bioEnabled && !!parsed.isAuthenticated;
-      } catch {
-        return false;
-      }
-    }
-    return false;
-  });
-
   const [bodySystems, setBodySystems] = useState<BodySystem[]>(() => {
     if (isDemoUser(user)) return initialBodySystems;
     const saved = localStorage.getItem('app_body_systems');
@@ -186,6 +163,15 @@ export default function App() {
     if (saved) { try { return JSON.parse(saved); } catch {} }
     return emptyWeeklyReport;
   });
+
+  // Security / Lock States
+  const [biometricsEnabled, setBiometricsEnabled] = useState<boolean>(() => {
+    return localStorage.getItem('app_biometrics_enabled') === 'true';
+  });
+  const [userPin, setUserPin] = useState<string>(() => {
+    return localStorage.getItem('app_pin_code') || '';
+  });
+  const [isAppLocked, setIsAppLocked] = useState<boolean>(false);
 
   // Save non-demo user data changes to localStorage
   useEffect(() => {

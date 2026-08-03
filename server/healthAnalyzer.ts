@@ -422,60 +422,90 @@ export function generateFallbackHealthAnalysis(data: any): StructuredHealthAnaly
     {
       id: 'endocrine',
       name: 'Эндокринная система',
-      status: allDeviations.some(d => d.title.toLowerCase().includes('ттг')) ? 'attention' : 'norm',
-      statusLabel: allDeviations.some(d => d.title.toLowerCase().includes('ттг')) ? 'Требует внимания' : 'Баланс гормонов',
-      score: allDeviations.some(d => d.title.toLowerCase().includes('ттг')) ? 72 : 89,
+      status: allDeviations.some(d => d.title.toLowerCase().includes('ттг'))
+        ? 'attention'
+        : hasDocuments
+        ? 'norm'
+        : 'insufficient_data',
+      statusLabel: allDeviations.some(d => d.title.toLowerCase().includes('ттг'))
+        ? 'Требует внимания'
+        : hasDocuments
+        ? 'Баланс гормонов'
+        : 'Недостаточно данных',
+      score: allDeviations.some(d => d.title.toLowerCase().includes('ттг'))
+        ? 72
+        : hasDocuments
+        ? 89
+        : 0,
       briefComment: allDeviations.some(d => d.title.toLowerCase().includes('ттг'))
         ? 'Отмечаются изменения уровня тиреотропного гормона. Рекомендуется плановая консультация эндокринолога.'
-        : 'Показатели щитовидной железы и глюкозы крови находятся в физиологической норме.',
+        : hasDocuments
+        ? 'Показатели щитовидной железы и глюкозы крови находятся в физиологической норме.'
+        : 'Нет данных лабораторных анализов гормонов щитовидной железы или глюкозы.',
       influencingMarkers: ['ТТГ', 'Глюкоза натощак'],
-      trend: 'stable',
-      normItems: ['Глюкоза натощак в норме'],
+      trend: hasDocuments ? 'stable' : 'unknown',
+      normItems: hasDocuments ? ['Глюкоза натощак в норме'] : [],
       attentionItems: allDeviations.filter(d => d.title.toLowerCase().includes('ттг')).map(d => d.title),
-      nextAction: 'Контроль ТТГ и Т4 свободного через 1 месяц',
-      hasSufficientData: true,
+      nextAction: 'Контроль ТТГ и Т4 свободного при плановом обследовании',
+      hasSufficientData: hasDocuments || allDeviations.some(d => d.title.toLowerCase().includes('ттг')),
     },
     {
       id: 'immune',
       name: 'Иммунная система',
-      status: allDeviations.some(d => d.title.toLowerCase().includes('витамин d')) ? 'slight_deviation' : 'norm',
-      statusLabel: allDeviations.some(d => d.title.toLowerCase().includes('витамин d')) ? 'Снижен D3' : 'Оптимальный иммунитет',
-      score: allDeviations.some(d => d.title.toLowerCase().includes('витамин d')) ? 75 : 90,
+      status: allDeviations.some(d => d.title.toLowerCase().includes('витамин d'))
+        ? 'slight_deviation'
+        : hasDocuments
+        ? 'norm'
+        : 'insufficient_data',
+      statusLabel: allDeviations.some(d => d.title.toLowerCase().includes('витамин d'))
+        ? 'Снижен D3'
+        : hasDocuments
+        ? 'Оптимальный иммунитет'
+        : 'Недостаточно данных',
+      score: allDeviations.some(d => d.title.toLowerCase().includes('витамин d'))
+        ? 75
+        : hasDocuments
+        ? 90
+        : 0,
       briefComment: allDeviations.some(d => d.title.toLowerCase().includes('витамин d'))
         ? 'Лейкоциты в норме, но выявлен дефицит Витамина D3, влияющего на сопротивляемость инфекциям.'
-        : 'Лейкоцитарная формула и уровень защитных антител в норме.',
+        : hasDocuments
+        ? 'Лейкоцитарная формула и уровень защитных антител в норме.'
+        : 'Нет данных общего анализа крови или маркеров иммунитета.',
       influencingMarkers: ['Витамин D (25-OH)', 'Лейкоциты', 'С-реактивный белок'],
-      trend: 'stable',
-      normItems: ['Лейкоциты крови в норме', 'С-реактивный белок без воспалений'],
+      trend: hasDocuments ? 'stable' : 'unknown',
+      normItems: hasDocuments ? ['Лейкоциты крови в норме', 'С-реактивный белок без воспалений'] : [],
       attentionItems: allDeviations.filter(d => d.title.toLowerCase().includes('витамин d')).map(d => d.title),
       nextAction: 'Восполнение уровня Витамина D3 по рекомендации врача',
-      hasSufficientData: true,
+      hasSufficientData: hasDocuments || allDeviations.some(d => d.title.toLowerCase().includes('витамин d')),
     },
     {
       id: 'urinary',
       name: 'Мочевыделительная система',
-      status: 'insufficient_data',
-      statusLabel: 'Недостаточно данных',
-      score: 80,
-      briefComment: 'Недостаточно данных для объективной оценки. Рекомендуется сдать общий анализ мочи и креатинин.',
+      status: hasDocuments ? 'norm' : 'insufficient_data',
+      statusLabel: hasDocuments ? 'Норма' : 'Недостаточно данных',
+      score: hasDocuments ? 85 : 0,
+      briefComment: hasDocuments
+        ? 'Показатели креатинина и мочевины в норме.'
+        : 'Недостаточно данных для объективной оценки. Рекомендуется сдать общий анализ мочи и креатинин.',
       influencingMarkers: ['Креатинин', 'Мочевина'],
-      trend: 'unknown',
-      normItems: [],
+      trend: hasDocuments ? 'stable' : 'unknown',
+      normItems: hasDocuments ? ['Функция почек сохранена'] : [],
       attentionItems: [],
       nextAction: 'Сдать общий анализ мочи и креатинин при плановом обследовании',
-      hasSufficientData: false,
+      hasSufficientData: hasDocuments,
     },
     {
       id: 'reproductive',
       name: 'Репродуктивная система',
       status: user?.womenHealth ? 'norm' : 'insufficient_data',
       statusLabel: user?.womenHealth ? 'Норма' : 'Недостаточно данных',
-      score: user?.womenHealth ? 86 : 80,
+      score: user?.womenHealth ? 86 : 0,
       briefComment: user?.womenHealth
         ? `Цикл регулярный (${user.womenHealth.cycleLength || 28} дней). Жалоб на острые боли нет.`
         : 'Данные анкеты не заполнены. Рекомендуется плановый осмотр у профильного специалиста 1 раз в год.',
       influencingMarkers: ['Длина цикла', 'Регулярность'],
-      trend: 'stable',
+      trend: user?.womenHealth ? 'stable' : 'unknown',
       normItems: user?.womenHealth ? ['Регулярность цикла'] : [],
       attentionItems: [],
       nextAction: 'Профилактический ежегодный осмотр',
@@ -484,64 +514,108 @@ export function generateFallbackHealthAnalysis(data: any): StructuredHealthAnaly
     {
       id: 'musculoskeletal',
       name: 'Опорно-двигательный аппарат',
-      status: 'norm',
-      statusLabel: 'Норма',
-      score: 84,
-      briefComment: 'Суставы и позвоночник без выраженных ограничений подвижности. Рекомендуется ежедневная разминка.',
+      status: hasDocuments ? 'norm' : 'insufficient_data',
+      statusLabel: hasDocuments ? 'Норма' : 'Недостаточно данных',
+      score: hasDocuments ? 84 : 0,
+      briefComment: hasDocuments
+        ? 'Суставы и позвоночник без выраженных ограничений подвижности. Рекомендуется ежедневная разминка.'
+        : 'Нет данных обследования суставов, позвоночника и показателей кальция.',
       influencingMarkers: ['Физическая активность', 'Кальций общий'],
-      trend: 'stable',
-      normItems: ['Умеренная бытовая активность'],
+      trend: hasDocuments ? 'stable' : 'unknown',
+      normItems: hasDocuments ? ['Умеренная бытовая активность'] : [],
       attentionItems: [],
       nextAction: 'Регулярная утренняя гимнастика и 8000 шагов в день',
-      hasSufficientData: true,
+      hasSufficientData: hasDocuments,
     },
     {
       id: 'hematopoietic',
       name: 'Кроветворная система (Кровь)',
-      status: allDeviations.some(d => d.title.toLowerCase().includes('ферритин') || d.title.toLowerCase().includes('гемоглобин')) ? 'attention' : 'norm',
-      statusLabel: allDeviations.some(d => d.title.toLowerCase().includes('ферритин')) ? 'Внимание к депо железа' : 'Норма',
-      score: allDeviations.some(d => d.title.toLowerCase().includes('ферритин')) ? 70 : 92,
+      status: allDeviations.some(d => d.title.toLowerCase().includes('ферритин') || d.title.toLowerCase().includes('гемоглобин'))
+        ? 'attention'
+        : hasDocuments
+        ? 'norm'
+        : 'insufficient_data',
+      statusLabel: allDeviations.some(d => d.title.toLowerCase().includes('ферритин'))
+        ? 'Внимание к депо железа'
+        : hasDocuments
+        ? 'Норма'
+        : 'Недостаточно данных',
+      score: allDeviations.some(d => d.title.toLowerCase().includes('ферритин'))
+        ? 70
+        : hasDocuments
+        ? 92
+        : 0,
       briefComment: allDeviations.some(d => d.title.toLowerCase().includes('ферритин'))
         ? 'Отмечаются признаки снижения уровня депонированного железа (ферритина). Гемоглобин сохранён.'
-        : 'Эритроциты, гемоглобин и тромбоциты в норме.',
+        : hasDocuments
+        ? 'Эритроциты, гемоглобин и тромбоциты в норме.'
+        : 'Нет данных общего анализа крови или уровня ферритина.',
       influencingMarkers: ['Ферритин', 'Гемоглобин', 'Эритроциты'],
-      trend: 'stable',
-      normItems: ['Гемоглобин в норме'],
+      trend: hasDocuments ? 'stable' : 'unknown',
+      normItems: hasDocuments ? ['Гемоглобин в норме'] : [],
       attentionItems: allDeviations.filter(d => d.title.toLowerCase().includes('ферритин')).map(d => d.title),
       nextAction: 'Контроль показателя ферритина через 2 месяца',
-      hasSufficientData: true,
+      hasSufficientData: hasDocuments || allDeviations.some(d => d.title.toLowerCase().includes('ферритин') || d.title.toLowerCase().includes('гемоглобин')),
     },
     {
       id: 'psychoemotional',
       name: 'Психоэмоциональная сфера',
-      status: (user?.psychology?.stressLevel || 0) > 5 ? 'attention' : 'norm',
-      statusLabel: (user?.psychology?.stressLevel || 0) > 5 ? 'Умеренный стресс' : 'Баланс',
-      score: (user?.psychology?.stressLevel || 0) > 5 ? 72 : 87,
+      status: (user?.psychology?.stressLevel || 0) > 5
+        ? 'attention'
+        : (hasPsychology || Boolean(diaryEntries.length))
+        ? 'norm'
+        : 'insufficient_data',
+      statusLabel: (user?.psychology?.stressLevel || 0) > 5
+        ? 'Умеренный стресс'
+        : (hasPsychology || Boolean(diaryEntries.length))
+        ? 'Баланс'
+        : 'Недостаточно данных',
+      score: (user?.psychology?.stressLevel || 0) > 5
+        ? 72
+        : (hasPsychology || Boolean(diaryEntries.length))
+        ? 87
+        : 0,
       briefComment: (user?.psychology?.stressLevel || 0) > 5
-        ? 'Наблюдается психоэмоциональная нагрузка. Рекомендуется использование дненика настроения и дыхательных практик.'
-        : 'Эмоциональный фон устойчивый, хорошее настроение.',
+        ? 'Наблюдается психоэмоциональная нагрузка. Рекомендуется использование дневника настроения и дыхательных практик.'
+        : (hasPsychology || Boolean(diaryEntries.length))
+        ? 'Эмоциональный фон по данным анкеты устойчивый.'
+        : 'Заполните дневник ментального здоровья для оценки эмоционального фона.',
       influencingMarkers: ['Дневник эмоций', 'Шкала стресса', 'Качество сна'],
-      trend: 'stable',
-      normItems: ['Эмоциональный контакт с окружающими'],
+      trend: (hasPsychology || Boolean(diaryEntries.length)) ? 'stable' : 'unknown',
+      normItems: (hasPsychology || Boolean(diaryEntries.length)) ? ['Эмоциональный контакт с окружающими'] : [],
       attentionItems: (user?.psychology?.stressLevel || 0) > 5 ? ['Повышенный дневной стресс'] : [],
       nextAction: 'Ведение дневника ментального состояния',
-      hasSufficientData: true,
+      hasSufficientData: hasPsychology || Boolean(diaryEntries.length),
     },
     {
       id: 'metabolic',
       name: 'Обмен веществ (Метаболизм)',
-      status: allDeviations.length > 0 ? 'slight_deviation' : 'norm',
-      statusLabel: allDeviations.length > 0 ? 'Есть отклонения' : 'Оптимальный',
-      score: allDeviations.length > 0 ? 76 : 91,
+      status: allDeviations.length > 0
+        ? 'slight_deviation'
+        : hasDocuments
+        ? 'norm'
+        : 'insufficient_data',
+      statusLabel: allDeviations.length > 0
+        ? 'Есть отклонения'
+        : hasDocuments
+        ? 'Оптимальный'
+        : 'Недостаточно данных',
+      score: allDeviations.length > 0
+        ? 76
+        : hasDocuments
+        ? 91
+        : 0,
       briefComment: allDeviations.length > 0
         ? `Выявлено ${allDeviations.length} отклонений в лабораторных маркерах метаболизма.`
-        : 'Базовые обменные процессы и индекс массы тела находятся в норме.',
+        : hasDocuments
+        ? 'Базовые обменные процессы и индекс массы тела находятся в норме.'
+        : 'Нет данных лабораторных исследований обмена веществ (липиды, глюкоза).',
       influencingMarkers: ['ИМТ', 'Холестерин', 'Витамин D'],
-      trend: 'stable',
-      normItems: ['Индекс массы тела в здоровой зоне'],
+      trend: hasDocuments ? 'stable' : 'unknown',
+      normItems: hasDocuments ? ['Индекс массы тела в здоровой зоне'] : [],
       attentionItems: allDeviations.map(d => d.title),
       nextAction: 'Коррекция рациона и контроль активности',
-      hasSufficientData: true,
+      hasSufficientData: hasDocuments || allDeviations.length > 0,
     },
   ];
 
