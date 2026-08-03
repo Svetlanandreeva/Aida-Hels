@@ -137,13 +137,14 @@ export const PressureDiary: React.FC<PressureDiaryProps> = ({
   const stats = useMemo(() => {
     if (filteredEntries.length === 0) {
       return {
-        avgSystolic: 120,
-        avgDiastolic: 80,
-        avgPulse: 70,
-        avgPulsePressure: 40,
-        normalPercent: 100,
-        minSystolic: 115,
-        maxSystolic: 125,
+        hasData: false,
+        avgSystolic: 0,
+        avgDiastolic: 0,
+        avgPulse: 0,
+        avgPulsePressure: 0,
+        normalPercent: 0,
+        minSystolic: 0,
+        maxSystolic: 0,
       };
     }
 
@@ -163,6 +164,7 @@ export const PressureDiary: React.FC<PressureDiaryProps> = ({
     const sysValues = filteredEntries.map((e) => e.systolic);
 
     return {
+      hasData: true,
       avgSystolic: avgSys,
       avgDiastolic: avgDia,
       avgPulse: avgPul,
@@ -332,10 +334,14 @@ export const PressureDiary: React.FC<PressureDiaryProps> = ({
             <Heart className="w-4 h-4 text-[#34F5A4]" />
           </div>
           <div className="text-lg sm:text-2xl font-black text-white">
-            {stats.avgSystolic} <span className="text-gray-400 text-sm font-normal">/ {stats.avgDiastolic}</span>
+            {stats.hasData ? (
+              <>{stats.avgSystolic} <span className="text-gray-400 text-sm font-normal">/ {stats.avgDiastolic}</span></>
+            ) : (
+              <span className="text-gray-500">— / —</span>
+            )}
           </div>
-          <div className={`text-[10px] sm:text-xs font-semibold px-2 py-0.5 rounded-md inline-block ${currentCategory.bgColor} ${currentCategory.color} border ${currentCategory.borderColor}`}>
-            {currentCategory.label}
+          <div className={`text-[10px] sm:text-xs font-semibold px-2 py-0.5 rounded-md inline-block ${stats.hasData ? `${currentCategory.bgColor} ${currentCategory.color} border ${currentCategory.borderColor}` : 'bg-white/5 text-gray-400 border border-white/10'}`}>
+            {stats.hasData ? currentCategory.label : 'Нет данных'}
           </div>
         </div>
 
@@ -346,10 +352,10 @@ export const PressureDiary: React.FC<PressureDiaryProps> = ({
             <Activity className="w-4 h-4 text-amber-400" />
           </div>
           <div className="text-lg sm:text-2xl font-black text-amber-400">
-            {stats.avgPulse} <span className="text-gray-400 text-xs font-normal">уд/мин</span>
+            {stats.hasData ? `${stats.avgPulse} уд/мин` : <span className="text-gray-500">—</span>}
           </div>
           <p className="text-[10px] sm:text-xs text-gray-400">
-            {stats.avgPulse >= 60 && stats.avgPulse <= 80 ? 'Нормокардия в покое' : 'Требует наблюдения'}
+            {stats.hasData ? (stats.avgPulse >= 60 && stats.avgPulse <= 80 ? 'Нормокардия в покое' : 'Требует наблюдения') : 'Нет данных'}
           </p>
         </div>
 
@@ -360,10 +366,10 @@ export const PressureDiary: React.FC<PressureDiaryProps> = ({
             <TrendingUp className="w-4 h-4 text-sky-400" />
           </div>
           <div className="text-lg sm:text-2xl font-black text-sky-400">
-            {stats.avgPulsePressure} <span className="text-gray-400 text-xs font-normal">мм рт.ст.</span>
+            {stats.hasData ? `${stats.avgPulsePressure} мм рт.ст.` : <span className="text-gray-500">—</span>}
           </div>
           <p className="text-[10px] sm:text-xs text-emerald-400">
-            {stats.avgPulsePressure >= 30 && stats.avgPulsePressure <= 50 ? 'Целевой размах (30-50)' : 'Обратите внимание'}
+            {stats.hasData ? (stats.avgPulsePressure >= 30 && stats.avgPulsePressure <= 50 ? 'Целевой размах (30-50)' : 'Обратите внимание') : 'Нет данных'}
           </p>
         </div>
 
@@ -374,7 +380,7 @@ export const PressureDiary: React.FC<PressureDiaryProps> = ({
             <CheckCircle2 className="w-4 h-4 text-emerald-400" />
           </div>
           <div className="text-lg sm:text-2xl font-black text-emerald-400">
-            {stats.normalPercent}%
+            {stats.hasData ? `${stats.normalPercent}%` : <span className="text-gray-500">—</span>}
           </div>
           <p className="text-[10px] sm:text-xs text-gray-400">
             {filteredEntries.length} замеров за {timeframe} дней

@@ -92,15 +92,15 @@ export function buildUserContextSummary(context: UserChatContext): string {
   const avgSys7 =
     bp7.length > 0
       ? Math.round(bp7.reduce((acc, p) => acc + (p.systolic || 120), 0) / bp7.length)
-      : 120;
+      : 'нет данных';
   const avgDia7 =
     bp7.length > 0
       ? Math.round(bp7.reduce((acc, p) => acc + (p.diastolic || 80), 0) / bp7.length)
-      : 78;
+      : 'нет данных';
   const avgPulse7 =
     bp7.length > 0
       ? Math.round(bp7.reduce((acc, p) => acc + (p.pulse || 70), 0) / bp7.length)
-      : 68;
+      : 'нет данных';
 
   const recentDiary = diaryEntries.slice(0, 5).map((d) => ({
     date: d.date,
@@ -129,11 +129,17 @@ export function buildUserContextSummary(context: UserChatContext): string {
     note: p.note || '',
   }));
 
+  const hasAnyRealData = logs7.length > 0 || bp7.length > 0 || documents.length > 0 || diaryEntries.length > 0;
+
   return JSON.stringify(
     {
-      fullName: user.fullName,
+      fullName: user.fullName || 'Пользователь',
       registrationDate,
       isQuestionnaireCompleted,
+      hasAnyRealData,
+      noDataNotice: hasAnyRealData
+        ? undefined
+        : 'У ПОЛЬЗОВАТЕЛЯ НЕТ НИ ОДНОГО ЗАМЕРА ДАВЛЕНИЯ, ЗАПИСИ В ДНЕВНИКЕ ИЛИ ЗАГРУЖЕННОГО АНАЛИЗА. Не выдумывай и не говори про фиктивные показатели!',
       questionnaireHistoryCount: user.questionnaireHistory?.length || 0,
       psychologyState: user.psychology || {},
       dynamics7Days: {
@@ -165,7 +171,6 @@ export function generateSmartHealthAdvice(message: string, context: UserChatCont
   const q = message.toLowerCase();
   const { user, documents = [], dailyLogs = [], diaryEntries = [], pressureLogs = [] } = context;
 
-  const name = user?.fullName ? user.fullName.split(' ')[0] : 'Анна';
   const totalLogs = (dailyLogs?.length || 0) + (diaryEntries?.length || 0) + (pressureLogs?.length || 0);
 
   // Urgent Emergency Check (Chest pain, severe dyspnea, extreme BP > 180)
@@ -182,9 +187,13 @@ export function generateSmartHealthAdvice(message: string, context: UserChatCont
     return `Мне важно сказать это прямо: такие симптомы могут требовать срочной медицинской помощи. Пожалуйста, не оставайся одна и обратись в экстренную службу 112 или к человеку рядом. Сейчас важнее всего твоя безопасность и осмотр врача.`;
   }
 
-  // Case 1: Minimal data
+  // Case 1: Minimal / Empty data
+  if (totalLogs === 0 && documents.length === 0) {
+    return `Пока в твоем профиле нет сохраненных замеров давления, дневниковых записей или результатов анализов. Чтобы я могла проводить точный анализ и давать персональные выводы, внеси первые данные через чек-ин или добавь исследование в профиль 🌿`;
+  }
+
   if (totalLogs < 2 && !user?.isQuestionnaireCompleted) {
-    return `Я пока не могу уверенно увидеть динамику: в дневнике есть только одна свежая запись. В ней стресс высокий, а энергии мало, поэтому похоже, что день был непростым. Скажи только две вещи: как ты спала последние несколько ночей и сохраняется ли сейчас напряжение? Этого будет достаточно для первого вывода.`;
+    return `Я пока не могу уверенно увидеть динамику: в дневнике пока мало записей. Скажи только две вещи: как ты спала последние несколько ночей и сохраняется ли сейчас напряжение? Этого будет достаточно для первого вывода.`;
   }
 
   // Case 2: Pressure & Pulse query ("давление", "пульс", "гипертони", "сердце", "замер")
@@ -195,16 +204,20 @@ export function generateSmartHealthAdvice(message: string, context: UserChatCont
     q.includes('сердц') ||
     q.includes('замер')
   ) {
-    const recentBp = pressureLogs.length > 0 ? pressureLogs[pressureLogs.length - 1] : null;
-    const sys = recentBp ? recentBp.systolic : 122;
-    const dia = recentBp ? recentBp.diastolic : 78;
-    const pulse = recentBp ? recentBp.pulse : 69;
-
-    if (sys >= 135 || dia >= 88) {
-      return `Похоже, сегодня организм немного перегружен. Давление вечером было выше твоего обычного диапазона, а сон последние две ночи был короче. Такое может происходить после стресса, усталости или кофе, но по одному дню точную причину определить нельзя. Сегодня лучше отдохнуть, повторить измерение в спокойном состоянии и не менять лекарства самостоятельно. Если давление останется повышенным несколько дней, покажи дневник терапевту.`;
+    if (pressureLogs.length === 0) {
+      return `В твоем профиле пока нет зафиксированных замеров артериального давления или пульса. Внеси первый замер в разделе «Дневник давления», и я смогу отслеживать динамику и давать персональные наблюдения 🌿`;
     }
 
-    return `Хорошая новость: по имеющимся записям артериальное давление остаётся в пределах целевой нормы. Средние показатели за последние дни составляют около ${sys}/${dia} мм рт.ст. при пульсе около ${pulse} ударов в минуту. Это свидетельствует о стабильной работе сердечно-сосудистой системы и хорошем восстановлении. Постарайся сохранять текущий питьевой режим и привычный график отдыха. Я продолжу аккуратно фиксировать твои измерения 🌿`;
+    const recentBp = pressureLogs[pressureLogs.length - 1];
+    const sys = recentBp.systolic;
+    const dia = recentBp.diastolic;
+    const pulse = recentBp.pulse;
+
+    if (sys >= 135 || dia >= 88) {
+      return `Похоже, сегодня организм немного перегружен. Последний замер давления (${sys}/${dia}) выше твоего целевого диапазона. Такое может происходить после стресса, усталости или кофе. Сегодня лучше отдохнуть, повторить измерение в спокойном состоянии и не менять лекарства самостоятельно. Если давление останется повышенным несколько дней, покажи дневник терапевту.`;
+    }
+
+    return `Хорошая новость: по имеющимся записям артериальное давление остаётся в пределах целевой нормы (последний замер ${sys}/${dia} мм рт.ст., пульс ${pulse} уд/мин). Постарайся сохранять текущий питьевой режим и привычный график отдыха. Я продолжу аккуратно фиксировать твои измерения 🌿`;
   }
 
   // Case 3: Mental Health / Mood / Stress / Anxiety query ("как моё ментальное состояние", "тревога", "стресс", "настроение")

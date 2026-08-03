@@ -50,7 +50,7 @@ export const Navigation: React.FC<NavigationProps> = ({
     'pressure_diary',
   ].includes(currentScreen);
 
-  const userName = user?.fullName ? user.fullName.split(' ')[0] : 'Анна';
+  const userName = user?.fullName ? user.fullName.split(' ')[0] : 'Пользователь';
 
   // Check center tabs active state
   const isTabActive = (tabKey: string) => {

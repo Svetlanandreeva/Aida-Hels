@@ -330,67 +330,94 @@ export function generateFallbackHealthAnalysis(data: any): StructuredHealthAnaly
     });
   }
 
+  const hasDocuments = documents.length > 0;
+  const hasPsychology = Boolean(user?.psychology?.sleepHours || user?.psychology?.stressLevel);
+
   // Define 12 mandatory body systems
   const defaultSystems: BodySystemReport[] = [
     {
       id: 'cardio',
       name: 'Сердечно-сосудистая система',
-      status: allDeviations.some(d => d.title.toLowerCase().includes('холестерин')) ? 'slight_deviation' : 'norm',
-      statusLabel: allDeviations.some(d => d.title.toLowerCase().includes('холестерин')) ? 'Умеренные маркёры' : 'Норма и стабильность',
-      score: allDeviations.some(d => d.title.toLowerCase().includes('холестерин')) ? 78 : 90,
+      status: allDeviations.some(d => d.title.toLowerCase().includes('холестерин'))
+        ? 'slight_deviation'
+        : hasDocuments
+        ? 'norm'
+        : 'insufficient_data',
+      statusLabel: allDeviations.some(d => d.title.toLowerCase().includes('холестерин'))
+        ? 'Умеренные маркёры'
+        : hasDocuments
+        ? 'Норма и стабильность'
+        : 'Недостаточно данных',
+      score: allDeviations.some(d => d.title.toLowerCase().includes('холестерин')) ? 78 : hasDocuments ? 90 : 0,
       briefComment: allDeviations.some(d => d.title.toLowerCase().includes('холестерин'))
-        ? 'Отмечаются незначительные колебания липидного спектра. Пульс и давление в пределах нормы.'
-        : 'Показатели в норме. Сердечный ритм и липидный обмен стабильны.',
+        ? 'Отмечаются незначительные колебания липидного спектра.'
+        : hasDocuments
+        ? 'Показатели в норме. Сердечный ритм и липидный обмен стабильны.'
+        : 'Нет зафиксированных замеров давления, пульса или липидограммы.',
       influencingMarkers: ['Холестерин общий', 'АД (Давление)', 'Пульс в покое'],
-      trend: 'stable',
-      normItems: ['Артериальное давление в норме', 'ЭКГ без патологий'],
+      trend: hasDocuments ? 'stable' : 'unknown',
+      normItems: hasDocuments ? ['Артериальное давление в норме'] : [],
       attentionItems: allDeviations.filter(d => d.title.toLowerCase().includes('холестерин')).map(d => d.title),
-      nextAction: 'Плановый контроль липидного профиля через 3 месяца',
-      hasSufficientData: true,
+      nextAction: 'Плановый замер давления и липидограммы',
+      hasSufficientData: hasDocuments || Boolean(data.pressureLogs?.length),
     },
     {
       id: 'nervous',
       name: 'Нервная система',
-      status: (user?.psychology?.stressLevel || 0) > 6 ? 'attention' : 'norm',
-      statusLabel: (user?.psychology?.stressLevel || 0) > 6 ? 'Повышен стресс' : 'Стабильное состояние',
-      score: (user?.psychology?.stressLevel || 0) > 6 ? 68 : 88,
+      status: (user?.psychology?.stressLevel || 0) > 6
+        ? 'attention'
+        : hasPsychology
+        ? 'norm'
+        : 'insufficient_data',
+      statusLabel: (user?.psychology?.stressLevel || 0) > 6
+        ? 'Повышен стресс'
+        : hasPsychology
+        ? 'Стабильное состояние'
+        : 'Недостаточно данных',
+      score: (user?.psychology?.stressLevel || 0) > 6 ? 68 : hasPsychology ? 88 : 0,
       briefComment: (user?.psychology?.stressLevel || 0) > 6
-        ? 'Зафиксирован повышнный уровень психоэмоционального напряжения и утомляемости.'
-        : 'Высокая когнитивная работоспособность и нормальное восстановление.',
+        ? 'Зафиксирован повышенный уровень психоэмоционального напряжения.'
+        : hasPsychology
+        ? 'Нормальное восстановление и контроль стресса.'
+        : 'Внесите записи в дневник настроения или укажите уровень сна.',
       influencingMarkers: ['Уровень стресса', 'Качество сна', 'Когнитивный ресурс'],
-      trend: 'stable',
-      normItems: ['Когнитивная концентрация', 'Рефлексы'],
+      trend: hasPsychology ? 'stable' : 'unknown',
+      normItems: hasPsychology ? ['Когнитивная концентрация'] : [],
       attentionItems: (user?.psychology?.stressLevel || 0) > 6 ? ['Повышенный дневной стресс'] : [],
       nextAction: 'Соблюдение гигиены сна и вечерний отдых без экранов',
-      hasSufficientData: true,
+      hasSufficientData: hasPsychology || Boolean(diaryEntries.length),
     },
     {
       id: 'respiratory',
       name: 'Дыхательная система',
-      status: 'norm',
-      statusLabel: 'Норма',
-      score: 92,
-      briefComment: 'Жалоб на одышку или кашель не зафиксировано. Насыщение кислородом стабильное.',
+      status: hasDocuments ? 'norm' : 'insufficient_data',
+      statusLabel: hasDocuments ? 'Норма' : 'Недостаточно данных',
+      score: hasDocuments ? 92 : 0,
+      briefComment: hasDocuments
+        ? 'Жалоб на одышку или кашель не зафиксировано.'
+        : 'Данные отсутствуют.',
       influencingMarkers: ['Частота дыхания', 'Отсутствие кашля'],
-      trend: 'stable',
-      normItems: ['Свободное дыхание', 'Без симптомов ОРВИ'],
+      trend: hasDocuments ? 'stable' : 'unknown',
+      normItems: hasDocuments ? ['Свободное дыхание'] : [],
       attentionItems: [],
       nextAction: 'Плановая флюорография (1 раз в год)',
-      hasSufficientData: true,
+      hasSufficientData: hasDocuments,
     },
     {
       id: 'digestive',
       name: 'Пищеварительная система (ЖКТ)',
-      status: 'norm',
-      statusLabel: 'Стабильно',
-      score: 85,
-      briefComment: 'Пищеварение работает ровно. Печеночные ферменты (АЛТ, АСТ) в пределах нормативов.',
+      status: hasDocuments ? 'norm' : 'insufficient_data',
+      statusLabel: hasDocuments ? 'Стабильно' : 'Недостаточно данных',
+      score: hasDocuments ? 85 : 0,
+      briefComment: hasDocuments
+        ? 'Пищеварение работает ровно. Печеночные ферменты (АЛТ, АСТ) в пределах нормативов.'
+        : 'Данные отсутствуют.',
       influencingMarkers: ['АЛТ', 'АСТ', 'Питьевой режим'],
-      trend: 'stable',
-      normItems: ['АЛТ/АСТ в норме', 'Аппетит сохранен'],
+      trend: hasDocuments ? 'stable' : 'unknown',
+      normItems: hasDocuments ? ['АЛТ/АСТ в норме'] : [],
       attentionItems: [],
       nextAction: 'Поддержание сбалансированного рациона с клетчаткой',
-      hasSufficientData: true,
+      hasSufficientData: hasDocuments,
     },
     {
       id: 'endocrine',
@@ -534,7 +561,6 @@ export function generateFallbackHealthAnalysis(data: any): StructuredHealthAnaly
 
   // Check if new user or minimal data present
   const hasQuestionnaire = Boolean(user?.isQuestionnaireCompleted);
-  const hasDocuments = documents.length > 0;
 
   // Determine overall status & score based on real data presence
   let overallStatus: HealthStatusLevel = 'norm';

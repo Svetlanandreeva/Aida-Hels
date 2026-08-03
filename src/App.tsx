@@ -17,6 +17,9 @@ import {
   initialUserProfile,
   emptyUserProfile,
   demoUserProfile,
+  emptyBodySystems,
+  emptyMentalPatterns,
+  emptyWeeklyReport,
   initialBodySystems,
   initialDocuments,
   initialAppointments,
@@ -50,6 +53,10 @@ import { SystemDetailModal } from './components/modals/SystemDetailModal';
 import { DoctorReportModal } from './components/modals/DoctorReportModal';
 import { OnboardingModal } from './components/modals/OnboardingModal';
 
+const isDemoUser = (u: UserProfile) => {
+  return u.email === 'anna.ivanova@health.ru' || u.id === 'usr-1' || Boolean((u as any).isDemoUser);
+};
+
 export default function App() {
   // Navigation State
   const [currentScreen, setCurrentScreen] = useState<ScreenId>(() => {
@@ -58,6 +65,9 @@ export default function App() {
       try {
         const parsed = JSON.parse(savedUser);
         if (parsed.isAuthenticated) {
+          if (!parsed.isQuestionnaireCompleted) {
+            return 'q1';
+          }
           return 'dashboard';
         }
       } catch {
@@ -91,40 +101,83 @@ export default function App() {
     localStorage.setItem('app_user_profile', JSON.stringify(user));
   }, [user]);
 
-  const [bodySystems, setBodySystems] = useState<BodySystem[]>(initialBodySystems);
-  const [documents, setDocuments] = useState<MedicalDocument[]>(initialDocuments);
-  const [appointments, setAppointments] = useState<Appointment[]>(initialAppointments);
-  const [dailyLogs, setDailyLogs] = useState<DailyLogEntry[]>(initialDailyLogs);
-  const [reminders, setReminders] = useState<Reminder[]>(initialReminders);
-  const [pressureLogs, setPressureLogs] = useState<PressureLogEntry[]>(initialPressureLogs);
+  const [bodySystems, setBodySystems] = useState<BodySystem[]>(() => {
+    if (isDemoUser(user)) return initialBodySystems;
+    const saved = localStorage.getItem('app_body_systems');
+    if (saved) { try { return JSON.parse(saved); } catch {} }
+    return emptyBodySystems;
+  });
 
-  // Biometric Protection & App Lock States (Disabled by default)
-  const [biometricsEnabled, setBiometricsEnabled] = useState<boolean>(() => {
-    const saved = localStorage.getItem('app_biometrics_enabled');
-    return saved !== null ? JSON.parse(saved) : false;
+  const [documents, setDocuments] = useState<MedicalDocument[]>(() => {
+    if (isDemoUser(user)) return initialDocuments;
+    const saved = localStorage.getItem('app_user_documents');
+    if (saved) { try { return JSON.parse(saved); } catch {} }
+    return [];
   });
-  const [userPin, setUserPin] = useState<string>(() => {
-    return localStorage.getItem('app_pin_code') || '';
+
+  const [appointments, setAppointments] = useState<Appointment[]>(() => {
+    if (isDemoUser(user)) return initialAppointments;
+    const saved = localStorage.getItem('app_user_appointments');
+    if (saved) { try { return JSON.parse(saved); } catch {} }
+    return [];
   });
-  const [isAppLocked, setIsAppLocked] = useState<boolean>(() => {
-    const savedBio = localStorage.getItem('app_biometrics_enabled');
-    const bioEnabled = savedBio !== null ? JSON.parse(savedBio) : false;
-    const savedUser = localStorage.getItem('app_user_profile');
-    if (savedUser && bioEnabled) {
-      try {
-        const parsed = JSON.parse(savedUser);
-        return bioEnabled && !!parsed.isAuthenticated;
-      } catch {
-        return false;
-      }
+
+  const [dailyLogs, setDailyLogs] = useState<DailyLogEntry[]>(() => {
+    if (isDemoUser(user)) return initialDailyLogs;
+    const saved = localStorage.getItem('app_user_daily_logs');
+    if (saved) { try { return JSON.parse(saved); } catch {} }
+    return [];
+  });
+
+  const [reminders, setReminders] = useState<Reminder[]>(() => {
+    if (isDemoUser(user)) return initialReminders;
+    const saved = localStorage.getItem('app_user_reminders');
+    if (saved) { try { return JSON.parse(saved); } catch {} }
+    return [];
+  });
+
+  const [pressureLogs, setPressureLogs] = useState<PressureLogEntry[]>(() => {
+    if (isDemoUser(user)) return initialPressureLogs;
+    const saved = localStorage.getItem('app_user_pressure_logs');
+    if (saved) { try { return JSON.parse(saved); } catch {} }
+    return [];
+  });
+
+  const [diaryEntries, setDiaryEntries] = useState<DiaryEntry[]>(() => {
+    if (isDemoUser(user)) return initialDiaryEntries;
+    const saved = localStorage.getItem('app_user_diary_entries');
+    if (saved) { try { return JSON.parse(saved); } catch {} }
+    return [];
+  });
+
+  const [mentalPatterns, setMentalPatterns] = useState<UserMentalPatterns>(() => {
+    if (isDemoUser(user)) return initialMentalPatterns;
+    const saved = localStorage.getItem('app_user_mental_patterns');
+    if (saved) { try { return JSON.parse(saved); } catch {} }
+    return emptyMentalPatterns;
+  });
+
+  const [weeklyReport, setWeeklyReport] = useState<WeeklyMentalReport>(() => {
+    if (isDemoUser(user)) return initialWeeklyReport;
+    const saved = localStorage.getItem('app_user_weekly_report');
+    if (saved) { try { return JSON.parse(saved); } catch {} }
+    return emptyWeeklyReport;
+  });
+
+  // Save non-demo user data changes to localStorage
+  useEffect(() => {
+    if (!isDemoUser(user)) {
+      localStorage.setItem('app_body_systems', JSON.stringify(bodySystems));
+      localStorage.setItem('app_user_documents', JSON.stringify(documents));
+      localStorage.setItem('app_user_appointments', JSON.stringify(appointments));
+      localStorage.setItem('app_user_daily_logs', JSON.stringify(dailyLogs));
+      localStorage.setItem('app_user_reminders', JSON.stringify(reminders));
+      localStorage.setItem('app_user_pressure_logs', JSON.stringify(pressureLogs));
+      localStorage.setItem('app_user_diary_entries', JSON.stringify(diaryEntries));
+      localStorage.setItem('app_user_mental_patterns', JSON.stringify(mentalPatterns));
+      localStorage.setItem('app_user_weekly_report', JSON.stringify(weeklyReport));
     }
-    return false;
-  });
-
-  // Mental Diary States
-  const [diaryEntries, setDiaryEntries] = useState<DiaryEntry[]>(initialDiaryEntries);
-  const [mentalPatterns, setMentalPatterns] = useState<UserMentalPatterns>(initialMentalPatterns);
-  const [weeklyReport, setWeeklyReport] = useState<WeeklyMentalReport>(initialWeeklyReport);
+  }, [user, bodySystems, documents, appointments, dailyLogs, reminders, pressureLogs, diaryEntries, mentalPatterns, weeklyReport]);
   const handleAddDiaryEntry = async (entryData: Partial<DiaryEntry>) => {
     const newEntry: DiaryEntry = {
       id: `diary-${Date.now()}`,
@@ -219,16 +272,23 @@ export default function App() {
   // Handlers
   const handleAuthSuccess = (userData?: Partial<UserProfile>) => {
     const isNewRegistration = userData?.isQuestionnaireCompleted === false;
-    setUser((prev) => {
-      const base = isNewRegistration ? emptyUserProfile : prev;
-      return {
-        ...base,
-        ...userData,
-        isAuthenticated: true,
-      };
-    });
+    const updatedUser: UserProfile = {
+      ...(isNewRegistration ? emptyUserProfile : user),
+      ...userData,
+      isAuthenticated: true,
+    };
+    setUser(updatedUser);
 
-    if (isNewRegistration) {
+    if (isNewRegistration || !updatedUser.isQuestionnaireCompleted) {
+      setBodySystems(emptyBodySystems);
+      setDocuments([]);
+      setAppointments([]);
+      setDailyLogs([]);
+      setReminders([]);
+      setPressureLogs([]);
+      setDiaryEntries([]);
+      setMentalPatterns(emptyMentalPatterns);
+      setWeeklyReport(emptyWeeklyReport);
       setCurrentScreen('q1');
     } else {
       setCurrentScreen('dashboard');
@@ -236,11 +296,22 @@ export default function App() {
   };
 
   const handleDemoLogin = () => {
-    setUser({
+    const demoUser = {
       ...demoUserProfile,
       isAuthenticated: true,
       isQuestionnaireCompleted: true,
-    });
+      isDemoUser: true,
+    };
+    setUser(demoUser);
+    setBodySystems(initialBodySystems);
+    setDocuments(initialDocuments);
+    setAppointments(initialAppointments);
+    setDailyLogs(initialDailyLogs);
+    setReminders(initialReminders);
+    setPressureLogs(initialPressureLogs);
+    setDiaryEntries(initialDiaryEntries);
+    setMentalPatterns(initialMentalPatterns);
+    setWeeklyReport(initialWeeklyReport);
     setCurrentScreen('dashboard');
   };
 
@@ -471,6 +542,7 @@ export default function App() {
         {/* SCREEN 13: MENTAL STATE DIARY */}
         {currentScreen === 'mental_diary' && (
           <MentalDiaryScreen
+            user={user}
             entries={diaryEntries}
             patterns={mentalPatterns}
             weeklyReport={weeklyReport}

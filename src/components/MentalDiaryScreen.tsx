@@ -49,10 +49,11 @@ import {
   AreaChart,
   Area,
 } from 'recharts';
-import { DiaryEntry, UserMentalPatterns, WeeklyMentalReport } from '../types';
+import { DiaryEntry, UserMentalPatterns, WeeklyMentalReport, UserProfile } from '../types';
 import { MentalDiaryEntryModal } from './modals/MentalDiaryEntryModal';
 
 interface MentalDiaryScreenProps {
+  user?: UserProfile;
   entries: DiaryEntry[];
   patterns: UserMentalPatterns;
   weeklyReport: WeeklyMentalReport;
@@ -64,6 +65,7 @@ interface MentalDiaryScreenProps {
 }
 
 export const MentalDiaryScreen: React.FC<MentalDiaryScreenProps> = ({
+  user,
   entries,
   patterns,
   weeklyReport,
@@ -548,7 +550,7 @@ export const MentalDiaryScreen: React.FC<MentalDiaryScreenProps> = ({
                   <div className="space-y-2 text-center md:text-left">
                     <span className="text-xs font-bold text-teal-400 flex items-center justify-center md:justify-start gap-1.5">
                       <span>{timeGreeting.icon}</span>
-                      <span>{timeGreeting.text}, Анна</span>
+                      <span>{timeGreeting.text}{user?.fullName ? `, ${user.fullName.split(' ')[0]}` : ''}</span>
                     </span>
 
                     <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight leading-snug">

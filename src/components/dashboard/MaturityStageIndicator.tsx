@@ -19,23 +19,25 @@ export const MaturityStageIndicator: React.FC<MaturityStageIndicatorProps> = ({
   // Determine level
   let levelText = 'Начинаем знакомство';
   let levelPercent = 20;
-  let missingHint = 'Для анализа сна и стресса добавьте первые записи в дневник или загрузите исследование.';
+  let missingHint = 'Для анализа сна, стресса и показателей здоровья добавьте первые записи в дневник или загрузите исследование.';
 
-  if (hasSurvey || (diaryEntriesCount >= 10 && documentsCount >= 2) || daysSinceRegistration >= 30) {
-    if (daysSinceRegistration >= 30 && diaryEntriesCount < 3 && documentsCount === 0 && !hasSurvey) {
+  const hasRealData = diaryEntriesCount > 0 || documentsCount > 0;
+
+  if (hasRealData && (hasSurvey || (diaryEntriesCount >= 8 && documentsCount >= 1) || daysSinceRegistration >= 30)) {
+    if (daysSinceRegistration >= 30 && diaryEntriesCount < 3 && documentsCount === 0) {
       levelText = 'Начальный уровень (прошёл месяц)';
-      levelPercent = 25;
+      levelPercent = 30;
       missingHint = 'Прошёл месяц, но данных пока недостаточно для полной картины. Добавляйте записи тогда, когда вам удобно.';
     } else {
       levelText = 'Данных достаточно для персональной картины';
       levelPercent = 100;
       missingHint = 'Картина регулярно обновляется по мере добавления дневниковых записей и исследований.';
     }
-  } else if (daysSinceRegistration >= 15 || diaryEntriesCount >= 6) {
+  } else if (hasRealData && (daysSinceRegistration >= 15 || diaryEntriesCount >= 5)) {
     levelText = 'Формируется динамика';
     levelPercent = 70;
     missingHint = 'Для точного прогноза ресурса добавьте ещё несколько записей о качестве сна и нагрузках.';
-  } else if (daysSinceRegistration >= 4 || diaryEntriesCount >= 2) {
+  } else if (hasRealData && (daysSinceRegistration >= 4 || diaryEntriesCount >= 1)) {
     levelText = 'Появляются первые наблюдения';
     levelPercent = 45;
     missingHint = 'Наблюдения пока носят предварительный характер. Продолжайте вести дневник.';

@@ -309,7 +309,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <div className="space-y-1">
               <div className="flex items-center gap-2.5">
                 <h1 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight">
-                  Добрый вечер, {user?.fullName ? user.fullName.split(' ')[0] : 'Анна'}
+                  Добрый день, {user?.fullName ? user.fullName.split(' ')[0] : 'Пользователь'}
                 </h1>
                 <span className="text-[10px] sm:text-xs px-2.5 py-0.5 rounded-full bg-[#34F5A4]/15 border border-[#34F5A4]/30 text-[#34F5A4] font-extrabold uppercase tracking-wider flex items-center gap-1">
                   <Sparkles className="w-3 h-3" /> ИИ 2.0
@@ -353,11 +353,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
             daysSinceRegistration={
               user.registrationDate
                 ? Math.max(0, Math.floor((new Date().getTime() - new Date(user.registrationDate).getTime()) / (1000 * 3600 * 24)))
-                : 35
+                : 0
             }
-            hasSurvey={Boolean(user.isQuestionnaireCompleted)}
+            hasSurvey={Boolean(user.questionnaireHistory && user.questionnaireHistory.length > 0)}
             documentsCount={documents.length}
-            diaryEntriesCount={2}
+            diaryEntriesCount={0}
             onOpenProposal={() => setIsProposalOpen(true)}
           />
 
