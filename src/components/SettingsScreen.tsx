@@ -281,6 +281,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             status: item.status === 'low' ? 'Ниже' : item.status === 'high' ? 'Выше' : 'Внимание',
             explanation: item.status === 'low' ? 'Ниже референсного диапазона лаборатории.' : 'Выше референсного диапазона лаборатории.',
           })),
+        testedMarkers: recognized.results.map((item) => item.originalName),
         recommendations: ['Для полной интерпретации обратитесь к лечащему врачу.'],
       };
 

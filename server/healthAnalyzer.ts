@@ -340,6 +340,30 @@ export function generateFallbackHealthAnalysis(data: any): StructuredHealthAnaly
   const hasDocuments = documents.length > 0;
   const hasPsychology = Boolean(user?.psychology?.sleepHours || user?.psychology?.stressLevel);
 
+  // A document existing at all doesn't mean every body system was tested - a Vitamin D
+  // panel doesn't say anything about cholesterol or kidney function. Build the actual set
+  // of marker names covered by uploaded documents (both the abnormal ones in `deviations`
+  // and the full `testedMarkers` list) so each system below can check for its own relevant
+  // markers instead of assuming any upload proves everything is fine.
+  const testedMarkerText = documents
+    .flatMap((doc: any) => [
+      ...(doc.testedMarkers || []),
+      ...(doc.deviations || []).map((d: any) => d.marker),
+    ])
+    .join(' | ')
+    .toLowerCase();
+  const hasRelevantData = (keywords: string[]) => keywords.some((k) => testedMarkerText.includes(k));
+
+  const hasCardioData = hasRelevantData(['холестерин', 'лпнп', 'лпвп', 'давлен', 'пульс', 'триглицерид']) || Boolean(data.pressureLogs?.length);
+  const hasRespiratoryData = documents.some((doc: any) => doc.category === 'instrumental');
+  const hasDigestiveData = hasRelevantData(['алт', 'аст', 'билирубин', 'жкт', 'печен']);
+  const hasEndocrineData = hasRelevantData(['ттг', 'т4', 'т3', 'глюкоз', 'инсулин', 'кортизол']);
+  const hasImmuneData = hasRelevantData(['витамин d', '25-oh', 'лейкоцит', 'реактивный белок', 'срб', 'иммуноглобулин']);
+  const hasUrinaryData = hasRelevantData(['креатинин', 'мочевин', 'моча', 'скф']);
+  const hasMusculoskeletalData = hasRelevantData(['кальц', 'витамин d', 'фосфор']);
+  const hasHematopoieticData = hasRelevantData(['ферритин', 'гемоглобин', 'эритроцит', 'железо', 'тромбоцит']);
+  const hasMetabolicData = hasRelevantData(['имт', 'холестерин', 'витамин d', 'глюкоз', 'триглицерид']);
+
   // Define 12 mandatory body systems
   const defaultSystems: BodySystemReport[] = [
     {
@@ -347,26 +371,26 @@ export function generateFallbackHealthAnalysis(data: any): StructuredHealthAnaly
       name: 'Сердечно-сосудистая система',
       status: allDeviations.some(d => d.title.toLowerCase().includes('холестерин'))
         ? 'slight_deviation'
-        : hasDocuments
+        : hasCardioData
         ? 'norm'
         : 'insufficient_data',
       statusLabel: allDeviations.some(d => d.title.toLowerCase().includes('холестерин'))
         ? 'Умеренные маркёры'
-        : hasDocuments
+        : hasCardioData
         ? 'Норма и стабильность'
         : 'Недостаточно данных',
-      score: allDeviations.some(d => d.title.toLowerCase().includes('холестерин')) ? 78 : hasDocuments ? 90 : 0,
+      score: allDeviations.some(d => d.title.toLowerCase().includes('холестерин')) ? 78 : hasCardioData ? 90 : 0,
       briefComment: allDeviations.some(d => d.title.toLowerCase().includes('холестерин'))
         ? 'Отмечаются незначительные колебания липидного спектра.'
-        : hasDocuments
+        : hasCardioData
         ? 'Показатели в норме. Сердечный ритм и липидный обмен стабильны.'
         : 'Нет зафиксированных замеров давления, пульса или липидограммы.',
       influencingMarkers: ['Холестерин общий', 'АД (Давление)', 'Пульс в покое'],
-      trend: hasDocuments ? 'stable' : 'unknown',
-      normItems: hasDocuments ? ['Артериальное давление в норме'] : [],
+      trend: hasCardioData ? 'stable' : 'unknown',
+      normItems: hasCardioData ? ['Артериальное давление в норме'] : [],
       attentionItems: allDeviations.filter(d => d.title.toLowerCase().includes('холестерин')).map(d => d.title),
       nextAction: 'Плановый замер давления и липидограммы',
-      hasSufficientData: hasDocuments || Boolean(data.pressureLogs?.length),
+      hasSufficientData: hasCardioData,
     },
     {
       id: 'nervous',
@@ -397,110 +421,110 @@ export function generateFallbackHealthAnalysis(data: any): StructuredHealthAnaly
     {
       id: 'respiratory',
       name: 'Дыхательная система',
-      status: hasDocuments ? 'norm' : 'insufficient_data',
-      statusLabel: hasDocuments ? 'Норма' : 'Недостаточно данных',
-      score: hasDocuments ? 92 : 0,
-      briefComment: hasDocuments
+      status: hasRespiratoryData ? 'norm' : 'insufficient_data',
+      statusLabel: hasRespiratoryData ? 'Норма' : 'Недостаточно данных',
+      score: hasRespiratoryData ? 92 : 0,
+      briefComment: hasRespiratoryData
         ? 'Жалоб на одышку или кашель не зафиксировано.'
         : 'Данные отсутствуют.',
       influencingMarkers: ['Частота дыхания', 'Отсутствие кашля'],
-      trend: hasDocuments ? 'stable' : 'unknown',
-      normItems: hasDocuments ? ['Свободное дыхание'] : [],
+      trend: hasRespiratoryData ? 'stable' : 'unknown',
+      normItems: hasRespiratoryData ? ['Свободное дыхание'] : [],
       attentionItems: [],
       nextAction: 'Плановая флюорография (1 раз в год)',
-      hasSufficientData: hasDocuments,
+      hasSufficientData: hasRespiratoryData,
     },
     {
       id: 'digestive',
       name: 'Пищеварительная система (ЖКТ)',
-      status: hasDocuments ? 'norm' : 'insufficient_data',
-      statusLabel: hasDocuments ? 'Стабильно' : 'Недостаточно данных',
-      score: hasDocuments ? 85 : 0,
-      briefComment: hasDocuments
+      status: hasDigestiveData ? 'norm' : 'insufficient_data',
+      statusLabel: hasDigestiveData ? 'Стабильно' : 'Недостаточно данных',
+      score: hasDigestiveData ? 85 : 0,
+      briefComment: hasDigestiveData
         ? 'Пищеварение работает ровно. Печеночные ферменты (АЛТ, АСТ) в пределах нормативов.'
         : 'Данные отсутствуют.',
       influencingMarkers: ['АЛТ', 'АСТ', 'Питьевой режим'],
-      trend: hasDocuments ? 'stable' : 'unknown',
-      normItems: hasDocuments ? ['АЛТ/АСТ в норме'] : [],
+      trend: hasDigestiveData ? 'stable' : 'unknown',
+      normItems: hasDigestiveData ? ['АЛТ/АСТ в норме'] : [],
       attentionItems: [],
       nextAction: 'Поддержание сбалансированного рациона с клетчаткой',
-      hasSufficientData: hasDocuments,
+      hasSufficientData: hasDigestiveData,
     },
     {
       id: 'endocrine',
       name: 'Эндокринная система',
       status: allDeviations.some(d => d.title.toLowerCase().includes('ттг'))
         ? 'attention'
-        : hasDocuments
+        : hasEndocrineData
         ? 'norm'
         : 'insufficient_data',
       statusLabel: allDeviations.some(d => d.title.toLowerCase().includes('ттг'))
         ? 'Требует внимания'
-        : hasDocuments
+        : hasEndocrineData
         ? 'Баланс гормонов'
         : 'Недостаточно данных',
       score: allDeviations.some(d => d.title.toLowerCase().includes('ттг'))
         ? 72
-        : hasDocuments
+        : hasEndocrineData
         ? 89
         : 0,
       briefComment: allDeviations.some(d => d.title.toLowerCase().includes('ттг'))
         ? 'Отмечаются изменения уровня тиреотропного гормона. Рекомендуется плановая консультация эндокринолога.'
-        : hasDocuments
+        : hasEndocrineData
         ? 'Показатели щитовидной железы и глюкозы крови находятся в физиологической норме.'
         : 'Нет данных лабораторных анализов гормонов щитовидной железы или глюкозы.',
       influencingMarkers: ['ТТГ', 'Глюкоза натощак'],
-      trend: hasDocuments ? 'stable' : 'unknown',
-      normItems: hasDocuments ? ['Глюкоза натощак в норме'] : [],
+      trend: hasEndocrineData ? 'stable' : 'unknown',
+      normItems: hasEndocrineData ? ['Глюкоза натощак в норме'] : [],
       attentionItems: allDeviations.filter(d => d.title.toLowerCase().includes('ттг')).map(d => d.title),
       nextAction: 'Контроль ТТГ и Т4 свободного при плановом обследовании',
-      hasSufficientData: hasDocuments || allDeviations.some(d => d.title.toLowerCase().includes('ттг')),
+      hasSufficientData: hasEndocrineData || allDeviations.some(d => d.title.toLowerCase().includes('ттг')),
     },
     {
       id: 'immune',
       name: 'Иммунная система',
       status: allDeviations.some(d => d.title.toLowerCase().includes('витамин d'))
         ? 'slight_deviation'
-        : hasDocuments
+        : hasImmuneData
         ? 'norm'
         : 'insufficient_data',
       statusLabel: allDeviations.some(d => d.title.toLowerCase().includes('витамин d'))
         ? 'Снижен D3'
-        : hasDocuments
+        : hasImmuneData
         ? 'Оптимальный иммунитет'
         : 'Недостаточно данных',
       score: allDeviations.some(d => d.title.toLowerCase().includes('витамин d'))
         ? 75
-        : hasDocuments
+        : hasImmuneData
         ? 90
         : 0,
       briefComment: allDeviations.some(d => d.title.toLowerCase().includes('витамин d'))
         ? 'Лейкоциты в норме, но выявлен дефицит Витамина D3, влияющего на сопротивляемость инфекциям.'
-        : hasDocuments
+        : hasImmuneData
         ? 'Лейкоцитарная формула и уровень защитных антител в норме.'
         : 'Нет данных общего анализа крови или маркеров иммунитета.',
       influencingMarkers: ['Витамин D (25-OH)', 'Лейкоциты', 'С-реактивный белок'],
-      trend: hasDocuments ? 'stable' : 'unknown',
-      normItems: hasDocuments ? ['Лейкоциты крови в норме', 'С-реактивный белок без воспалений'] : [],
+      trend: hasImmuneData ? 'stable' : 'unknown',
+      normItems: hasImmuneData ? ['Лейкоциты крови в норме', 'С-реактивный белок без воспалений'] : [],
       attentionItems: allDeviations.filter(d => d.title.toLowerCase().includes('витамин d')).map(d => d.title),
       nextAction: 'Восполнение уровня Витамина D3 по рекомендации врача',
-      hasSufficientData: hasDocuments || allDeviations.some(d => d.title.toLowerCase().includes('витамин d')),
+      hasSufficientData: hasImmuneData || allDeviations.some(d => d.title.toLowerCase().includes('витамин d')),
     },
     {
       id: 'urinary',
       name: 'Мочевыделительная система',
-      status: hasDocuments ? 'norm' : 'insufficient_data',
-      statusLabel: hasDocuments ? 'Норма' : 'Недостаточно данных',
-      score: hasDocuments ? 85 : 0,
-      briefComment: hasDocuments
+      status: hasUrinaryData ? 'norm' : 'insufficient_data',
+      statusLabel: hasUrinaryData ? 'Норма' : 'Недостаточно данных',
+      score: hasUrinaryData ? 85 : 0,
+      briefComment: hasUrinaryData
         ? 'Показатели креатинина и мочевины в норме.'
         : 'Недостаточно данных для объективной оценки. Рекомендуется сдать общий анализ мочи и креатинин.',
       influencingMarkers: ['Креатинин', 'Мочевина'],
-      trend: hasDocuments ? 'stable' : 'unknown',
-      normItems: hasDocuments ? ['Функция почек сохранена'] : [],
+      trend: hasUrinaryData ? 'stable' : 'unknown',
+      normItems: hasUrinaryData ? ['Функция почек сохранена'] : [],
       attentionItems: [],
       nextAction: 'Сдать общий анализ мочи и креатинин при плановом обследовании',
-      hasSufficientData: hasDocuments,
+      hasSufficientData: hasUrinaryData,
     },
     {
       id: 'reproductive',
@@ -521,48 +545,48 @@ export function generateFallbackHealthAnalysis(data: any): StructuredHealthAnaly
     {
       id: 'musculoskeletal',
       name: 'Опорно-двигательный аппарат',
-      status: hasDocuments ? 'norm' : 'insufficient_data',
-      statusLabel: hasDocuments ? 'Норма' : 'Недостаточно данных',
-      score: hasDocuments ? 84 : 0,
-      briefComment: hasDocuments
+      status: hasMusculoskeletalData ? 'norm' : 'insufficient_data',
+      statusLabel: hasMusculoskeletalData ? 'Норма' : 'Недостаточно данных',
+      score: hasMusculoskeletalData ? 84 : 0,
+      briefComment: hasMusculoskeletalData
         ? 'Суставы и позвоночник без выраженных ограничений подвижности. Рекомендуется ежедневная разминка.'
         : 'Нет данных обследования суставов, позвоночника и показателей кальция.',
       influencingMarkers: ['Физическая активность', 'Кальций общий'],
-      trend: hasDocuments ? 'stable' : 'unknown',
-      normItems: hasDocuments ? ['Умеренная бытовая активность'] : [],
+      trend: hasMusculoskeletalData ? 'stable' : 'unknown',
+      normItems: hasMusculoskeletalData ? ['Умеренная бытовая активность'] : [],
       attentionItems: [],
       nextAction: 'Регулярная утренняя гимнастика и 8000 шагов в день',
-      hasSufficientData: hasDocuments,
+      hasSufficientData: hasMusculoskeletalData,
     },
     {
       id: 'hematopoietic',
       name: 'Кроветворная система (Кровь)',
       status: allDeviations.some(d => d.title.toLowerCase().includes('ферритин') || d.title.toLowerCase().includes('гемоглобин'))
         ? 'attention'
-        : hasDocuments
+        : hasHematopoieticData
         ? 'norm'
         : 'insufficient_data',
       statusLabel: allDeviations.some(d => d.title.toLowerCase().includes('ферритин'))
         ? 'Внимание к депо железа'
-        : hasDocuments
+        : hasHematopoieticData
         ? 'Норма'
         : 'Недостаточно данных',
       score: allDeviations.some(d => d.title.toLowerCase().includes('ферритин'))
         ? 70
-        : hasDocuments
+        : hasHematopoieticData
         ? 92
         : 0,
       briefComment: allDeviations.some(d => d.title.toLowerCase().includes('ферритин'))
         ? 'Отмечаются признаки снижения уровня депонированного железа (ферритина). Гемоглобин сохранён.'
-        : hasDocuments
+        : hasHematopoieticData
         ? 'Эритроциты, гемоглобин и тромбоциты в норме.'
         : 'Нет данных общего анализа крови или уровня ферритина.',
       influencingMarkers: ['Ферритин', 'Гемоглобин', 'Эритроциты'],
-      trend: hasDocuments ? 'stable' : 'unknown',
-      normItems: hasDocuments ? ['Гемоглобин в норме'] : [],
+      trend: hasHematopoieticData ? 'stable' : 'unknown',
+      normItems: hasHematopoieticData ? ['Гемоглобин в норме'] : [],
       attentionItems: allDeviations.filter(d => d.title.toLowerCase().includes('ферритин')).map(d => d.title),
       nextAction: 'Контроль показателя ферритина через 2 месяца',
-      hasSufficientData: hasDocuments || allDeviations.some(d => d.title.toLowerCase().includes('ферритин') || d.title.toLowerCase().includes('гемоглобин')),
+      hasSufficientData: hasHematopoieticData || allDeviations.some(d => d.title.toLowerCase().includes('ферритин') || d.title.toLowerCase().includes('гемоглобин')),
     },
     {
       id: 'psychoemotional',
@@ -599,30 +623,30 @@ export function generateFallbackHealthAnalysis(data: any): StructuredHealthAnaly
       name: 'Обмен веществ (Метаболизм)',
       status: allDeviations.length > 0
         ? 'slight_deviation'
-        : hasDocuments
+        : hasMetabolicData
         ? 'norm'
         : 'insufficient_data',
       statusLabel: allDeviations.length > 0
         ? 'Есть отклонения'
-        : hasDocuments
+        : hasMetabolicData
         ? 'Оптимальный'
         : 'Недостаточно данных',
       score: allDeviations.length > 0
         ? 76
-        : hasDocuments
+        : hasMetabolicData
         ? 91
         : 0,
       briefComment: allDeviations.length > 0
         ? `Выявлено ${allDeviations.length} отклонений в лабораторных маркерах метаболизма.`
-        : hasDocuments
+        : hasMetabolicData
         ? 'Базовые обменные процессы и индекс массы тела находятся в норме.'
         : 'Нет данных лабораторных исследований обмена веществ (липиды, глюкоза).',
       influencingMarkers: ['ИМТ', 'Холестерин', 'Витамин D'],
-      trend: hasDocuments ? 'stable' : 'unknown',
-      normItems: hasDocuments ? ['Индекс массы тела в здоровой зоне'] : [],
+      trend: hasMetabolicData ? 'stable' : 'unknown',
+      normItems: hasMetabolicData ? ['Индекс массы тела в здоровой зоне'] : [],
       attentionItems: allDeviations.map(d => d.title),
       nextAction: 'Коррекция рациона и контроль активности',
-      hasSufficientData: hasDocuments || allDeviations.length > 0,
+      hasSufficientData: hasMetabolicData || allDeviations.length > 0,
     },
   ];
 

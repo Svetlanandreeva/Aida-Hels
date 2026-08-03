@@ -311,6 +311,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           status: item.status === 'low' ? 'Ниже' : item.status === 'high' ? 'Выше' : 'Внимание',
           explanation: item.status === 'low' ? 'Ниже референсного диапазона лаборатории.' : 'Выше референсного диапазона лаборатории.',
         })),
+      testedMarkers: confirmed.results.map((item) => item.originalName),
       recommendations: [
         'Показатели успешно сохранены в историю исследовательской динамометрии.',
         'Для полной интерпретации обратитесь к лечащему врачу.',
