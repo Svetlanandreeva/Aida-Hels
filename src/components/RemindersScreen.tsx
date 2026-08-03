@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { Reminder, ReminderCategory, ReminderFrequency } from '../types';
+import { AutocompleteInput } from './AutocompleteInput';
+import { MEDICATIONS_SUGGESTIONS } from '../data/medicalSuggestions';
 import {
   Bell,
   Plus,
@@ -600,13 +602,13 @@ export const RemindersScreen: React.FC<RemindersScreenProps> = ({
 
               <div>
                 <label className="block font-medium text-gray-300 mb-1">Название процедура / медикамент / врач</label>
-                <input
-                  type="text"
+                <AutocompleteInput
+                  value={formTitle}
+                  onChange={setFormTitle}
+                  options={MEDICATIONS_SUGGESTIONS}
                   required
                   placeholder="Например: Приём L-тироксина 50 мкг"
-                  value={formTitle}
-                  onChange={(e) => setFormTitle(e.target.value)}
-                  className="w-full px-3 py-2.5 bg-gray-900 border border-gray-700 text-gray-100 rounded-xl focus:border-emerald-500 focus:outline-none"
+                  className="w-full px-3 py-2.5 bg-gray-900 border border-gray-700 text-gray-100 rounded-xl focus:border-emerald-500 focus:outline-none text-xs"
                 />
               </div>
 

@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { UserProfile, ScreenId } from '../types';
+import { AutocompleteInput } from './AutocompleteInput';
+import { DIAGNOSES_SUGGESTIONS, MEDICATIONS_SUGGESTIONS } from '../data/medicalSuggestions';
 import {
   User,
   Calendar,
@@ -462,19 +464,19 @@ export const Questionnaire: React.FC<QuestionnaireProps> = ({
                 Хронические диагнозы и регулярно принимаемые препараты
               </label>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 bg-[#0F1115] p-3 rounded-xl border border-gray-800">
-                <input
-                  type="text"
+                <AutocompleteInput
                   value={newDiagnosisName}
-                  onChange={(e) => setNewDiagnosisName(e.target.value)}
+                  onChange={setNewDiagnosisName}
+                  options={DIAGNOSES_SUGGESTIONS}
                   placeholder="Диагноз (напр. Гипотиреоз)"
-                  className="px-3 py-2 bg-gray-900 border border-gray-700 text-gray-100 rounded-lg text-xs placeholder-gray-500"
+                  className="w-full px-3 py-2 bg-gray-900 border border-gray-700 text-gray-100 rounded-lg text-xs placeholder-gray-500 focus:outline-none focus:border-emerald-500"
                 />
-                <input
-                  type="text"
+                <AutocompleteInput
                   value={newMedication}
-                  onChange={(e) => setNewMedication(e.target.value)}
+                  onChange={setNewMedication}
+                  options={MEDICATIONS_SUGGESTIONS}
                   placeholder="Препарат и доза (напр. Эутирокс 50)"
-                  className="px-3 py-2 bg-gray-900 border border-gray-700 text-gray-100 rounded-lg text-xs placeholder-gray-500"
+                  className="w-full px-3 py-2 bg-gray-900 border border-gray-700 text-gray-100 rounded-lg text-xs placeholder-gray-500 focus:outline-none focus:border-emerald-500"
                 />
                 <div className="flex gap-2">
                   <input
@@ -792,23 +794,23 @@ export const Questionnaire: React.FC<QuestionnaireProps> = ({
                     <label className="block text-[11px] font-medium text-gray-300 mb-1">
                       Установленные диагнозы / Наблюдение
                     </label>
-                    <input
-                      type="text"
-                      placeholder="Например: ГТР, Депрессивный эпизод"
+                    <AutocompleteInput
                       value={user.psychology.psychiatricData?.diagnoses.join(', ') || ''}
-                      onChange={(e) =>
+                      onChange={(val) =>
                         setUser({
                           ...user,
                           psychology: {
                             ...user.psychology,
                             psychiatricData: {
                               ...user.psychology.psychiatricData!,
-                              diagnoses: e.target.value.split(',').map((s) => s.trim()),
+                              diagnoses: val.split(',').map((s) => s.trim()),
                             },
                           },
                         })
                       }
-                      className="w-full px-3 py-2 bg-gray-900 border border-gray-700 text-gray-100 rounded-lg placeholder-gray-500"
+                      options={DIAGNOSES_SUGGESTIONS}
+                      placeholder="Например: ГТР, Депрессивный эпизод"
+                      className="w-full px-3 py-2 bg-gray-900 border border-gray-700 text-gray-100 rounded-lg placeholder-gray-500 focus:outline-none focus:border-emerald-500 text-xs"
                     />
                   </div>
 
@@ -816,23 +818,23 @@ export const Questionnaire: React.FC<QuestionnaireProps> = ({
                     <label className="block text-[11px] font-medium text-gray-300 mb-1">
                       Принимаемые фармакопрепараты
                     </label>
-                    <input
-                      type="text"
-                      placeholder="Например: Антидепрессанты / Анксиолитики"
+                    <AutocompleteInput
                       value={user.psychology.psychiatricData?.medications.join(', ') || ''}
-                      onChange={(e) =>
+                      onChange={(val) =>
                         setUser({
                           ...user,
                           psychology: {
                             ...user.psychology,
                             psychiatricData: {
                               ...user.psychology.psychiatricData!,
-                              medications: e.target.value.split(',').map((s) => s.trim()),
+                              medications: val.split(',').map((s) => s.trim()),
                             },
                           },
                         })
                       }
-                      className="w-full px-3 py-2 bg-gray-900 border border-gray-700 text-gray-100 rounded-lg placeholder-gray-500"
+                      options={MEDICATIONS_SUGGESTIONS}
+                      placeholder="Например: Сертралин 50 мг"
+                      className="w-full px-3 py-2 bg-gray-900 border border-gray-700 text-gray-100 rounded-lg placeholder-gray-500 focus:outline-none focus:border-emerald-500 text-xs"
                     />
                   </div>
                 </div>
