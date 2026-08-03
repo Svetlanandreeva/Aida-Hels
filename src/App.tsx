@@ -324,7 +324,7 @@ export default function App() {
       )}
 
       {/* Main Screen Router Content */}
-      <main className={currentScreen === 'start' ? 'flex-1 w-full' : 'flex-1 max-w-[1320px] w-full mx-auto px-3 sm:px-6 pt-4 sm:pt-6 pb-28 sm:pb-24'}>
+      <main className={currentScreen === 'start' || currentScreen === 'auth' ? 'flex-1 w-full flex flex-col' : 'flex-1 max-w-[1320px] w-full mx-auto px-3 sm:px-6 pt-4 sm:pt-6 pb-28 sm:pb-24'}>
         {/* GATE / AUTH SCREEN */}
         {currentScreen === 'auth' && (
           <AuthScreen

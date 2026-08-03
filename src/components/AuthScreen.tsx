@@ -57,7 +57,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess, onDemoLo
   };
 
   return (
-    <div className="min-h-[85vh] flex items-center justify-center py-10 px-4 bg-[#0A0B0D]">
+    <div className="flex-1 w-full min-h-screen flex items-center justify-center py-6 sm:py-10 px-4 bg-[#0A0B0D]">
       <div className="w-full max-w-md bg-[#14171C] rounded-2xl shadow-2xl border border-gray-800 overflow-hidden">
         {/* Header Banner */}
         <div className="bg-gradient-to-br from-[#0F1115] via-[#1A1D24] to-[#0A0B0D] p-8 text-white text-center relative overflow-hidden border-b border-gray-800">
