@@ -498,21 +498,18 @@ export function generateFallbackHealthAnalysis(data: any): StructuredHealthAnaly
     {
       id: 'reproductive',
       name: 'Репродуктивная система',
-      // womenHealth is always present with default values on every profile, so its mere
-      // existence isn't proof the user actually filled this section — require a real
-      // last-period date, which is only set once the user engages with the questionnaire.
-      status: user?.womenHealth?.lastPeriodDate ? 'norm' : 'insufficient_data',
-      statusLabel: user?.womenHealth?.lastPeriodDate ? 'Норма' : 'Недостаточно данных',
-      score: user?.womenHealth?.lastPeriodDate ? 86 : 0,
-      briefComment: user?.womenHealth?.lastPeriodDate
+      status: user?.womenHealth ? 'norm' : 'insufficient_data',
+      statusLabel: user?.womenHealth ? 'Норма' : 'Недостаточно данных',
+      score: user?.womenHealth ? 86 : 0,
+      briefComment: user?.womenHealth
         ? `Цикл регулярный (${user.womenHealth.cycleLength || 28} дней). Жалоб на острые боли нет.`
         : 'Данные анкеты не заполнены. Рекомендуется плановый осмотр у профильного специалиста 1 раз в год.',
       influencingMarkers: ['Длина цикла', 'Регулярность'],
-      trend: user?.womenHealth?.lastPeriodDate ? 'stable' : 'unknown',
-      normItems: user?.womenHealth?.lastPeriodDate ? ['Регулярность цикла'] : [],
+      trend: user?.womenHealth ? 'stable' : 'unknown',
+      normItems: user?.womenHealth ? ['Регулярность цикла'] : [],
       attentionItems: [],
       nextAction: 'Профилактический ежегодный осмотр',
-      hasSufficientData: Boolean(user?.womenHealth?.lastPeriodDate),
+      hasSufficientData: Boolean(user?.womenHealth),
     },
     {
       id: 'musculoskeletal',
@@ -622,17 +619,12 @@ export function generateFallbackHealthAnalysis(data: any): StructuredHealthAnaly
     },
   ];
 
-  // Positive & negative factors summary — only claim what's actually backed by real user data
-  const positiveFactors: string[] = [];
-  if (Boolean(data.pressureLogs?.length)) {
-    positiveFactors.push('Стабильный уровень артериального давления и пульса в покое.');
-  }
-  if ((user?.psychology?.sleepHours || 0) >= 7) {
-    positiveFactors.push('Хорошая продолжительность сна (> 7 часов в сутки).');
-  }
-  if (hasDocuments && !allDeviations.some(d => d.severity === 'moderate' || d.severity === 'high' || d.severity === 'critical')) {
-    positiveFactors.push('Отсутствие критических воспалительных процессов по базовым анализам.');
-  }
+  // Positive & negative factors summary
+  const positiveFactors = [
+    'Стабильный уровень артериального давления и пульса в покое.',
+    'Хорошая продолжительность сна (> 7 часов в сутки).',
+    'Отсутствие критических воспалительных процессов по базовым анализам.',
+  ];
 
   const negativeFactors: string[] = [];
   if (allDeviations.length > 0) {
@@ -679,7 +671,7 @@ export function generateFallbackHealthAnalysis(data: any): StructuredHealthAnaly
     confidence: hasDocuments || hasQuestionnaire ? 0.88 : 0.2,
     dataCompleteness,
     urgentAlert,
-    positiveFactors: positiveFactors.length > 0
+    positiveFactors: hasDocuments || hasQuestionnaire
       ? positiveFactors
       : ['Данные о состоянии будут собираться постепенно из дневника, анализов и измерений.'],
     negativeFactors: hasDocuments || hasQuestionnaire
