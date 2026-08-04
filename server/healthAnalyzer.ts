@@ -653,12 +653,21 @@ export function generateFallbackHealthAnalysis(data: any): StructuredHealthAnaly
     },
   ];
 
-  // Positive & negative factors summary
-  const positiveFactors = [
-    'Стабильный уровень артериального давления и пульса в покое.',
-    'Хорошая продолжительность сна (> 7 часов в сутки).',
-    'Отсутствие критических воспалительных процессов по базовым анализам.',
-  ];
+  // Positive & negative factors summary - only claim a factor is confirmed when the
+  // underlying data actually backs it, not just because some document was uploaded.
+  const positiveFactors: string[] = [];
+  if (hasPressureData) {
+    positiveFactors.push('Стабильный уровень артериального давления и пульса в покое.');
+  }
+  if ((user?.psychology?.sleepHours ?? 0) > 7) {
+    positiveFactors.push('Хорошая продолжительность сна (> 7 часов в сутки).');
+  }
+  if (hasImmuneData && !allDeviations.some(d => /воспал|лейкоцит|срб|реактивный белок/i.test(d.title))) {
+    positiveFactors.push('Отсутствие критических воспалительных процессов по базовым анализам.');
+  }
+  if (positiveFactors.length === 0) {
+    positiveFactors.push('Данные пока собираются — сильные стороны появятся здесь по мере заполнения дневника и загрузки анализов.');
+  }
 
   const negativeFactors: string[] = [];
   if (allDeviations.length > 0) {
