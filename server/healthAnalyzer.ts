@@ -355,6 +355,9 @@ export function generateFallbackHealthAnalysis(data: any): StructuredHealthAnaly
   const hasRelevantData = (keywords: string[]) => keywords.some((k) => testedMarkerText.includes(k));
 
   const hasCardioData = hasRelevantData(['холестерин', 'лпнп', 'лпвп', 'давлен', 'пульс', 'триглицерид']) || Boolean(data.pressureLogs?.length);
+  // Cholesterol/pulse markers say nothing about actual blood pressure readings - only
+  // claim "давление в норме" when the pressure diary itself has entries.
+  const hasPressureData = Boolean(data.pressureLogs?.length);
   const hasRespiratoryData = documents.some((doc: any) => doc.category === 'instrumental');
   const hasDigestiveData = hasRelevantData(['алт', 'аст', 'билирубин', 'жкт', 'печен']);
   const hasEndocrineData = hasRelevantData(['ттг', 'т4', 'т3', 'глюкоз', 'инсулин', 'кортизол']);
@@ -387,7 +390,7 @@ export function generateFallbackHealthAnalysis(data: any): StructuredHealthAnaly
         : 'Нет зафиксированных замеров давления, пульса или липидограммы.',
       influencingMarkers: ['Холестерин общий', 'АД (Давление)', 'Пульс в покое'],
       trend: hasCardioData ? 'stable' : 'unknown',
-      normItems: hasCardioData ? ['Артериальное давление в норме'] : [],
+      normItems: hasPressureData ? ['Артериальное давление в норме'] : [],
       attentionItems: allDeviations.filter(d => d.title.toLowerCase().includes('холестерин')).map(d => d.title),
       nextAction: 'Плановый замер давления и липидограммы',
       hasSufficientData: hasCardioData,
