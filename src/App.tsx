@@ -433,6 +433,8 @@ export default function App() {
           onLogout={handleLogout}
           onOpenTutorial={() => setIsOnboardingOpen(true)}
           activeRemindersCount={reminders.filter((r) => r.isEnabled).length}
+          reminders={reminders}
+          documents={documents}
         />
       )}
 

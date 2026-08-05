@@ -131,9 +131,9 @@ export const OverallAiSummaryCard: React.FC<OverallAiSummaryCardProps> = ({ anal
         </div>
       </div>
 
-      {/* FOOTER: EXPLAINABILITY & DATA COMPLETENESS */}
+      {/* FOOTER: EXPLAINABILITY & DATA COMPLETENESS & AI FEEDBACK */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-white/[0.06]">
-        <div className="flex items-center gap-4 text-xs text-white/60">
+        <div className="flex flex-wrap items-center gap-4 text-xs text-white/60">
           <div className="flex items-center gap-1.5">
             <Database className="w-4 h-4 text-[#4DEBFF]" />
             <span>Полнота данных: <strong className="text-white">{Math.round((analysis.dataCompleteness || 0.8) * 100)}%</strong></span>
@@ -144,13 +144,50 @@ export const OverallAiSummaryCard: React.FC<OverallAiSummaryCardProps> = ({ anal
           </div>
         </div>
 
-        <button
-          onClick={() => setShowSources(!showSources)}
-          className="px-3.5 py-2 rounded-xl bg-[#101A28] hover:bg-white/[0.06] text-white/80 border border-white/10 font-bold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
-        >
-          <span>На основании чего сделан вывод</span>
-          {showSources ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-        </button>
+        {/* FEEDBACK BUTTONS */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => {
+              fetch('/api/ai/feedback', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ insightId: 'overall_summary', feedback: 'ПОЛЕЗНЫЙ' }),
+              });
+              alert('Спасибо за оценку! Ответ сохранен в журнале аудита.');
+            }}
+            className="px-2.5 py-1.5 bg-[#101A28] hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded-xl text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+          >
+            👍 Полезно
+          </button>
+          <button
+            onClick={() => {
+              fetch('/api/ai/feedback', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ insightId: 'overall_summary', feedback: 'БЕСПОЛЕЗНО' }),
+              });
+              alert('Спасибо за отзыв! Качество ответа будет пересмотрено.');
+            }}
+            className="px-2.5 py-1.5 bg-[#101A28] hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 rounded-xl text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+          >
+            👎 Неточно
+          </button>
+          <button
+            onClick={() => setShowSources(!showSources)}
+            className="px-3.5 py-2 rounded-xl bg-[#101A28] hover:bg-white/[0.06] text-white/80 border border-white/10 font-bold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
+          >
+            <span>Источники</span>
+            {showSources ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          </button>
+        </div>
+      </div>
+
+      {/* MANDATORY DISCLAIMER FOOTER */}
+      <div className="p-3 bg-white/[0.02] border border-white/[0.06] rounded-xl text-[11px] text-white/50 flex items-start gap-2">
+        <Info className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+        <p>
+          Сгенерировано ИИ. Материал носит информационный характер, не является постановкой диагноза и не заменяет приём врача.
+        </p>
       </div>
 
       {/* EXPANDABLE SOURCES LIST */}
