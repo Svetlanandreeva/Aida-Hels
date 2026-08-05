@@ -97,7 +97,7 @@ export async function getUserByEmail(email: string): Promise<UserRecord | null> 
       const result = await session.execute({
         text: `
           DECLARE $email AS Utf8;
-          SELECT * FROM users VIEW idx_email WHERE email = $email;
+          SELECT * FROM users WHERE email = $email;
         `,
         parameters: { $email: TypedValues.utf8(email) },
       });
