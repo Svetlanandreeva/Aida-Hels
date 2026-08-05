@@ -8,6 +8,15 @@ import crypto from 'crypto';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import {
+  isPostgresConfigured,
+  ensureSchema,
+  getUserByEmail,
+  createUser,
+  getUserData,
+  saveUserData,
+  updateUserProfile,
+} from './server/db';
+import {
   analyzeHealthWithGeminiOrFallback,
   isGeminiQuotaExhausted,
   setGeminiQuotaExhaustedCooldown,
@@ -34,7 +43,7 @@ app.use(express.json({ limit: '10mb' }));
 app.use(cookieParser());
 
 // ==========================================
-// IN-MEMORY & GOOGLE SHEETS PERSISTENT STORE
+// IN-MEMORY & DATABASE PERSISTENT STORE
 // ==========================================
 
 interface UserAccount {
@@ -48,13 +57,13 @@ interface UserAccount {
   createdAt: string;
 }
 
-// In-memory persistent database for users & state (synced with Google Sheets backend)
+// In-memory persistent database cache
 const usersDb = new Map<string, UserAccount>();
 
-// Store failed OTP attempts per normalized email for rate-limiting (3 attempts = 15 min lock)
+// Store failed OTP attempts per normalized email for rate-limiting
 const otpAttemptsDb = new Map<string, { count: number; blockedUntil?: number }>();
 
-// Store default demo user account with bcrypt hashed password
+// Store default demo user account
 const defaultDemoPasswordHash = bcrypt.hashSync('demo1234', 10);
 usersDb.set('anna.ivanova@health.ru', {
   id: 'usr-1',
@@ -65,7 +74,7 @@ usersDb.set('anna.ivanova@health.ru', {
   createdAt: new Date().toISOString(),
 });
 
-// Storage for user data (profile, diary, medications, documents, measurements)
+// Storage for user data
 const userDataStore = new Map<string, any>();
 
 // Helper to initialize Gemini SDK safely
@@ -73,7 +82,10 @@ function getGeminiClient() {
   if (isGeminiQuotaExhausted()) {
     return null;
   }
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey =
+    process.env.GEMINI_API_KEY ||
+    process.env.GOOGLE_API_KEY ||
+    process.env.API_KEY;
   if (!apiKey || apiKey === 'MY_GEMINI_API_KEY') {
     return null;
   }
@@ -184,6 +196,15 @@ app.post('/api/auth/register', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Пароль должен содержать не менее 4 символов' });
     }
 
+    if (isPostgresConfigured()) {
+      const existing = await getUserByEmail(normEmail);
+      if (existing) {
+        return res.status(400).json({ success: false, message: 'Пользователь с таким email уже зарегистрирован' });
+      }
+    } else if (usersDb.has(normEmail)) {
+      return res.status(400).json({ success: false, message: 'Пользователь с таким email уже зарегистрирован' });
+    }
+
     // Hash password with bcrypt cost factor = 12
     const passwordHash = await bcrypt.hash(password, 12);
     
@@ -197,27 +218,51 @@ app.post('/api/auth/register', async (req, res) => {
       email: normEmail,
       fullName: fullName || normEmail.split('@')[0],
       passwordHash,
-      isVerified: false,
+      isVerified: true,
       verificationCodeHash,
       verificationExpiresAt: Date.now() + 600 * 1000, // 10 minutes TTL
       createdAt: new Date().toISOString(),
     };
 
+    if (isPostgresConfigured()) {
+      await createUser({
+        id: userId,
+        email: normEmail,
+        fullName: newUser.fullName,
+        passwordHash,
+        isVerified: true,
+        verificationCodeHash,
+        verificationExpiresAt: newUser.verificationExpiresAt,
+      });
+    }
+
     usersDb.set(normEmail, newUser);
 
-    // Send code via Google Sheets / Mail App
-    await postToSheetsBackend('sendVerificationCode', userId, { email: normEmail, code: rawCode });
-    await postToSheetsBackend('createUser', userId, {
-      user_id: userId,
-      email: normEmail,
-      name: newUser.fullName,
+    // Issue JWT session token in httpOnly cookie
+    const token = jwt.sign(
+      { id: newUser.id, email: newUser.email, fullName: newUser.fullName },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    res.cookie('session_token', token, {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: 7 * 24 * 3600 * 1000,
     });
 
     res.json({
       success: true,
+      token,
       email: normEmail,
-      previewCode: rawCode, // sent for ease of testing in preview env
-      message: 'Код подтверждения отправлен на ваш email.',
+      user: {
+        id: newUser.id,
+        email: newUser.email,
+        fullName: newUser.fullName,
+        isAuthenticated: true,
+      },
+      message: 'Регистрация успешно завершена.',
     });
   } catch (err: any) {
     console.error('Registration error:', err);
@@ -235,7 +280,25 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Укажите email и пароль' });
     }
 
-    const user = usersDb.get(normEmail);
+    let user: UserAccount | null = null;
+
+    if (isPostgresConfigured()) {
+      const dbUser = await getUserByEmail(normEmail);
+      if (dbUser) {
+        user = {
+          id: dbUser.id,
+          email: dbUser.email,
+          fullName: dbUser.fullName || dbUser.email.split('@')[0],
+          passwordHash: dbUser.passwordHash,
+          isVerified: dbUser.isVerified,
+          createdAt: dbUser.createdAt,
+        };
+      }
+    }
+
+    if (!user) {
+      user = usersDb.get(normEmail) || null;
+    }
 
     if (!user) {
       return res.status(401).json({ success: false, message: 'Пользователь с таким email не найден или неверный пароль' });
@@ -264,7 +327,12 @@ app.post('/api/auth/login', async (req, res) => {
       maxAge: 7 * 24 * 3600 * 1000,
     });
 
-    const storedData = userDataStore.get(user.id) || {};
+    let storedData = {};
+    if (isPostgresConfigured()) {
+      storedData = (await getUserData(user.id)) || {};
+    } else {
+      storedData = userDataStore.get(user.id) || {};
+    }
 
     res.json({
       success: true,
@@ -438,17 +506,13 @@ app.get('/api/security/logs', (req, res) => {
 app.get('/api/user/data', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user!.id;
-    let data = userDataStore.get(userId);
+    let data: any = null;
 
-    if (!data) {
-      // Attempt load from Google Sheets
-      const sheetsData = await postToSheetsBackend('getDashboardData', userId, {});
-      if (sheetsData?.data) {
-        data = sheetsData.data;
-        userDataStore.set(userId, data);
-      } else {
-        data = {};
-      }
+    if (isPostgresConfigured()) {
+      data = await getUserData(userId);
+    }
+    if (!data || Object.keys(data).length === 0) {
+      data = userDataStore.get(userId) || {};
     }
 
     res.json({ success: true, userId, data });
@@ -461,28 +525,30 @@ app.get('/api/user/data', requireAuth, async (req: AuthenticatedRequest, res) =>
 app.post('/api/user/data', requireAuth, requireConsent, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user!.id;
-    const { profile, diaryEntries, medications, documents, pressureLogs } = req.body;
+    const payload = req.body || {};
 
-    const currentData = userDataStore.get(userId) || {};
+    const currentData = (isPostgresConfigured() ? await getUserData(userId) : userDataStore.get(userId)) || {};
     const updatedData = {
       ...currentData,
-      profile: profile || currentData.profile,
-      diaryEntries: diaryEntries || currentData.diaryEntries,
-      medications: medications || currentData.medications,
-      documents: documents || currentData.documents,
-      pressureLogs: pressureLogs || currentData.pressureLogs,
+      profile: payload.profile !== undefined ? payload.profile : currentData.profile,
+      documents: payload.documents !== undefined ? payload.documents : currentData.documents,
+      appointments: payload.appointments !== undefined ? payload.appointments : currentData.appointments,
+      dailyLogs: payload.dailyLogs !== undefined ? payload.dailyLogs : currentData.dailyLogs,
+      diaryEntries: payload.diaryEntries !== undefined ? payload.diaryEntries : currentData.diaryEntries,
+      pressureLogs: payload.pressureLogs !== undefined ? payload.pressureLogs : currentData.pressureLogs,
+      reminders: payload.reminders !== undefined ? payload.reminders : currentData.reminders,
+      aiAnalysis: payload.aiAnalysis !== undefined ? payload.aiAnalysis : currentData.aiAnalysis,
       updatedAt: new Date().toISOString(),
     };
 
-    userDataStore.set(userId, updatedData);
-
-    // Sync profile to Sheets backend
-    if (profile) {
-      await postToSheetsBackend('updateUserProfile', userId, profile);
+    if (isPostgresConfigured()) {
+      await saveUserData(userId, updatedData);
     }
+    userDataStore.set(userId, updatedData);
 
     res.json({ success: true, userId, message: 'Данные успешно сохранены на сервере' });
   } catch (err: any) {
+    console.error('Error saving user data:', err);
     res.status(500).json({ success: false, message: 'Ошибка сохранения данных: ' + err.message });
   }
 });
@@ -1294,6 +1360,13 @@ function analyzeMentalDiaryFallback(entries: any[], newEntry: any, isCrisis: boo
 }
 
 async function startServer() {
+  if (isPostgresConfigured()) {
+    console.log('[Server] Connecting to Postgres database and verifying schema...');
+    await ensureSchema();
+  } else {
+    console.log('[Server] Postgres environment variables not set. Using in-memory database fallback.');
+  }
+
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },

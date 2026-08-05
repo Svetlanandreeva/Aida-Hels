@@ -40,7 +40,6 @@ import { MedicalProfile } from './components/MedicalProfile';
 import { SettingsScreen } from './components/SettingsScreen';
 import { AiAssistant } from './components/AiAssistant';
 import { DailyCheckin } from './components/DailyCheckin';
-import { BodyMap } from './components/BodyMap';
 import { RemindersScreen } from './components/RemindersScreen';
 import { MentalDiaryScreen } from './components/MentalDiaryScreen';
 import { PressureDiary } from './components/PressureDiary';
@@ -573,15 +572,6 @@ export default function App() {
         {/* SCREEN 10: DAILY CHECK-IN & RECHARTS DYNAMICS */}
         {currentScreen === 'daily_checkin' && (
           <DailyCheckin logs={dailyLogs} setLogs={setDailyLogs} />
-        )}
-
-        {/* SCREEN 11: BODY MAP (10 SYSTEMS) */}
-        {currentScreen === 'body_map' && (
-          <BodyMap
-            systems={bodySystems}
-            onSelectSystem={(system) => setSelectedSystemDetail(system)}
-            onOpenOverviewModal={() => setIsOverviewModalOpen(true)}
-          />
         )}
 
         {/* SCREEN 12: REMINDERS & MEDICATION SCHEDULE */}

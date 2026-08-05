@@ -72,18 +72,30 @@ export default function HomeDashboard({
     month: 'long',
   });
 
-  // Calculate overall health score (0 - 100)
+  // Check if any user health data exists
+  const hasUserData = Boolean(
+    aiAnalysis?.overallScore ||
+    documents.length > 0 ||
+    dailyLogs.length > 0 ||
+    diaryEntries.length > 0 ||
+    pressureLogs.length > 0
+  );
+
+  // Calculate overall health score (0 - 100) or null if no data
   const healthScore = aiAnalysis?.overallScore
     ? Math.round(aiAnalysis.overallScore * 10)
-    : 88;
+    : null;
 
-  const healthStatusLabel =
-    healthScore >= 80 ? 'Отличное' : healthScore >= 60 ? 'В норме' : 'Требует внимания';
+  const healthStatusLabel = healthScore !== null
+    ? (healthScore >= 80 ? 'Отличное' : healthScore >= 60 ? 'В норме' : 'Требует внимания')
+    : 'Недостаточно данных';
 
   // AI Summary string
   const aiSummary =
     aiAnalysis?.summary ||
-    'Организм в хорошем тонусе. Все ключевые показатели стабильны, зафиксировано постепенное снижение уровня стресса.';
+    (hasUserData
+      ? 'Анализ состояния обновляется на основе загруженных данных.'
+      : 'Недостаточно данных для расчёта. Загрузите результаты анализов или заполните дневник самочувствия, чтобы Аида сформировала ваш персональный обзор.');
 
   // 1. "Что требует внимания" (max 3 items)
   const allDeviations = documents.flatMap((d) => d.deviations || []);
@@ -143,15 +155,16 @@ export default function HomeDashboard({
   };
 
   // 3. "Женское здоровье"
-  const isWomenHealthActive = Boolean(user.womenHealth || user.gender === 'female');
-  let cycleDay = 14;
-  let cyclePhase = 'Овуляторная фаза';
-  let daysToPeriod = 14;
-  let cycleNote = 'Пик энергии и фокуса • Отличное время для активности';
+  const isWomenHealthConfigured = Boolean(user.womenHealth?.lastPeriodDate);
+  const isFemaleUser = user.gender === 'female' || Boolean(user.womenHealth);
+  let cycleDay = 1;
+  let cyclePhase = 'Не настроено';
+  let daysToPeriod = 0;
+  let cycleNote = '';
 
-  if (user.womenHealth) {
+  if (user.womenHealth?.lastPeriodDate) {
     const cycleLength = user.womenHealth.cycleLength || 28;
-    const lastDate = new Date(user.womenHealth.lastPeriodDate || '2026-07-22');
+    const lastDate = new Date(user.womenHealth.lastPeriodDate);
     const diffDays = Math.floor((Date.now() - lastDate.getTime()) / (1000 * 3600 * 24));
     cycleDay = (Math.abs(diffDays) % cycleLength) + 1;
     daysToPeriod = cycleLength - cycleDay + 1;
@@ -226,11 +239,15 @@ export default function HomeDashboard({
   // 6. "Совет Аиды" (Single Recommendation)
   const singleTip =
     aiAnalysis?.dailyRecommendations?.[0] ||
-    'Принимайте Магний B6 во второй половине дня за 1-2 часа до сна для глубокой релаксации ЦНС и быстрого засыпания.';
+    (hasUserData
+      ? 'Поддерживайте комфортный водный баланс и уделяйте 30 минут пешим прогулкам на свежем воздухе.'
+      : 'Загрузите результаты анализов или заполните дневник самочувствия, чтобы получить ваш первый персональный совет от Аиды.');
 
   const tipBasis = documents.length > 0
     ? `Сформировано на основе анализа лабораторных бланков от ${documents[0]?.date || 'недавней даты'} и показателей активности`
-    : 'Сформировано на основе анкетирования и анализа дневника самочувствия';
+    : hasUserData
+    ? 'Сформировано на основе анкеты и дневника самочувствия'
+    : 'Персональный совет появится после добавления ваших первых данных';
 
   return (
     <div className="w-full max-w-[1000px] mx-auto space-y-3.5 sm:space-y-4 px-1.5 sm:px-0">
@@ -261,7 +278,7 @@ export default function HomeDashboard({
 
       {/* 2. ГЛАВНАЯ КАРТОЧКА «ОБЩЕЕ СОСТОЯНИЕ» */}
       <div
-        onClick={() => onNavigate('body_map')}
+        onClick={() => onNavigate('daily_checkin')}
         className="w-full text-left bg-[#0B1320] hover:bg-[#0E182A] border border-[#8E74FF]/30 hover:border-[#8E74FF]/60 rounded-2xl sm:rounded-3xl p-4 sm:p-6 transition-all duration-200 cursor-pointer shadow-xl relative overflow-hidden group space-y-4"
       >
         <div className="absolute -top-24 -right-24 w-48 h-48 bg-[#8E74FF]/10 rounded-full blur-3xl pointer-events-none group-hover:bg-[#8E74FF]/20 transition-all" />
@@ -285,13 +302,17 @@ export default function HomeDashboard({
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex items-baseline gap-3">
             <span className="text-4xl sm:text-5xl font-black text-white tracking-tight">
-              {healthScore}
+              {healthScore !== null ? healthScore : '—'}
             </span>
             <div className="flex flex-col">
-              <span className="text-xs text-white/50 font-semibold">из 100 баллов</span>
-              <span className="text-xs font-extrabold text-[#34F5A4] flex items-center gap-1 mt-0.5">
-                <span>↑ +4% за неделю</span>
+              <span className="text-xs text-white/50 font-semibold">
+                {healthScore !== null ? 'из 100 баллов' : 'нет данных'}
               </span>
+              {healthScore !== null && (
+                <span className="text-xs font-extrabold text-[#34F5A4] flex items-center gap-1 mt-0.5">
+                  <span>Стабильный статус</span>
+                </span>
+              )}
             </div>
           </div>
 
@@ -315,9 +336,24 @@ export default function HomeDashboard({
         </div>
 
         {activeAttentionItems.length === 0 ? (
-          <div className="flex items-center gap-3 p-3.5 bg-[#34F5A4]/10 border border-[#34F5A4]/20 rounded-xl text-[#34F5A4] text-xs sm:text-sm font-semibold">
-            <CheckCircle2 className="w-4 h-4 shrink-0" />
-            <span>Все ключевые показатели в норме, рисков и отклонений не обнаружено</span>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3.5 bg-[#101A28] border border-white/[0.06] rounded-xl text-white/80 text-xs sm:text-sm">
+            <div className="flex items-center gap-2.5">
+              <CheckCircle2 className="w-4 h-4 text-[#34F5A4] shrink-0" />
+              <span>
+                {hasUserData
+                  ? 'Все ключевые показатели в норме, рисков и отклонений не обнаружено'
+                  : 'Загрузите результаты анализов или пройдите ежедневный чек-ин, чтобы Аида могла выявить риски.'}
+              </span>
+            </div>
+            {!hasUserData && (
+              <button
+                type="button"
+                onClick={() => setActiveTab('lab')}
+                className="px-3 py-1.5 rounded-lg bg-[#8E74FF]/20 hover:bg-[#8E74FF]/30 text-[#8E74FF] font-bold text-xs shrink-0 cursor-pointer"
+              >
+                + Добавить данные
+              </button>
+            )}
           </div>
         ) : (
           <div className="space-y-2">
@@ -350,71 +386,76 @@ export default function HomeDashboard({
         )}
       </div>
 
-      {/* GRID FOR MEDICATION & WOMEN'S HEALTH */}
+      {/* GRID FOR MEDICATION & WOMEN's HEALTH */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 sm:gap-4">
-        {/* 4. КАРТОЧКА «ЛЕКАРСТВА СЕГОДНЯ» (Only if medications exist) */}
-        {medReminders.length > 0 && (
-          <div
-            onClick={() => onNavigate('reminders')}
-            className="bg-[#0B1320] hover:bg-[#0E182A] border border-white/[0.08] hover:border-[#8E74FF]/40 rounded-2xl sm:rounded-3xl p-4 sm:p-5 shadow-xl transition-all cursor-pointer flex flex-col justify-between space-y-3 group"
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-[#8E74FF]/10 border border-[#8E74FF]/20 text-[#8E74FF] flex items-center justify-center shrink-0">
-                  <Pill className="w-4 h-4" />
-                </div>
-                <div>
-                  <h3 className="font-extrabold text-white text-sm">Лекарства сегодня</h3>
-                  <p className="text-[10px] text-white/50">
-                    {completedMeds.length} из {medReminders.length} принято
-                  </p>
-                </div>
+        {/* 4. КАРТОЧКА «ЛЕКАРСТВА И ВИТАМИНЫ» */}
+        <div
+          onClick={() => onNavigate('reminders')}
+          className="bg-[#0B1320] hover:bg-[#0E182A] border border-white/[0.08] hover:border-[#8E74FF]/40 rounded-2xl sm:rounded-3xl p-4 sm:p-5 shadow-xl transition-all cursor-pointer flex flex-col justify-between space-y-3 group"
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-xl bg-[#8E74FF]/10 border border-[#8E74FF]/20 text-[#8E74FF] flex items-center justify-center shrink-0">
+                <Pill className="w-4 h-4" />
               </div>
-
-              <ChevronRight className="w-4 h-4 text-white/40 group-hover:text-white group-hover:translate-x-1 transition-all" />
+              <div>
+                <h3 className="font-extrabold text-white text-sm">Лекарства сегодня</h3>
+                <p className="text-[10px] text-white/50">
+                  {medReminders.length > 0
+                    ? `${completedMeds.length} из ${medReminders.length} принято`
+                    : 'График приёма не настроен'}
+                </p>
+              </div>
             </div>
 
-            {nextMed ? (
-              <div className="p-3 bg-[#101A28] border border-white/[0.06] rounded-xl flex items-center justify-between gap-3">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-extrabold text-white text-xs sm:text-sm">
-                      {nextMed.title}
-                    </span>
-                    {nextMed.dosage && (
-                      <span className="text-[10px] text-[#8E74FF] font-semibold bg-[#8E74FF]/10 px-2 py-0.5 rounded-md">
-                        {nextMed.dosage}
-                      </span>
-                    )}
-                  </div>
-                  <span className="text-[11px] text-white/50 block mt-0.5">
-                    Время приёма: {nextMed.time || '20:00'}
-                  </span>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={(e) => handleToggleMed(e, nextMed.id)}
-                  className={`p-2 rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                    nextMed.lastCompletedDate === todayStr
-                      ? 'bg-[#34F5A4]/10 border-[#34F5A4]/30 text-[#34F5A4]'
-                      : 'bg-white/5 hover:bg-white/10 border-white/10 text-white'
-                  }`}
-                >
-                  <Check className="w-3.5 h-3.5" />
-                  <span>
-                    {nextMed.lastCompletedDate === todayStr ? 'Принято' : 'Отметить'}
-                  </span>
-                </button>
-              </div>
-            ) : (
-              <div className="text-xs text-white/50 py-2">Все лекарства на сегодня приняты</div>
-            )}
+            <ChevronRight className="w-4 h-4 text-white/40 group-hover:text-white group-hover:translate-x-1 transition-all" />
           </div>
-        )}
 
-        {/* 5. КАРТОЧКА «ЖЕНСКОЕ ЗДОРОВЬЕ» (Only if enabled) */}
-        {isWomenHealthActive && (
+          {medReminders.length === 0 ? (
+            <div className="p-3 bg-[#101A28] border border-white/[0.06] rounded-xl flex items-center justify-between gap-2 text-xs text-white/60">
+              <span>Добавить график приёма лекарств или витаминов</span>
+              <span className="text-[#8E74FF] font-bold shrink-0">+ Добавить</span>
+            </div>
+          ) : nextMed ? (
+            <div className="p-3 bg-[#101A28] border border-white/[0.06] rounded-xl flex items-center justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-extrabold text-white text-xs sm:text-sm">
+                    {nextMed.title}
+                  </span>
+                  {nextMed.dosage && (
+                    <span className="text-[10px] text-[#8E74FF] font-semibold bg-[#8E74FF]/10 px-2 py-0.5 rounded-md">
+                      {nextMed.dosage}
+                    </span>
+                  )}
+                </div>
+                <span className="text-[11px] text-white/50 block mt-0.5">
+                  Время приёма: {nextMed.time || '20:00'}
+                </span>
+              </div>
+
+              <button
+                type="button"
+                onClick={(e) => handleToggleMed(e, nextMed.id)}
+                className={`p-2 rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  nextMed.lastCompletedDate === todayStr
+                    ? 'bg-[#34F5A4]/10 border-[#34F5A4]/30 text-[#34F5A4]'
+                    : 'bg-white/5 hover:bg-white/10 border-white/10 text-white'
+                }`}
+              >
+                <Check className="w-3.5 h-3.5" />
+                <span>
+                  {nextMed.lastCompletedDate === todayStr ? 'Принято' : 'Отметить'}
+                </span>
+              </button>
+            </div>
+          ) : (
+            <div className="text-xs text-white/50 py-2">Все лекарства на сегодня приняты</div>
+          )}
+        </div>
+
+        {/* 5. КАРТОЧКА «ЖЕНСКОЕ ЗДОРОВЬЕ» */}
+        {isFemaleUser && (
           <div
             onClick={() => onNavigate('settings')}
             className="bg-[#0B1320] hover:bg-[#0E182A] border border-white/[0.08] hover:border-pink-500/40 rounded-2xl sm:rounded-3xl p-4 sm:p-5 shadow-xl transition-all cursor-pointer flex flex-col justify-between space-y-3 group"
@@ -426,25 +467,34 @@ export default function HomeDashboard({
                 </div>
                 <div>
                   <h3 className="font-extrabold text-white text-sm">Женское здоровье</h3>
-                  <p className="text-[10px] text-pink-400 font-medium">{cyclePhase}</p>
+                  <p className="text-[10px] text-pink-400 font-medium">
+                    {isWomenHealthConfigured ? cyclePhase : 'Трекер цикла'}
+                  </p>
                 </div>
               </div>
 
               <ChevronRight className="w-4 h-4 text-white/40 group-hover:text-white group-hover:translate-x-1 transition-all" />
             </div>
 
-            <div className="p-3 bg-[#101A28] border border-white/[0.06] rounded-xl flex items-center justify-between gap-3 text-xs">
-              <div>
-                <span className="font-black text-white text-sm block">{cycleDay}-й день цикла</span>
-                <span className="text-[11px] text-white/50 block mt-0.5">
-                  Следующий цикл: через {daysToPeriod} дней
+            {isWomenHealthConfigured ? (
+              <div className="p-3 bg-[#101A28] border border-white/[0.06] rounded-xl flex items-center justify-between gap-3 text-xs">
+                <div>
+                  <span className="font-black text-white text-sm block">{cycleDay}-й день цикла</span>
+                  <span className="text-[11px] text-white/50 block mt-0.5">
+                    Следующий цикл: через {daysToPeriod} дней
+                  </span>
+                </div>
+
+                <span className="text-[10px] text-pink-300 bg-pink-500/10 px-2.5 py-1 rounded-lg border border-pink-500/20 font-semibold max-w-[140px] text-right">
+                  {cycleNote}
                 </span>
               </div>
-
-              <span className="text-[10px] text-pink-300 bg-pink-500/10 px-2.5 py-1 rounded-lg border border-pink-500/20 font-semibold max-w-[140px] text-right">
-                {cycleNote}
-              </span>
-            </div>
+            ) : (
+              <div className="p-3 bg-[#101A28] border border-white/[0.06] rounded-xl flex items-center justify-between gap-2 text-xs text-white/60">
+                <span>Укажите дату последнего цикла в настройках</span>
+                <span className="text-pink-400 font-bold shrink-0">Настроить</span>
+              </div>
+            )}
           </div>
         )}
       </div>
