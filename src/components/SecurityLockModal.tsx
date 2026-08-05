@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Shield, Scan, Lock, CheckCircle2, AlertCircle, Delete, KeyRound, Sparkles, X } from 'lucide-react';
+import { logSecurityEvent } from '../App';
 
 interface SecurityLockModalProps {
   isOpen: boolean;
@@ -55,6 +56,7 @@ export const SecurityLockModal: React.FC<SecurityLockModalProps> = ({
           } else {
             setShake(true);
             setErrorMsg('Неверный PIN-код');
+            logSecurityEvent('Неуспешная попытка разблокировки: введён неверный PIN-код', 'high');
             setTimeout(() => {
               setPin('');
               setShake(false);

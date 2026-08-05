@@ -23,6 +23,34 @@ export const DoctorReportModal: React.FC<DoctorReportModalProps> = ({
     window.print();
   };
 
+  const handleServerDownload = async () => {
+    try {
+      const response = await fetch('/api/reports/doctor-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          date_from: '2026-01-01',
+          date_to: new Date().toISOString().split('T')[0],
+        }),
+      });
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Health_Doctor_Report_${new Date().toISOString().split('T')[0]}.html`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+      } else {
+        alert('Не удалось сформировать отчёт на сервере.');
+      }
+    } catch (e) {
+      console.error('Download report error:', e);
+      alert('Ошибка скачивания отчёта.');
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
       <div className="bg-[#14171C] rounded-3xl max-w-3xl w-full p-6 sm:p-10 shadow-2xl space-y-6 relative max-h-[92vh] overflow-y-auto border border-gray-800">
@@ -35,11 +63,18 @@ export const DoctorReportModal: React.FC<DoctorReportModalProps> = ({
 
           <div className="flex items-center gap-2">
             <button
+              onClick={handleServerDownload}
+              className="px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
+            >
+              <Download className="w-4 h-4" />
+              <span>Скачать файл</span>
+            </button>
+            <button
               onClick={handlePrint}
               className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
             >
               <Printer className="w-4 h-4" />
-              <span>Распечатать / Сохранить в PDF</span>
+              <span>Распечатать</span>
             </button>
             <button
               onClick={onClose}

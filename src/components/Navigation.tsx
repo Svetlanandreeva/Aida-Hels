@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ScreenId, DashboardTab, UserProfile } from '../types';
+import { ScreenId, DashboardTab, UserProfile, Reminder, DocumentItem } from '../types';
 import {
   Heart,
   LayoutDashboard,
@@ -7,12 +7,16 @@ import {
   MessageSquare,
   Activity,
   Bell,
+  BellOff,
+  Pill,
   Brain,
   ChevronDown,
   Sparkles,
   CheckSquare,
   Settings,
   User,
+  Check,
+  X,
 } from 'lucide-react';
 
 interface NavigationProps {
@@ -24,6 +28,8 @@ interface NavigationProps {
   onLogout: () => void;
   onOpenTutorial?: () => void;
   activeRemindersCount?: number;
+  reminders?: Reminder[];
+  documents?: DocumentItem[];
 }
 
 export const Navigation: React.FC<NavigationProps> = ({
@@ -34,9 +40,65 @@ export const Navigation: React.FC<NavigationProps> = ({
   user,
   onLogout,
   onOpenTutorial,
-  activeRemindersCount = 3,
+  activeRemindersCount,
+  reminders = [],
+  documents = [],
 }) => {
   const [showBellDropdown, setShowBellDropdown] = useState(false);
+  const [dismissedNotifIds, setDismissedNotifIds] = useState<string[]>([]);
+
+  // Build dynamic real notifications from user data
+  const dynamicNotifs = React.useMemo(() => {
+    const items: Array<{
+      id: string;
+      title: string;
+      time: string;
+      message: string;
+      type: 'reminder' | 'document' | 'system';
+      targetScreen?: ScreenId;
+    }> = [];
+
+    // 1. Active Enabled Reminders
+    reminders
+      .filter((r) => r.isEnabled)
+      .slice(0, 5)
+      .forEach((r) => {
+        items.push({
+          id: `rem-${r.id}`,
+          title: r.title,
+          time: r.time || 'Сегодня',
+          message: r.dosage ? `Дозировка: ${r.dosage}` : (r.notes || 'Приём нутрицевтиков/лекарства'),
+          type: 'reminder',
+          targetScreen: 'reminders',
+        });
+      });
+
+    // 2. Uploaded & Processed Documents
+    documents.slice(0, 3).forEach((d) => {
+      items.push({
+        id: `doc-${d.id}`,
+        title: d.title,
+        time: d.date || 'Обработано',
+        message: `Результат исследования (${d.categoryLabel || 'Анализы'}) успешного разобран ИИ`,
+        type: 'document',
+        targetScreen: 'dashboard',
+      });
+    });
+
+    // 3. System Daily Check-in Notification if questionnaire/check-in prompt active
+    items.push({
+      id: 'sys-checkin',
+      title: 'Дневной опрос самочувствия',
+      time: 'Сегодня',
+      message: 'Отметьте состояние и уровень энергии для точности расчётов',
+      type: 'system',
+      targetScreen: 'daily_checkin',
+    });
+
+    return items.filter((item) => !dismissedNotifIds.includes(item.id));
+  }, [reminders, documents, dismissedNotifIds]);
+
+  const unreadCount = dynamicNotifs.length;
 
   const isAppView = [
     'dashboard',
@@ -196,7 +258,7 @@ export const Navigation: React.FC<NavigationProps> = ({
                 title="Центр уведомлений"
               >
                 <Bell className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
-                {activeRemindersCount > 0 && (
+                {unreadCount > 0 && (
                   <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-[#34F5A4] animate-pulse" />
                 )}
               </button>
@@ -209,34 +271,54 @@ export const Navigation: React.FC<NavigationProps> = ({
                       <span>Центр уведомлений</span>
                     </div>
                     <span className="px-2 py-0.5 rounded-full bg-[#34F5A4]/10 text-[#34F5A4] font-bold text-[10px]">
-                      Новых: 3
+                      {unreadCount > 0 ? `Новых: ${unreadCount}` : 'Нет новых'}
                     </span>
                   </div>
 
                   <div className="space-y-2 max-h-60 overflow-y-auto">
-                    <div className="p-2.5 bg-[#101A28] rounded-xl border border-white/[0.04] space-y-1">
-                      <div className="flex items-center justify-between font-bold text-white text-xs">
-                        <span>Витамин D3 (5000 ME)</span>
-                        <span className="text-[10px] text-white/40">14:00</span>
+                    {dynamicNotifs.length === 0 ? (
+                      <div className="py-6 px-4 text-center space-y-2 text-white/50">
+                        <BellOff className="w-7 h-7 mx-auto text-white/20" />
+                        <p className="font-semibold text-xs text-white/70">Новых уведомлений нет</p>
+                        <p className="text-[11px] text-white/40">
+                          Все текущие напоминания и отчёты просмотрены
+                        </p>
                       </div>
-                      <p className="text-white/60 text-[11px]">Запланирован дневной приём нутрицевтиков</p>
-                    </div>
+                    ) : (
+                      dynamicNotifs.map((item) => (
+                        <div
+                          key={item.id}
+                          className="p-2.5 bg-[#101A28] hover:bg-[#142133] rounded-xl border border-white/[0.04] space-y-1 relative group transition-colors"
+                        >
+                          <div className="flex items-center justify-between font-bold text-white text-xs pr-6">
+                            <span
+                              className="cursor-pointer hover:text-[#34F5A4] transition-colors flex items-center gap-1.5"
+                              onClick={() => {
+                                if (item.targetScreen) {
+                                  setCurrentScreen(item.targetScreen);
+                                  setShowBellDropdown(false);
+                                }
+                              }}
+                            >
+                              {item.type === 'reminder' && <Pill className="w-3.5 h-3.5 text-[#34F5A4]" />}
+                              {item.type === 'document' && <FileText className="w-3.5 h-3.5 text-[#4DEBFF]" />}
+                              {item.type === 'system' && <Sparkles className="w-3.5 h-3.5 text-purple-400" />}
+                              <span>{item.title}</span>
+                            </span>
+                            <span className="text-[10px] text-white/40 shrink-0">{item.time}</span>
+                          </div>
+                          <p className="text-white/60 text-[11px] leading-relaxed">{item.message}</p>
 
-                    <div className="p-2.5 bg-[#101A28] rounded-xl border border-white/[0.04] space-y-1">
-                      <div className="flex items-center justify-between font-bold text-white text-xs">
-                        <span>Лабораторный анализ</span>
-                        <span className="text-[10px] text-white/40">12:30</span>
-                      </div>
-                      <p className="text-white/60 text-[11px]">Результат бланкового исследования успешно обработан ИИ</p>
-                    </div>
-
-                    <div className="p-2.5 bg-[#101A28] rounded-xl border border-white/[0.04] space-y-1">
-                      <div className="flex items-center justify-between font-bold text-white text-xs">
-                        <span>ИИ-Ассистент</span>
-                        <span className="text-[10px] text-white/40">09:15</span>
-                      </div>
-                      <p className="text-white/60 text-[11px]">Сводка показателей за неделю сформирована</p>
-                    </div>
+                          <button
+                            onClick={() => setDismissedNotifIds((prev) => [...prev, item.id])}
+                            className="absolute top-2 right-2 p-1 text-white/30 hover:text-white rounded transition-colors cursor-pointer"
+                            title="Скрыть уведомление"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ))
+                    )}
                   </div>
 
                   <button

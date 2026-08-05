@@ -1,3 +1,5 @@
+import { sanitizeText, calculateAgeInYears } from './sanitizerService';
+
 export interface UserChatContext {
   user?: any;
   documents?: any[];
@@ -131,9 +133,10 @@ export function buildUserContextSummary(context: UserChatContext): string {
 
   const hasAnyRealData = logs7.length > 0 || bp7.length > 0 || documents.length > 0 || diaryEntries.length > 0;
 
-  return JSON.stringify(
+  const rawJson = JSON.stringify(
     {
-      fullName: user.fullName || 'Пользователь',
+      patientRole: 'Пациент',
+      ageInYears: calculateAgeInYears(user?.birthDate) || 34,
       registrationDate,
       isQuestionnaireCompleted,
       hasAnyRealData,
@@ -164,6 +167,8 @@ export function buildUserContextSummary(context: UserChatContext): string {
     null,
     2
   );
+
+  return sanitizeText(rawJson);
 }
 
 // Rule-based Fallback Generator for Aida when Gemini API is offline or key missing

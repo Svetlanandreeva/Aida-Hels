@@ -46,6 +46,8 @@ import {
   CheckSquare,
   SlidersHorizontal,
   RefreshCw,
+  ChevronUp,
+  ChevronDown,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -134,6 +136,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   // Trend Chart State for Main Tab
   const [chartPeriod, setChartPeriod] = useState<'7d' | '14d' | '30d'>('7d');
+
+  // Accordion Expand/Collapse States for Deep Analysis Blocks
+  const [isSystemsExpanded, setIsSystemsExpanded] = useState(false);
+  const [isPsychologyExpanded, setIsPsychologyExpanded] = useState(false);
+  const [isRecommendationsExpanded, setIsRecommendationsExpanded] = useState(false);
 
   // Fetch structured AI analysis from backend
   const fetchHealthAnalysis = async () => {
@@ -276,14 +283,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
         const data = await res.json();
         setUploadProgress(100);
 
-        if (data.success && data.data) {
+        if (data.success && data.data && data.data.status === 'recognized' && Array.isArray(data.data.results)) {
           setRecognizedData(data.data);
           setIsVerificationModalOpen(true);
         } else {
-          alert(data.error || 'Ошибка распознавания документа. Попробуйте позже.');
+          alert('Не удалось распознать документ, попробуйте другое фото');
         }
       } catch (err) {
         console.error('File recognition error:', err);
+        alert('Не удалось распознать документ, попробуйте другое фото');
       } finally {
         setIsUploading(false);
         setUploadProgress(0);
@@ -311,7 +319,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
           status: item.status === 'low' ? 'Ниже' : item.status === 'high' ? 'Выше' : 'Внимание',
           explanation: item.status === 'low' ? 'Ниже референсного диапазона лаборатории.' : 'Выше референсного диапазона лаборатории.',
         })),
-      testedMarkers: confirmed.results.map((item) => item.originalName),
       recommendations: [
         'Показатели успешно сохранены в историю исследовательской динамометрии.',
         'Для полной интерпретации обратитесь к лечащему врачу.',
@@ -658,258 +665,335 @@ export const Dashboard: React.FC<DashboardProps> = ({
             )}
           </div>
 
-          {/* BLOCK 6: REPORT BY 12 BODY SYSTEMS */}
+          {/* BLOCK 6: REPORT BY 12 BODY SYSTEMS (COLLAPSIBLE ACCORDION) */}
           {healthAnalysis?.systems && (
-            <BodySystemsSection
-              systems={healthAnalysis.systems}
-              onNavigateBodyMap={() => onNavigate('body_map')}
-            />
-          )}
-
-          {/* BLOCK 7 & 8: PSYCHOEMOTIONAL & INDICATOR DYNAMICS GRID */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 sm:gap-6">
-            {/* BLOCK 7: ПСИХОЭМОЦИОНАЛЬНОЕ СОСТОЯНИЕ */}
-            {(() => {
-              const hasDiaryEntries = diaryEntries && diaryEntries.length > 0;
-
-              if (!hasDiaryEntries) {
-                return (
-                  <div className="bg-[#0B1320] border border-white/[0.08] rounded-2xl sm:rounded-3xl p-5 sm:p-7 shadow-xl space-y-5 flex flex-col justify-between">
-                    <div className="space-y-4">
-                      <div className="flex items-center flex-wrap gap-2 justify-between border-b border-white/[0.06] pb-4">
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-xl bg-[#4DEBFF]/10 border border-[#4DEBFF]/20 text-[#4DEBFF] flex items-center justify-center">
-                            <Brain className="w-4 h-4" />
-                          </div>
-                          <h3 className="font-bold text-white text-base sm:text-lg">Психоэмоциональный баланс</h3>
-                        </div>
-                        <span className="text-xs text-white/50 font-bold bg-white/5 border border-white/10 px-2.5 py-0.5 rounded-full">
-                          Нет данных
-                        </span>
-                      </div>
-
-                      <div className="bg-[#101A28] p-6 rounded-2xl border border-white/[0.04] text-center space-y-3 my-2">
-                        <Brain className="w-8 h-8 text-white/30 mx-auto" />
-                        <p className="text-xs text-white/70 font-medium max-w-sm mx-auto">
-                          Пока недостаточно записей. Заполните дневник ментального здоровья, чтобы увидеть анализ
-                        </p>
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={() => onNavigate('mental_diary')}
-                      className="w-full py-3 px-4 bg-[#101A28] hover:bg-white/[0.06] text-[#34F5A4] border border-[#34F5A4]/30 font-bold text-xs rounded-2xl transition-all flex items-center justify-center gap-2 cursor-pointer mt-2"
-                    >
-                      <span>Открыть дневник ментального здоровья</span>
-                      <ArrowRight className="w-4 h-4" />
-                    </button>
+            <div className="bg-[#0B1320] border border-white/[0.08] rounded-2xl sm:rounded-3xl shadow-xl overflow-hidden transition-all">
+              <button
+                onClick={() => setIsSystemsExpanded(!isSystemsExpanded)}
+                className="w-full p-5 sm:p-6 flex items-center justify-between hover:bg-white/[0.02] transition-colors cursor-pointer text-left"
+              >
+                <div className="flex items-center gap-3.5">
+                  <div className="w-10 h-10 rounded-2xl bg-[#34F5A4]/10 border border-[#34F5A4]/20 text-[#34F5A4] flex items-center justify-center shrink-0">
+                    <Activity className="w-5 h-5" />
                   </div>
-                );
-              }
-
-              const avgState = Math.round(
-                diaryEntries.reduce((acc, curr) => acc + (curr.state_score || 5), 0) / diaryEntries.length
-              );
-              const balancePercent = Math.min(100, Math.max(0, avgState * 10));
-
-              const avgStressVal = Math.round(
-                diaryEntries.reduce((acc, curr) => acc + (curr.stress_score || curr.anxiety_score || 3), 0) / diaryEntries.length
-              );
-
-              const stressLabel = avgStressVal <= 3 ? 'Низкий' : avgStressVal <= 6 ? 'Умеренный' : 'Повышенный';
-              const badgeText = avgStressVal > 6 ? 'Внимание' : avgState >= 7 ? 'Стабилен' : 'Наблюдение';
-              const badgeClass =
-                avgStressVal > 6
-                  ? 'text-amber-400 bg-amber-400/10 border-amber-400/20'
-                  : avgState >= 7
-                  ? 'text-[#34F5A4] bg-[#34F5A4]/10 border-[#34F5A4]/20'
-                  : 'text-sky-400 bg-sky-400/10 border-sky-400/20';
-
-              const negativeTriggers = mentalPatterns?.negative_triggers?.map((t) => t.text) || [];
-              const diaryMoodTriggers = Array.from(
-                new Set(
-                  diaryEntries
-                    .flatMap((e) => e.moods || [])
-                    .filter((m) => ['тревога', 'раздражение', 'грусть', 'апатия', 'усталость', 'злость', 'страх'].includes(m))
-                )
-              );
-
-              const combinedTriggers = Array.from(new Set([...negativeTriggers, ...diaryMoodTriggers])).slice(0, 3);
-
-              return (
-                <div className="bg-[#0B1320] border border-white/[0.08] rounded-2xl sm:rounded-3xl p-5 sm:p-7 shadow-xl space-y-5 flex flex-col justify-between">
-                  <div className="space-y-4">
-                    <div className="flex items-center flex-wrap gap-2 justify-between border-b border-white/[0.06] pb-4">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-xl bg-[#4DEBFF]/10 border border-[#4DEBFF]/20 text-[#4DEBFF] flex items-center justify-center">
-                          <Brain className="w-4 h-4" />
-                        </div>
-                        <h3 className="font-bold text-white text-base sm:text-lg">Психоэмоциональный баланс</h3>
-                      </div>
-                      <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full border ${badgeClass}`}>
-                        {badgeText}
-                      </span>
-                    </div>
-
-                    <div className="flex flex-col sm:flex-row items-center justify-around gap-4 py-2">
-                      <div className="relative w-32 h-32 flex items-center justify-center shrink-0">
-                        <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
-                          <path
-                            className="text-white/10"
-                            strokeWidth="3.5"
-                            stroke="currentColor"
-                            fill="none"
-                            d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                          />
-                          <path
-                            className="text-[#34F5A4]"
-                            strokeDasharray={`${balancePercent}, 100`}
-                            strokeWidth="3.5"
-                            strokeLinecap="round"
-                            stroke="currentColor"
-                            fill="none"
-                            d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                          />
-                        </svg>
-                        <div className="absolute flex flex-col items-center justify-center text-center">
-                          <span className="text-3xl font-black text-white">{balancePercent}%</span>
-                          <span className="text-[10px] text-[#34F5A4] font-semibold uppercase">Баланс</span>
-                        </div>
-                      </div>
-
-                      <div className="space-y-2 text-xs flex-1 w-full">
-                        <div className="bg-[#101A28] p-3 rounded-xl border border-white/[0.04] space-y-1">
-                          <span className="text-white/60 block text-[10px]">Уровень стресса:</span>
-                          <span className="font-bold text-white block text-sm">
-                            {avgStressVal} / 10 ({stressLabel})
-                          </span>
-                        </div>
-                        <div className="bg-[#101A28] p-3 rounded-xl border border-white/[0.04] space-y-1">
-                          <span className="text-white/60 block text-[10px]">Ключевые триггеры:</span>
-                          <div className="flex flex-wrap gap-1">
-                            {combinedTriggers.length > 0 ? (
-                              combinedTriggers.map((trig, idx) => (
-                                <span key={idx} className="px-2 py-0.5 bg-[#FF8C42]/10 text-[#FF8C42] rounded text-[10px] font-medium">
-                                  {trig}
-                                </span>
-                              ))
-                            ) : (
-                              <span className="text-white/40 text-[10px]">Не выявлены</span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
+                  <div>
+                    <h3 className="font-extrabold text-white text-base sm:text-lg">
+                      Отчёт по 12 системам организма
+                    </h3>
+                    <p className="text-xs text-white/50 mt-0.5">
+                      {healthAnalysis.systems.filter((s) => s.status === 'norm').length} в норме •{' '}
+                      {healthAnalysis.systems.filter((s) => s.status !== 'norm').length} с оговорками или без данных
+                    </p>
                   </div>
-
-                  <button
-                    onClick={() => onNavigate('mental_diary')}
-                    className="w-full py-3 px-4 bg-[#101A28] hover:bg-white/[0.06] text-[#34F5A4] border border-[#34F5A4]/30 font-bold text-xs rounded-2xl transition-all flex items-center justify-center gap-2 cursor-pointer mt-2"
-                  >
-                    <span>Открыть дневник ментального здоровья</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </button>
                 </div>
-              );
-            })()}
-
-            {/* BLOCK 8: ДИНАМИКА ПОКАЗАТЕЛЕЙ (TREND CHART) */}
-            <div className="bg-[#0B1320] border border-white/[0.08] rounded-2xl sm:rounded-3xl p-5 sm:p-7 shadow-xl space-y-4 flex flex-col justify-between">
-              <div className="flex items-center justify-between border-b border-white/[0.06] pb-3">
-                <h3 className="font-bold text-white text-base sm:text-lg">Динамика самочувствия</h3>
-                <select
-                  value={chartPeriod}
-                  onChange={(e) => setChartPeriod(e.target.value as any)}
-                  className="bg-[#101A28] text-xs text-white/80 border border-white/10 rounded-xl px-3 py-1.5 focus:outline-none"
-                >
-                  <option value="7d">7 дней</option>
-                  <option value="14d">14 дней</option>
-                  <option value="30d">30 дней</option>
-                </select>
-              </div>
-
-              {!hasEnoughChartData ? (
-                <div className="h-48 w-full flex flex-col items-center justify-center bg-[#101A28] rounded-2xl border border-white/[0.04] p-6 text-center space-y-2.5 my-auto">
-                  <Activity className="w-8 h-8 text-white/30 mx-auto" />
-                  <p className="text-xs font-semibold text-white/80 max-w-xs">
-                    Недостаточно записей для построения графика динамики
-                  </p>
-                  <p className="text-[11px] text-white/40 max-w-xs">
-                    Вносите записи в дневник ментального здоровья, чтобы отслеживать тренд самочувствия
-                  </p>
+                <div className="flex items-center gap-2 text-xs font-bold text-[#34F5A4] bg-[#34F5A4]/10 px-3.5 py-2 rounded-xl border border-[#34F5A4]/20">
+                  <span>{isSystemsExpanded ? 'Свернуть' : 'Развернуть (12 систем)'}</span>
+                  {isSystemsExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                 </div>
-              ) : (
-                <>
-                  <div className="h-44 w-full pt-1">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={metricsTrendData}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" vertical={false} />
-                        <XAxis dataKey="day" stroke="rgba(255,255,255,0.38)" fontSize={11} tickLine={false} />
-                        <YAxis stroke="rgba(255,255,255,0.38)" fontSize={11} tickLine={false} domain={[0, 100]} />
-                        <Tooltip
-                          contentStyle={{
-                            backgroundColor: '#101A28',
-                            borderColor: 'rgba(255,255,255,0.1)',
-                            borderRadius: '1rem',
-                            fontSize: '12px',
-                            color: '#fff',
-                          }}
-                        />
-                        <Line type="monotone" dataKey="energy" stroke="#34F5A4" strokeWidth={2.5} dot={false} name="Энергия" />
-                        <Line type="monotone" dataKey="sleep" stroke="#4DEBFF" strokeWidth={2.5} dot={false} name="Сон" />
-                        <Line type="monotone" dataKey="stress" stroke="#8E74FF" strokeWidth={2.5} dot={false} name="Стресс" />
-                        <Line type="monotone" dataKey="mood" stroke="#FF8C42" strokeWidth={2.5} dot={false} name="Настроение" />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
+              </button>
 
-                  <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-white/60 pt-2 border-t border-white/[0.06]">
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-[#34F5A4]" />
-                      <span>Энергия</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-[#4DEBFF]" />
-                      <span>Сон</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-[#8E74FF]" />
-                      <span>Стресс</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-[#FF8C42]" />
-                      <span>Настроение</span>
-                    </div>
-                  </div>
-                </>
+              {isSystemsExpanded && (
+                <div className="p-5 sm:p-7 pt-0 border-t border-white/[0.06] space-y-4">
+                  <BodySystemsSection
+                    systems={healthAnalysis.systems}
+                    onNavigateBodyMap={() => onNavigate('body_map')}
+                  />
+                </div>
               )}
             </div>
+          )}
+
+          {/* BLOCK 7 & 8: PSYCHOEMOTIONAL & INDICATOR DYNAMICS GRID (COLLAPSIBLE ACCORDION) */}
+          <div className="bg-[#0B1320] border border-white/[0.08] rounded-2xl sm:rounded-3xl shadow-xl overflow-hidden transition-all">
+            <button
+              onClick={() => setIsPsychologyExpanded(!isPsychologyExpanded)}
+              className="w-full p-5 sm:p-6 flex items-center justify-between hover:bg-white/[0.02] transition-colors cursor-pointer text-left"
+            >
+              <div className="flex items-center gap-3.5">
+                <div className="w-10 h-10 rounded-2xl bg-[#4DEBFF]/10 border border-[#4DEBFF]/20 text-[#4DEBFF] flex items-center justify-center shrink-0">
+                  <Brain className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-white text-base sm:text-lg">
+                    Психоэмоциональный баланс и динамика
+                  </h3>
+                  <p className="text-xs text-white/50 mt-0.5">
+                    Уровень стресса, триггеры настроения и графики трендов самочувствия
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 text-xs font-bold text-[#4DEBFF] bg-[#4DEBFF]/10 px-3.5 py-2 rounded-xl border border-[#4DEBFF]/20">
+                <span>{isPsychologyExpanded ? 'Свернуть' : 'Развернуть аналитику'}</span>
+                {isPsychologyExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              </div>
+            </button>
+
+            {isPsychologyExpanded && (
+              <div className="p-5 sm:p-7 pt-0 border-t border-white/[0.06] space-y-6">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 sm:gap-6 pt-4">
+                  {/* BLOCK 7: ПСИХОЭМОЦИОНАЛЬНОЕ СОСТОЯНИЕ */}
+                  {(() => {
+                    const hasDiaryEntries = diaryEntries && diaryEntries.length > 0;
+
+                    if (!hasDiaryEntries) {
+                      return (
+                        <div className="bg-[#101A28] border border-white/[0.06] rounded-2xl p-5 shadow-xl space-y-5 flex flex-col justify-between">
+                          <div className="space-y-4">
+                            <div className="flex items-center flex-wrap gap-2 justify-between border-b border-white/[0.06] pb-4">
+                              <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-xl bg-[#4DEBFF]/10 border border-[#4DEBFF]/20 text-[#4DEBFF] flex items-center justify-center">
+                                  <Brain className="w-4 h-4" />
+                                </div>
+                                <h3 className="font-bold text-white text-base">Психоэмоциональный баланс</h3>
+                              </div>
+                              <span className="text-xs text-white/50 font-bold bg-white/5 border border-white/10 px-2.5 py-0.5 rounded-full">
+                                Нет данных
+                              </span>
+                            </div>
+
+                            <div className="bg-[#0B1320] p-6 rounded-2xl border border-white/[0.04] text-center space-y-3 my-2">
+                              <Brain className="w-8 h-8 text-white/30 mx-auto" />
+                              <p className="text-xs text-white/70 font-medium max-w-sm mx-auto">
+                                Пока недостаточно записей. Заполните дневник ментального здоровья, чтобы увидеть анализ
+                              </p>
+                            </div>
+                          </div>
+
+                          <button
+                            onClick={() => onNavigate('mental_diary')}
+                            className="w-full py-3 px-4 bg-[#0B1320] hover:bg-white/[0.06] text-[#34F5A4] border border-[#34F5A4]/30 font-bold text-xs rounded-2xl transition-all flex items-center justify-center gap-2 cursor-pointer mt-2"
+                          >
+                            <span>Открыть дневник ментального здоровья</span>
+                            <ArrowRight className="w-4 h-4" />
+                          </button>
+                        </div>
+                      );
+                    }
+
+                    const avgState = Math.round(
+                      diaryEntries.reduce((acc, curr) => acc + (curr.state_score || 5), 0) / diaryEntries.length
+                    );
+                    const balancePercent = Math.min(100, Math.max(0, avgState * 10));
+
+                    const avgStressVal = Math.round(
+                      diaryEntries.reduce((acc, curr) => acc + (curr.stress_score || curr.anxiety_score || 3), 0) / diaryEntries.length
+                    );
+
+                    const stressLabel = avgStressVal <= 3 ? 'Низкий' : avgStressVal <= 6 ? 'Умеренный' : 'Повышенный';
+                    const badgeText = avgStressVal > 6 ? 'Внимание' : avgState >= 7 ? 'Стабилен' : 'Наблюдение';
+                    const badgeClass =
+                      avgStressVal > 6
+                        ? 'text-amber-400 bg-amber-400/10 border-amber-400/20'
+                        : avgState >= 7
+                        ? 'text-[#34F5A4] bg-[#34F5A4]/10 border-[#34F5A4]/20'
+                        : 'text-sky-400 bg-sky-400/10 border-sky-400/20';
+
+                    const negativeTriggers = mentalPatterns?.negative_triggers?.map((t) => t.text) || [];
+                    const diaryMoodTriggers = Array.from(
+                      new Set(
+                        diaryEntries
+                          .flatMap((e) => e.moods || [])
+                          .filter((m) => ['тревога', 'раздражение', 'грусть', 'апатия', 'усталость', 'злость', 'страх'].includes(m))
+                      )
+                    );
+
+                    const combinedTriggers = Array.from(new Set([...negativeTriggers, ...diaryMoodTriggers])).slice(0, 3);
+
+                    return (
+                      <div className="bg-[#101A28] border border-white/[0.06] rounded-2xl p-5 shadow-xl space-y-5 flex flex-col justify-between">
+                        <div className="space-y-4">
+                          <div className="flex items-center flex-wrap gap-2 justify-between border-b border-white/[0.06] pb-4">
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-8 h-8 rounded-xl bg-[#4DEBFF]/10 border border-[#4DEBFF]/20 text-[#4DEBFF] flex items-center justify-center">
+                                <Brain className="w-4 h-4" />
+                              </div>
+                              <h3 className="font-bold text-white text-base">Психоэмоциональный баланс</h3>
+                            </div>
+                            <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full border ${badgeClass}`}>
+                              {badgeText}
+                            </span>
+                          </div>
+
+                          <div className="flex flex-col sm:flex-row items-center justify-around gap-4 py-2">
+                            <div className="relative w-32 h-32 flex items-center justify-center shrink-0">
+                              <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
+                                <path
+                                  className="text-white/10"
+                                  strokeWidth="3.5"
+                                  stroke="currentColor"
+                                  fill="none"
+                                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                                />
+                                <path
+                                  className="text-[#34F5A4]"
+                                  strokeDasharray={`${balancePercent}, 100`}
+                                  strokeWidth="3.5"
+                                  strokeLinecap="round"
+                                  stroke="currentColor"
+                                  fill="none"
+                                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                                />
+                              </svg>
+                              <div className="absolute flex flex-col items-center justify-center text-center">
+                                <span className="text-3xl font-black text-white">{balancePercent}%</span>
+                                <span className="text-[10px] text-[#34F5A4] font-semibold uppercase">Баланс</span>
+                              </div>
+                            </div>
+
+                            <div className="space-y-2 text-xs flex-1 w-full">
+                              <div className="bg-[#0B1320] p-3 rounded-xl border border-white/[0.04] space-y-1">
+                                <span className="text-white/60 block text-[10px]">Уровень стресса:</span>
+                                <span className="font-bold text-white block text-sm">
+                                  {avgStressVal} / 10 ({stressLabel})
+                                </span>
+                              </div>
+                              <div className="bg-[#0B1320] p-3 rounded-xl border border-white/[0.04] space-y-1">
+                                <span className="text-white/60 block text-[10px]">Ключевые триггеры:</span>
+                                <div className="flex flex-wrap gap-1">
+                                  {combinedTriggers.length > 0 ? (
+                                    combinedTriggers.map((trig, idx) => (
+                                      <span key={idx} className="px-2 py-0.5 bg-[#FF8C42]/10 text-[#FF8C42] rounded text-[10px] font-medium">
+                                        {trig}
+                                      </span>
+                                    ))
+                                  ) : (
+                                    <span className="text-white/40 text-[10px]">Не выявлены</span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={() => onNavigate('mental_diary')}
+                          className="w-full py-3 px-4 bg-[#0B1320] hover:bg-white/[0.06] text-[#34F5A4] border border-[#34F5A4]/30 font-bold text-xs rounded-2xl transition-all flex items-center justify-center gap-2 cursor-pointer mt-2"
+                        >
+                          <span>Открыть дневник ментального здоровья</span>
+                          <ArrowRight className="w-4 h-4" />
+                        </button>
+                      </div>
+                    );
+                  })()}
+
+                  {/* BLOCK 8: ДИНАМИКА ПОКАЗАТЕЛЕЙ (TREND CHART) */}
+                  <div className="bg-[#101A28] border border-white/[0.06] rounded-2xl p-5 shadow-xl space-y-4 flex flex-col justify-between">
+                    <div className="flex items-center justify-between border-b border-white/[0.06] pb-3">
+                      <h3 className="font-bold text-white text-base">Динамика самочувствия</h3>
+                      <select
+                        value={chartPeriod}
+                        onChange={(e) => setChartPeriod(e.target.value as any)}
+                        className="bg-[#0B1320] text-xs text-white/80 border border-white/10 rounded-xl px-3 py-1.5 focus:outline-none"
+                      >
+                        <option value="7d">7 дней</option>
+                        <option value="14d">14 дней</option>
+                        <option value="30d">30 дней</option>
+                      </select>
+                    </div>
+
+                    {!hasEnoughChartData ? (
+                      <div className="h-48 w-full flex flex-col items-center justify-center bg-[#0B1320] rounded-2xl border border-white/[0.04] p-6 text-center space-y-2.5 my-auto">
+                        <Activity className="w-8 h-8 text-white/30 mx-auto" />
+                        <p className="text-xs font-semibold text-white/80 max-w-xs">
+                          Недостаточно записей для построения графика динамики
+                        </p>
+                        <p className="text-[11px] text-white/40 max-w-xs">
+                          Вносите записи в дневник ментального здоровья, чтобы отслеживать тренд самочувствия
+                        </p>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="h-44 w-full pt-1">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <LineChart data={metricsTrendData}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" vertical={false} />
+                              <XAxis dataKey="day" stroke="rgba(255,255,255,0.38)" fontSize={11} tickLine={false} />
+                              <YAxis stroke="rgba(255,255,255,0.38)" fontSize={11} tickLine={false} domain={[0, 100]} />
+                              <Tooltip
+                                contentStyle={{
+                                  backgroundColor: '#0B1320',
+                                  borderColor: 'rgba(255,255,255,0.1)',
+                                  borderRadius: '1rem',
+                                  fontSize: '12px',
+                                  color: '#fff',
+                                }}
+                              />
+                              <Line type="monotone" dataKey="energy" stroke="#34F5A4" strokeWidth={2.5} dot={false} name="Энергия" />
+                              <Line type="monotone" dataKey="sleep" stroke="#4DEBFF" strokeWidth={2.5} dot={false} name="Сон" />
+                              <Line type="monotone" dataKey="stress" stroke="#8E74FF" strokeWidth={2.5} dot={false} name="Стресс" />
+                              <Line type="monotone" dataKey="mood" stroke="#FF8C42" strokeWidth={2.5} dot={false} name="Настроение" />
+                            </LineChart>
+                          </ResponsiveContainer>
+                        </div>
+
+                        <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-white/60 pt-2 border-t border-white/[0.06]">
+                          <div className="flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-[#34F5A4]" />
+                            <span>Энергия</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-[#4DEBFF]" />
+                            <span>Сон</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-[#8E74FF]" />
+                            <span>Стресс</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-[#FF8C42]" />
+                            <span>Настроение</span>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* BLOCK 9: ПЕРСОНАЛЬНЫЕ РЕКОМЕНДАЦИИ ИI (SAFE LIFESTYLE ADVICE ONLY) */}
-          <div id="personal-recommendations-block" className="bg-[#0B1320] border border-white/[0.08] rounded-2xl sm:rounded-3xl p-5 sm:p-7 shadow-xl space-y-4">
-            <div className="flex items-center gap-2.5 border-b border-white/[0.06] pb-3">
-              <div className="w-8 h-8 rounded-xl bg-[#34F5A4]/10 border border-[#34F5A4]/20 text-[#34F5A4] flex items-center justify-center">
-                <Sparkles className="w-4 h-4" />
-              </div>
-              <h3 className="font-extrabold text-white text-base sm:text-lg tracking-tight">
-                Персональные рекомендации по образу жизни
-              </h3>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {(healthAnalysis?.dailyRecommendations || [
-                'Соблюдайте режим сна: засыпайте до 23:00 и спите не менее 7.5 часов.',
-                'Пейте достаточный объем чистой воды (не менее 1.5 - 2 литров в день).',
-                'Включите в рацион больше продуктов с высоким содержанием клетчатки и Витамина D3.',
-                'Проводите на свежем воздухе не менее 30 минут в день.',
-              ]).map((rec, idx) => (
-                <div key={idx} className="p-4 bg-[#101A28] rounded-2xl border border-white/[0.04] flex items-start gap-3 text-xs sm:text-sm text-white/90">
-                  <span className="w-2 h-2 rounded-full bg-[#34F5A4] mt-1.5 shrink-0" />
-                  <span className="leading-relaxed">{rec}</span>
+          {/* BLOCK 9: ПЕРСОНАЛЬНЫЕ РЕКОМЕНДАЦИИ ИI (COLLAPSIBLE ACCORDION) */}
+          <div id="personal-recommendations-block" className="bg-[#0B1320] border border-white/[0.08] rounded-2xl sm:rounded-3xl shadow-xl overflow-hidden transition-all">
+            <button
+              onClick={() => setIsRecommendationsExpanded(!isRecommendationsExpanded)}
+              className="w-full p-5 sm:p-6 flex items-center justify-between hover:bg-white/[0.02] transition-colors cursor-pointer text-left"
+            >
+              <div className="flex items-center gap-3.5">
+                <div className="w-10 h-10 rounded-2xl bg-[#34F5A4]/10 border border-[#34F5A4]/20 text-[#34F5A4] flex items-center justify-center shrink-0">
+                  <Sparkles className="w-5 h-5" />
                 </div>
-              ))}
-            </div>
+                <div>
+                  <h3 className="font-extrabold text-white text-base sm:text-lg tracking-tight">
+                    Персональные рекомендации по образу жизни
+                  </h3>
+                  <p className="text-xs text-white/50 mt-0.5">
+                    Сон, гидратация, питательные вещества и физическая активность
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 text-xs font-bold text-[#34F5A4] bg-[#34F5A4]/10 px-3.5 py-2 rounded-xl border border-[#34F5A4]/20">
+                <span>{isRecommendationsExpanded ? 'Свернуть' : 'Показать рекомендации'}</span>
+                {isRecommendationsExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              </div>
+            </button>
+
+            {isRecommendationsExpanded && (
+              <div className="p-5 sm:p-7 pt-0 border-t border-white/[0.06] space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-4">
+                  {(healthAnalysis?.dailyRecommendations || [
+                    'Соблюдайте режим сна: засыпайте до 23:00 и спите не менее 7.5 часов.',
+                    'Пейте достаточный объем чистой воды (не менее 1.5 - 2 литров в день).',
+                    'Включите в рацион больше продуктов с высоким содержанием клетчатки и Витамина D3.',
+                    'Проводите на свежем воздухе не менее 30 минут в день.',
+                  ]).map((rec, idx) => (
+                    <div key={idx} className="p-4 bg-[#101A28] rounded-2xl border border-white/[0.04] flex items-start gap-3 text-xs sm:text-sm text-white/90">
+                      <span className="w-2 h-2 rounded-full bg-[#34F5A4] mt-1.5 shrink-0" />
+                      <span className="leading-relaxed">{rec}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* BLOCK 10: БЫСТРЫЕ ДЕЙСТВИЯ (QUICK ACTIONS BAR) */}
@@ -978,43 +1062,26 @@ export const Dashboard: React.FC<DashboardProps> = ({
       {/* SUB-TAB 2: ИССЛЕДОВАНИЯ И АНАЛИЗЫ */}
       {activeTab === 'lab' && (
         <div className="space-y-6">
-          {/* Upload Dropzone */}
-          <div className="bg-[#14171C] p-6 sm:p-8 rounded-3xl border-2 border-dashed border-emerald-500/30 hover:border-emerald-500/60 bg-emerald-500/5 transition-all text-center space-y-3 relative">
-            <input
-              type="file"
-              accept="image/*,.pdf"
-              onChange={handleFileUpload}
-              className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10"
-            />
-            <div className="w-14 h-14 bg-emerald-500 text-slate-950 rounded-2xl flex items-center justify-center mx-auto shadow-md">
-              <Upload className="w-7 h-7" />
-            </div>
-            <div>
-              <h3 className="font-bold text-gray-100 text-base">Загрузить медицинский документ или бланк</h3>
-              <p className="text-xs text-gray-400 mt-1 max-w-md mx-auto">
-                Перетащите сюда фото или PDF лабораторного исследования. Наш ИИ автоматически извлечёт результаты с выбором точных нормативных единиц.
-              </p>
-            </div>
-            <div className="pt-1">
-              <span className="inline-block px-4 py-2 bg-emerald-500 text-slate-950 font-bold text-xs rounded-xl shadow-sm">
-                Выбрать файл с устройства
-              </span>
-            </div>
-
-            {isUploading && (
-              <div className="absolute inset-0 bg-[#14171C]/95 rounded-3xl flex flex-col items-center justify-center space-y-3 z-20 p-6">
-                <Sparkles className="w-8 h-8 text-emerald-400 animate-spin" />
-                <span className="font-bold text-gray-100 text-sm">
-                  {uploadStatusStep} ({uploadProgress}%)
-                </span>
-                <div className="w-64 bg-gray-800 h-2 rounded-full overflow-hidden">
-                  <div
-                    className="bg-emerald-500 h-full transition-all duration-300"
-                    style={{ width: `${uploadProgress}%` }}
-                  />
-                </div>
+          {/* Header Banner for Research View */}
+          <div className="bg-[#101A28] border border-white/[0.08] p-5 sm:p-6 rounded-3xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xl">
+            <div className="flex items-center gap-3.5">
+              <div className="w-11 h-11 rounded-2xl bg-[#4DEBFF]/10 border border-[#4DEBFF]/20 text-[#4DEBFF] flex items-center justify-center shrink-0">
+                <FileText className="w-5 h-5" />
               </div>
-            )}
+              <div>
+                <h3 className="font-bold text-white text-base">Архив исследований и лабораторных анализов</h3>
+                <p className="text-xs text-white/60 mt-0.5 max-w-xl">
+                  Здесь сохраняются все расшифрованные анализы, УЗИ и консультации врачей. Чтобы добавить новое исследование, воспользуйтесь формой загрузки в Настройках.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => onNavigate('settings')}
+              className="px-4 py-2.5 bg-[#4DEBFF] hover:bg-[#3cd2e6] text-[#050A12] font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-2 cursor-pointer shrink-0"
+            >
+              <Upload className="w-4 h-4" />
+              <span>Загрузить исследование в Настройках</span>
+            </button>
           </div>
 
           {/* Research Document Verification Modal */}

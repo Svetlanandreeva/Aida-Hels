@@ -26,9 +26,19 @@ export const BodyMap: React.FC<BodyMapProps> = ({
   onSelectSystem,
   onOpenOverviewModal,
 }) => {
-  // Auto-open overview modal on first mount of Screen 11
+  const [serverSystems, setServerSystems] = React.useState<any[]>([]);
+
+  // Auto-open overview modal on first mount of Screen 11 and fetch live system status
   useEffect(() => {
     onOpenOverviewModal();
+    fetch('/api/health/systems-status')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.success && Array.isArray(data.systems)) {
+          setServerSystems(data.systems);
+        }
+      })
+      .catch((e) => console.warn('Could not load systems status:', e));
   }, []);
 
   // Map icon names to Lucide icon components

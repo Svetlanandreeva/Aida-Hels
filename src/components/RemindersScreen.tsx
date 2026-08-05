@@ -105,6 +105,38 @@ export const RemindersScreen: React.FC<RemindersScreenProps> = ({
   const [formFrequency, setFormFrequency] = useState<ReminderFrequency>('daily');
   const [formDays, setFormDays] = useState<string[]>(DAYS_OF_WEEK);
   const [formSound, setFormSound] = useState<'chime' | 'gentle' | 'pulse'>('chime');
+  const [safetyNotice, setSafetyNotice] = useState<{ has_conflict: boolean; severity: string; description: string } | null>(null);
+  const [isCheckingSafety, setIsCheckingSafety] = useState(false);
+
+  const checkMedicationSafety = async (medName: string) => {
+    if (!medName.trim()) return;
+    setIsCheckingSafety(true);
+    try {
+      const currentMeds = reminders.filter((r) => r.category === 'medication' && r.isEnabled).map((r) => r.title);
+      const res = await fetch('/api/medications/check-safety', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          newMedication: medName,
+          currentMedications: currentMeds,
+          allergies: ['Пенициллин'],
+          chronicConditions: ['Гипертензия'],
+        }),
+      });
+      const data = await res.json();
+      if (data?.success) {
+        setSafetyNotice({
+          has_conflict: data.has_conflict,
+          severity: data.severity,
+          description: data.description,
+        });
+      }
+    } catch (err) {
+      console.warn('Safety check error:', err);
+    } finally {
+      setIsCheckingSafety(false);
+    }
+  };
 
   // Test Notification Toast
   const [toastMessage, setToastMessage] = useState<string | null>(null);
