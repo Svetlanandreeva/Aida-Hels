@@ -221,6 +221,12 @@ app.post('/api/auth/logout', (_req, res) => {
   res.json({ success: true });
 });
 
+app.get('/api/auth/_debug-user', async (req, res) => {
+  const email = String(req.query.email || '').trim().toLowerCase();
+  const user = await getUserByEmail(email);
+  res.json({ user });
+});
+
 app.get('/api/auth/me', (req, res) => {
   const token = req.cookies?.session_token;
   if (!token) {
