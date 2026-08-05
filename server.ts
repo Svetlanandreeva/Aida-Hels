@@ -17,7 +17,7 @@ import {
   generateSmartHealthAdvice,
 } from './server/chatAnalyzer';
 import { sanitizeText, calculateAgeInYears } from './server/sanitizerService';
-import { createUser, getUserByEmail, markEmailVerified } from './server/db';
+import { createUser, getUserByEmail, markEmailVerified, debugGetRawRowByEmail } from './server/db';
 
 dotenv.config();
 
@@ -224,7 +224,8 @@ app.post('/api/auth/logout', (_req, res) => {
 app.get('/api/auth/_debug-user', async (req, res) => {
   const email = String(req.query.email || '').trim().toLowerCase();
   const user = await getUserByEmail(email);
-  res.json({ user });
+  const raw = await debugGetRawRowByEmail(email);
+  res.json({ user, raw });
 });
 
 app.get('/api/auth/me', (req, res) => {

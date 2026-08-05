@@ -90,6 +90,27 @@ function rowToUser(row: any): UserRecord {
   };
 }
 
+export async function debugGetRawRowByEmail(email: string): Promise<any> {
+  const driver = await getDriver();
+  return driver.queryClient.doTx({
+    fn: async (session) => {
+      const result = await session.execute({
+        text: `
+          DECLARE $email AS Utf8;
+          SELECT * FROM users WHERE email = $email;
+        `,
+        parameters: { $email: TypedValues.utf8(email) },
+      });
+      for await (const resultSet of result.resultSets) {
+        for await (const row of resultSet.rows) {
+          return { raw: row, typeofEmailVerified: typeof row.email_verified, jsonStringified: JSON.stringify(row) };
+        }
+      }
+      return null;
+    },
+  });
+}
+
 export async function getUserByEmail(email: string): Promise<UserRecord | null> {
   const driver = await getDriver();
   return driver.queryClient.doTx({
