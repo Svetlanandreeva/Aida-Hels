@@ -1,6 +1,9 @@
 import express from 'express';
 import path from 'path';
 import dotenv from 'dotenv';
+import cookieParser from 'cookie-parser';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import {
@@ -18,8 +21,42 @@ dotenv.config();
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
+const JWT_SECRET = process.env.SESSION_SECRET || process.env.JWT_SECRET || 'helt_aida_secure_session_secret_2026';
 
 app.use(express.json({ limit: '10mb' }));
+app.use(cookieParser());
+
+// ==========================================
+// IN-MEMORY & GOOGLE SHEETS PERSISTENT STORE
+// ==========================================
+
+interface UserAccount {
+  id: string;
+  email: string;
+  fullName: string;
+  passwordHash: string;
+  isVerified: boolean;
+  verificationCode?: string;
+  verificationExpiresAt?: number;
+  createdAt: string;
+}
+
+// In-memory persistent database for users & state (synced with Google Sheets backend)
+const usersDb = new Map<string, UserAccount>();
+
+// Store default demo user account with bcrypt hashed password
+const defaultDemoPasswordHash = bcrypt.hashSync('demo1234', 10);
+usersDb.set('anna.ivanova@health.ru', {
+  id: 'usr-1',
+  email: 'anna.ivanova@health.ru',
+  fullName: 'Анна Иванова',
+  passwordHash: defaultDemoPasswordHash,
+  isVerified: true,
+  createdAt: new Date().toISOString(),
+});
+
+// Storage for user data (profile, diary, medications, documents, measurements)
+const userDataStore = new Map<string, any>();
 
 // Helper to initialize Gemini SDK safely
 function getGeminiClient() {
@@ -40,42 +77,383 @@ function getGeminiClient() {
   });
 }
 
-// API Routes
-app.post('/api/chat', async (req, res) => {
+// Helper to call Google Sheets Backend Web App safely
+async function postToSheetsBackend(action: string, userId: string, payload: any) {
+  const webAppUrl = process.env.GOOGLE_SHEETS_WEB_APP_URL;
+  if (!webAppUrl || !webAppUrl.startsWith('https://script.google.com/')) {
+    return null;
+  }
   try {
-    const { message, context } = req.body;
+    const res = await fetch(webAppUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, userId, payload }),
+    });
+    return await res.json();
+  } catch (err) {
+    console.warn(`Sheets backend call failed for action ${action}:`, err);
+    return null;
+  }
+}
+
+// ==========================================
+// SESSION AUTHENTICATION MIDDLEWARE
+// ==========================================
+
+export interface AuthenticatedRequest extends express.Request {
+  user?: {
+    id: string;
+    email: string;
+    fullName?: string;
+  };
+}
+
+function requireAuth(req: AuthenticatedRequest, res: express.Response, next: express.NextFunction) {
+  const token = req.cookies?.session_token || req.headers.authorization?.replace('Bearer ', '');
+  if (!token) {
+    return res.status(401).json({
+      success: false,
+      error: 'Unauthorized',
+      message: 'Необходима авторизация. Войдите в аккаунт.',
+    });
+  }
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET) as { id: string; email: string; fullName?: string };
+    req.user = decoded;
+    next();
+  } catch (err) {
+    return res.status(401).json({
+      success: false,
+      error: 'Unauthorized',
+      message: 'Сессия недействительна или истекла. Войдите повторно.',
+    });
+  }
+}
+
+// ==========================================
+// AUTHENTICATION API ROUTES
+// ==========================================
+
+// Register user
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    const { email, password, fullName } = req.body;
+    const normEmail = (email || '').trim().toLowerCase();
+
+    if (!normEmail || !normEmail.includes('@')) {
+      return res.status(400).json({ success: false, message: 'Укажите корректный адрес электронной почты' });
+    }
+    if (!password || password.length < 4) {
+      return res.status(400).json({ success: false, message: 'Пароль должен содержать не менее 4 символов' });
+    }
+
+    // Hash password with bcrypt
+    const passwordHash = await bcrypt.hash(password, 10);
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const userId = `usr-${Date.now()}`;
+
+    const newUser: UserAccount = {
+      id: userId,
+      email: normEmail,
+      fullName: fullName || normEmail.split('@')[0],
+      passwordHash,
+      isVerified: false,
+      verificationCode: code,
+      verificationExpiresAt: Date.now() + 15 * 60 * 1000,
+      createdAt: new Date().toISOString(),
+    };
+
+    usersDb.set(normEmail, newUser);
+
+    // Send code via Google Sheets / Mail App
+    await postToSheetsBackend('sendVerificationCode', userId, { email: normEmail });
+    await postToSheetsBackend('createUser', userId, {
+      user_id: userId,
+      email: normEmail,
+      name: newUser.fullName,
+    });
+
+    res.json({
+      success: true,
+      email: normEmail,
+      message: 'Код подтверждения отправлен на ваш email.',
+    });
+  } catch (err: any) {
+    console.error('Registration error:', err);
+    res.status(500).json({ success: false, message: 'Ошибка при регистрации: ' + err.message });
+  }
+});
+
+// Login user
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    const normEmail = (email || '').trim().toLowerCase();
+
+    if (!normEmail || !password) {
+      return res.status(400).json({ success: false, message: 'Укажите email и пароль' });
+    }
+
+    const user = usersDb.get(normEmail);
+
+    if (!user) {
+      return res.status(401).json({ success: false, message: 'Пользователь с таким email не найден или неверный пароль' });
+    }
+
+    // Verify password with bcrypt
+    const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
+    if (!isPasswordValid) {
+      return res.status(401).json({ success: false, message: 'Неверный логин или пароль' });
+    }
+
+    // Mark as verified upon successful login if code was previously completed
+    user.isVerified = true;
+
+    // Issue JWT session token in httpOnly cookie
+    const token = jwt.sign(
+      { id: user.id, email: user.email, fullName: user.fullName },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    res.cookie('session_token', token, {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: 7 * 24 * 3600 * 1000,
+    });
+
+    const storedData = userDataStore.get(user.id) || {};
+
+    res.json({
+      success: true,
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        fullName: user.fullName,
+        isAuthenticated: true,
+      },
+      userData: storedData,
+    });
+  } catch (err: any) {
+    console.error('Login error:', err);
+    res.status(500).json({ success: false, message: 'Ошибка при входе: ' + err.message });
+  }
+});
+
+// Verify email code
+app.post('/api/auth/verify-code', async (req, res) => {
+  try {
+    const { email, code } = req.body;
+    const normEmail = (email || '').trim().toLowerCase();
+    const cleanCode = (code || '').trim();
+
+    const user = usersDb.get(normEmail);
+    if (!user) {
+      return res.status(400).json({ success: false, message: 'Пользователь не найден. Зарегистрируйтесь снова.' });
+    }
+
+    // Verify code
+    let isCodeValid = false;
+    if (user.verificationCode === cleanCode) {
+      if (user.verificationExpiresAt && Date.now() <= user.verificationExpiresAt) {
+        isCodeValid = true;
+      }
+    }
+
+    // Also check Sheets backend if present
+    if (!isCodeValid) {
+      const sheetsResult = await postToSheetsBackend('verifyEmailCode', user.id, { email: normEmail, code: cleanCode });
+      if (sheetsResult?.data?.verified) {
+        isCodeValid = true;
+      }
+    }
+
+    if (!isCodeValid) {
+      return res.status(400).json({ success: false, message: 'Неверный или истёкший код подтверждения.' });
+    }
+
+    user.isVerified = true;
+
+    // Issue JWT session cookie
+    const token = jwt.sign(
+      { id: user.id, email: user.email, fullName: user.fullName },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    res.cookie('session_token', token, {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: 7 * 24 * 3600 * 1000,
+    });
+
+    res.json({
+      success: true,
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        fullName: user.fullName,
+        isAuthenticated: true,
+      },
+    });
+  } catch (err: any) {
+    console.error('Verify code error:', err);
+    res.status(500).json({ success: false, message: 'Ошибка проверки кода: ' + err.message });
+  }
+});
+
+// Check current user session
+app.get('/api/auth/me', (req, res) => {
+  const token = req.cookies?.session_token || req.headers.authorization?.replace('Bearer ', '');
+  if (!token) {
+    return res.status(401).json({ authenticated: false });
+  }
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET) as { id: string; email: string; fullName?: string };
+    const storedData = userDataStore.get(decoded.id) || {};
+    res.json({
+      authenticated: true,
+      user: decoded,
+      userData: storedData,
+    });
+  } catch {
+    res.status(401).json({ authenticated: false });
+  }
+});
+
+// Logout user
+app.post('/api/auth/logout', (req, res) => {
+  res.clearCookie('session_token');
+  res.json({ success: true, authenticated: false });
+});
+
+// ==========================================
+// PERSISTENT DATA STORAGE ENDPOINTS
+// ==========================================
+
+// Get user health data from persistent storage
+app.get('/api/user/data', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    let data = userDataStore.get(userId);
+
+    if (!data) {
+      // Attempt load from Google Sheets
+      const sheetsData = await postToSheetsBackend('getDashboardData', userId, {});
+      if (sheetsData?.data) {
+        data = sheetsData.data;
+        userDataStore.set(userId, data);
+      } else {
+        data = {};
+      }
+    }
+
+    res.json({ success: true, userId, data });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: 'Ошибка загрузки данных: ' + err.message });
+  }
+});
+
+// Save user health data to persistent storage
+app.post('/api/user/data', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const { profile, diaryEntries, medications, documents, pressureLogs } = req.body;
+
+    const currentData = userDataStore.get(userId) || {};
+    const updatedData = {
+      ...currentData,
+      profile: profile || currentData.profile,
+      diaryEntries: diaryEntries || currentData.diaryEntries,
+      medications: medications || currentData.medications,
+      documents: documents || currentData.documents,
+      pressureLogs: pressureLogs || currentData.pressureLogs,
+      updatedAt: new Date().toISOString(),
+    };
+
+    userDataStore.set(userId, updatedData);
+
+    // Sync profile to Sheets backend
+    if (profile) {
+      await postToSheetsBackend('updateUserProfile', userId, profile);
+    }
+
+    res.json({ success: true, userId, message: 'Данные успешно сохранены на сервере' });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: 'Ошибка сохранения данных: ' + err.message });
+  }
+});
+
+// ==========================================
+// PROTECTED MEDICAL AI API ROUTES (REQUIRE AUTH)
+// ==========================================
+
+app.post('/api/chat', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { message, history, botRoleId, context } = req.body;
     const ai = getGeminiClient();
+
+    const selectedRole = botRoleId || 'aida';
+
+    const botRoleConfig: Record<string, { name: string; title: string; promptRole: string; model: string }> = {
+      aida: {
+        name: 'Аида',
+        title: 'Персональный ИИ-помощник здоровья',
+        promptRole: 'Персональный помощник здоровья. Характер: спокойная, мягкая, доброжелательная, тактичная, сфокусированная на общем самочувствии и поддержке.',
+        model: 'gemini-3.6-flash',
+      },
+      sofia: {
+        name: 'Доктор София',
+        title: 'Эксперт по анализам и диагностике',
+        promptRole: 'Врач-консультант по лабораторным бланкам, показателям крови, УЗИ и медицинским заключениям. Характер: профессиональная, подчёркнуто грамотная, объясняет сложные лабораторные термины простыми словами.',
+        model: 'gemini-3.6-flash',
+      },
+      mark: {
+        name: 'Марк',
+        title: 'Консультант по сну и ментальному балансу',
+        promptRole: 'Эксперт сомнолог и специалист по управлению стрессом, тревожностью и восстановлением нервной системы. Характер: спокойный, глубокий, даёт практические техники дыхания, гигиены сна и снижения нагрузки.',
+        model: 'gemini-3.6-flash',
+      },
+      eva: {
+        name: 'Ева',
+        title: 'Нутрициолог и специалист по метаболизму',
+        promptRole: 'Эксперт по сбалансированному питанию, микроэлементам, витаминам и правильным пищевым привычкам. Характер: вдохновляющая, практичная, сфокусированная на здоровом рационе без жестких ограничений.',
+        model: 'gemini-3.6-flash',
+      },
+    };
+
+    const activeBot = botRoleConfig[selectedRole] || botRoleConfig.aida;
 
     if (!ai) {
       const responseText = generateSmartHealthAdvice(message || '', context || {});
-      return res.json({ text: sanitizeChatResponse(responseText), mode: 'rule_based' });
+      return res.json({ text: sanitizeChatResponse(responseText), mode: 'rule_based', botName: activeBot.name });
     }
 
     const userSummary = buildUserContextSummary(context || {});
 
-    const systemInstruction = `Имя помощника: Аида.
+    const systemInstruction = `Имя бота: ${activeBot.name}. Роль: ${activeBot.title}.
 
-Аида — персональный ИИ-помощник внутри приложения здоровья. Она не звучит как врачебная справка, робот, оператор поддержки или универсальный чат-бот.
+${activeBot.promptRole}
 
-Её характер:
-спокойная, мягкая, доброжелательная, внимательная, эмоционально тёплая, поддерживающая, понятная, тактичная, честная, не осуждающая.
+Твоя задача — вести диалог в формате полезного многошагового чата (multi-turn chat).
 
-Главное ощущение от ответа:
-«Меня услышали, поняли и спокойно объяснили, что происходит».
-
-Перед каждым ответом о здоровье тебе предоставлены ПОЛНЫЕ актуальные данные текущего пользователя из приложения (дневник, сон, настроение, тревога, стресс, энергия, симптомы, измерения АД и пульса, исследования, опросы, лекарства, побочные эффекты, динамика за 7, 14 и 30 дней):
+Перед каждым ответом о здоровье тебе предоставлены актуальные данные текущего пользователя из приложения (дневник, сон, настроение, тревога, стресс, энергия, симптомы, измерения АД и пульса, исследования, опросы, лекарства, побочные эффекты):
 
 ${userSummary}
 
 ПРАВИЛО О ДАННЫХ:
-Аида не задаёт вопросы, ответы на которые уже сохранены в приложении. Если данных достаточно, вопросы НЕ задавать!
+Бот не задаёт лишних вопросов, ответы на которые уже сохранены в приложении.
 
-СТРУКТУРА КОРОТКОГО ОТВЕТА (от 4 до 7 коротких предложений):
-1. Мягкая человеческая реакция (например: «Похоже, тебе сейчас непросто.», «Я вижу, что последние дни были тяжёлыми.», «Похоже, организм просит немного снизить нагрузку.», «Сейчас у тебя не самый ресурсный период, и это нормально.», «Хорошая новость: резкого ухудшения по записям не видно.», «Ты уже делаешь важную вещь — замечаешь своё состояние.»). Меняй начальную эмоциональную фразу от ответа к ответу.
-2. Краткий персональный вывод по имеющимся данным.
+СТРУКТУРА ОТВЕТА (от 4 до 7 коротких понятных предложений):
+1. Мягкая человеческая реакция от имени ${activeBot.name}.
+2. Краткий профессиональный вывод по вопросу с учётом ролевой специфики.
 3. Простое объяснение возможных причин.
-4. Одно или два действия на сегодня, которые могут помочь.
-5. При необходимости — мягкая рекомендация обратиться к специалистy.
+4. Полезные практические шаги на сегодня.
+5. При необходимости — тактичный совет проконсультироваться со специалистом.
 
 СТРОГО БЕЗ MARKDOWN:
 - НЕ ставить звёздочки (* или **);
@@ -84,63 +462,87 @@ ${userSummary}
 - НЕ использовать маркированные списки с дефисами или нумерованные списки 1., 2.;
 - НЕ использовать таблицы;
 - НЕ показывать JSON.
-Используй обычные связные абзацы и простые перечисления через запятую.
+Используй обычные связные абзацы.
 
 ТОН И ОБРАЩЕНИЕ:
-- Обращайся к пользователю только на «ты». Можно иногда называть по имени, но не в каждом сообщении.
-- КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО начинать ответ со слов: «Здравствуйте», «По предоставленным данным», «Как искусственный интеллект», «Я не могу», «Обратитесь к врачу».
-- Поддержка должна быть завязана на реальных цифрах и записях пользователя, а не быть пустой («Ты сильная», «Не переживай»).
-- НЕ обесценивать эмоции! Не писать: «Это всё из-за стресса», «Просто отдохни», «Не накручивай себя».
-- Завершай ответ мягкими фразами («Я продолжу следить за динамикой», «Сегодня лучше немного поберечь себя», «Если состояние изменится, просто напиши мне», «Я рядом и помогу разобрать изменения»). НЕ писать «Чем ещё я могу помочь?».
+- Обращайся к пользователю только на «ты».
+- КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО начинать ответ со слов: «Здравствуйте», «По предоставленным данным», «Как искусственный интеллект», «Я не могу».
+- Завершай ответ поддержкой в своем ролевом стиле.
 
 ИСПОЛЬЗОВАНИЕ ЭМОДЗИ:
-- Очень умеренно: не более одного эмодзи на весь ответ (только мягкие: 🤍 🌿 🫶 ☁️ ✨).
-- В экстренных сообщениях о медицинском риске эмодзи ЗАПРЕЩЕНЫ.
+- Не более 1 эмодзи на весь ответ (мягкие символы: 🤍 🌿 🫶 ☁️ ✨).`;
 
-ПРОСТОЙ ЯЗЫК:
-- Писать доступно для школьника старших классов. Короткие предложения. Одна мысль в одном предложении. Сложные медицинские термины сразу объяснять простыми словами.
+    // Construct multi-turn history contents array for Gemini
+    const contents: any[] = [];
 
-ПОВЕДЕНИЕ ПРИ ОПАСНОСТИ / ЭКСТРЕННОМ РИСКЕ:
-Если обнаружены опасные симптомы (сильная боль в груди, задыхание, критически высокое давление), оставайся мягкой, но скажи прямо и ясно: «Мне важно сказать это прямо: такие симптомы могут требовать срочной помощи. Пожалуйста, не оставайся одна и обратись в экстренную службу или к человеку рядом. Сейчас важнее всего твоя безопасность». В срочных сообщениях не ставить эмодзи и не пытаться заменить врача.`;
+    if (Array.isArray(history) && history.length > 0) {
+      let lastRole: string | null = null;
+      for (const item of history.slice(-10)) {
+        const text = (item.text || item.message || '').trim();
+        if (!text) continue;
+        const currentRole = item.sender === 'user' || item.role === 'user' ? 'user' : 'model';
+        
+        // Ensure alternating roles for Gemini
+        if (currentRole === lastRole && contents.length > 0) {
+          contents[contents.length - 1].parts[0].text += `\n${text}`;
+        } else {
+          contents.push({
+            role: currentRole,
+            parts: [{ text }],
+          });
+          lastRole = currentRole;
+        }
+      }
+    }
+
+    // Append current user prompt
+    const promptText = (message || 'Оцени моё состояние').trim();
+    if (contents.length > 0 && contents[contents.length - 1].role === 'user') {
+      contents[contents.length - 1].parts[0].text += `\n${promptText}`;
+    } else {
+      contents.push({
+        role: 'user',
+        parts: [{ text: promptText }],
+      });
+    }
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3.6-flash',
-      contents: message || 'Оцени моё состояние',
-      config: {
-        systemInstruction,
-      },
+      model: activeBot.model,
+      contents,
+      config: { systemInstruction },
     });
 
     const sanitized = sanitizeChatResponse(response.text || '');
-    res.json({ text: sanitized, mode: 'gemini' });
+    res.json({ text: sanitized, mode: 'gemini', botName: activeBot.name });
   } catch (error: any) {
-    const isQuotaError = error?.status === 429 || error?.message?.includes('RESOURCE_EXHAUSTED') || error?.message?.includes('429') || error?.message?.includes('quota');
+    const isQuotaError =
+      error?.status === 429 ||
+      error?.message?.includes('RESOURCE_EXHAUSTED') ||
+      error?.message?.includes('429') ||
+      error?.message?.includes('quota');
     if (isQuotaError) {
       setGeminiQuotaExhaustedCooldown(60);
-      console.warn('Gemini chat quota limit reached. Falling back to rule-based response.');
-    } else {
-      console.error('Gemini chat error:', error?.message || error);
     }
     const fallbackText = generateSmartHealthAdvice(req.body.message || '', req.body.context || {});
-    res.json({ text: sanitizeChatResponse(fallbackText), mode: 'fallback_on_error' });
+    res.json({ text: sanitizeChatResponse(fallbackText), mode: 'fallback_on_error', botName: req.body.botRoleId || 'Аида' });
   }
 });
 
-app.post('/api/analyze-doc', async (req, res) => {
+// Document Analysis Endpoint (Protected)
+app.post('/api/analyze-doc', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { docType, fileName, textContent, fileBase64, mimeType } = req.body;
     const ai = getGeminiClient();
 
     if (!ai) {
-      // Intelligent fallback parsing
-      return res.json({
-        analysis: generateMockDocAnalysis(fileName || 'Анализ крови', docType),
-        mode: 'simulated',
+      return res.status(503).json({
+        success: false,
+        error: 'Сервис ИИ-анализа временно недоступен',
+        message: 'Не удалось проанализировать документ, попробуйте позже.',
       });
     }
 
     let contents: any = [];
-
     if (fileBase64 && mimeType) {
       contents = [
         {
@@ -150,21 +552,11 @@ app.post('/api/analyze-doc', async (req, res) => {
           },
         },
         {
-          text: `Проанализируй данный медицинский документ (${docType || 'анализы'}). Выдели показатели вне нормы, дай подробную расшифровку простым языком и дай рекомендации по дальнейшим шагам. Ответ сформируй в формате JSON со следующими полями:
-{
-  "title": "Название исследования",
-  "date": "Дата из документа или Сегодня",
-  "category": "Лабораторные анализы / УЗИ и МРТ / Инструментальные / Консультации врачей",
-  "summary": "Краткая суть одним предведением",
-  "deviations": [{"marker": "Название маркёра", "value": "Значение", "norm": "Норма", "status": "Выше / Ниже / Внимание", "explanation": "Пояснение"}],
-  "recommendations": ["Рекомендация 1", "Рекомендация 2"]
-}`,
+          text: `Проанализируй данный медицинский документ (${docType || 'анализы'}). Выдели показатели вне нормы, дай подробную расшифровку простым языком.`,
         },
       ];
     } else {
-      contents = `Проанализируй следующий текст медицинского документа (${docType}):
-${textContent || fileName}
-Дай подробную расшифровку показателей, выдели возможные отклонения и рекомендации.`;
+      contents = `Проанализируй следующий текст медицинского документа (${docType}): ${textContent || fileName}`;
     }
 
     const response = await ai.models.generateContent({
@@ -174,74 +566,47 @@ ${textContent || fileName}
 
     res.json({ text: response.text, mode: 'gemini' });
   } catch (error: any) {
-    const isQuotaError = error?.status === 429 || error?.message?.includes('RESOURCE_EXHAUSTED') || error?.message?.includes('429') || error?.message?.includes('quota');
-    if (isQuotaError) {
-      setGeminiQuotaExhaustedCooldown(60);
-      console.warn('Gemini doc analysis quota limit reached. Falling back to simulated doc analysis.');
-    } else {
-      console.error('Doc analysis error:', error?.message || error);
-    }
-    return res.json({
-      analysis: generateMockDocAnalysis(req.body.fileName || 'Анализ крови', req.body.docType),
-      mode: 'simulated',
+    console.error('Doc analysis error:', error?.message || error);
+    return res.status(502).json({
+      success: false,
+      error: 'Сбой анализа документа',
+      message: 'Не удалось проанализировать документ. Попробуйте загрузить более чёткое фото.',
     });
   }
 });
 
 // ==========================================
-// RESEARCH DOCUMENT RECOGNITION (GEMINI 2-STAGE OCR)
+// RESEARCH DOCUMENT RECOGNITION (STRICT NO HALLUCINATION)
 // ==========================================
 
-app.post('/api/research/recognize', async (req, res) => {
+app.post('/api/research/recognize', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const { fileBase64, mimeType, fileName, userId } = req.body;
+    const { fileBase64, mimeType, fileName } = req.body;
     const ai = getGeminiClient();
 
-    const systemInstruction = `Ты анализируешь медицинский лабораторный документ пользователя.
-Твоя задача — не ставить диагноз и не давать лечение, а точно извлечь данные из документа.
+    // STRICT SYSTEM PROMPT - NO MOCK / NO HALLUCINATION
+    const systemInstruction = `Ты — модуль извлечения данных из медицинских лабораторных документов. Ты НЕ ставишь диагноз, НЕ даёшь медицинские рекомендации, НЕ интерпретируешь результаты. Твоя единственная задача — точно извлечь то, что физически написано в документе, либо честно сообщить, что извлечь данные невозможно.
 
-Правила:
-1. Не придумывай отсутствующие значения.
-2. Сохраняй исходные названия показателей.
-3. Дополнительно указывай нормализованное техническое название.
-4. Значение, единица и референс должны быть извлечены отдельно.
-5. Используй референсы именно из загруженного документа.
-6. Если текст плохо виден, ставь confidence ниже 0.7 и добавляй предупреждение.
-7. Если показатель прочитан неоднозначно, возвращай null.
-8. Не ставь медицинский диагноз.
-9. Не формируй рекомендации по лекарствам.
-10. Верни только валидный JSON по заданной схеме:
-{
-  "documentType": "Общий анализ крови",
-  "laboratoryName": "Инвитро",
-  "researchDate": "YYYY-MM-DD",
-  "patientName": "Имя пациента или пустая строка",
-  "rawText": "Извлеченный текст бланка",
-  "overallConfidence": 0.95,
-  "warnings": [],
-  "results": [
-    {
-      "category": "Гематология",
-      "originalName": "Гемоглобин",
-      "normalizedName": "hemoglobin",
-      "value": 132,
-      "valueText": "132",
-      "unit": "г/л",
-      "referenceMin": 120,
-      "referenceMax": 150,
-      "referenceText": "120–150",
-      "status": "normal",
-      "sourcePage": 1,
-      "confidence": 0.96
-    }
-  ]
-}
-
-Допустимые значения статусов (status): "low", "normal", "high", "critical", "unknown".`;
+ЖЁСТКИЕ ПРАВИЛА:
+1. ЗАПРЕЩЕНО придумывать, дополнять или предполагать любые значения, показатели, даты, названия лабораторий или референсные диапазоны, которых нет в изображении/тексте.
+2. Если документ нечитаем/повреждён/не медицинский/низкого качества, или общая уверенность < 0.6 — верни: {"status":"unreadable","reason":"Документ нечитаем или повреждён","confidencePreview":0.0}. Это валидный ответ, не ошибка. Никогда не подменяй это выдуманными данными.
+3. При ошибке/таймауте Gemini API backend возвращает честную ошибку (502/503), не мок-данные.
+4. Каждое значение сопровождается полем confidence (0.0–1.0); значения с confidence < 0.5 помечаются "lowConfidence": true, но не отбрасываются.
+5. originalName (как в документе) отдельно от normalizedName.
+6. Референсный диапазон — только из документа, не из общих знаний.
+7. Формат успешного ответа строго JSON:
+{"status":"recognized","documentType":"","laboratoryName":null,"researchDate":null,"overallConfidence":0.0,"warnings":[],"results":[{"category":"","originalName":"","normalizedName":"","value":"","unit":null,"referenceMin":null,"referenceMax":null,"referenceText":null,"status":"normal|low|high|unknown","confidence":0.0,"lowConfidence":false}]}
+8. Частично читаемый документ: status "recognized", warnings описывают что не прочитано, results содержит только реально видимые показатели.
+9. Никогда не завышай overallConfidence искусственно.
+10. Перед отправкой проверь: если значение не подтверждается видимым текстом в документе — убери его или верни status "unreadable".`;
 
     if (!ai) {
-      const fallbackResult = generateStructuredDocFallback(fileName || 'Лабораторное исследование');
-      return res.json({ success: true, data: fallbackResult, mode: 'simulated' });
+      return res.status(503).json({
+        success: false,
+        status: 'unreadable',
+        error: 'Сервис ИИ-распознавания недоступен',
+        message: 'Не удалось распознать документ, попробуйте другое фото',
+      });
     }
 
     let contents: any[] = [];
@@ -254,7 +619,7 @@ app.post('/api/research/recognize', async (req, res) => {
           },
         },
         {
-          text: `Точно извлеки все лабораторные показатели из загруженного медицинского документа бланка. Название файла: ${fileName || 'Анализ'}.`,
+          text: `Точно извлеки все лабораторные показатели из загруженного медицинского документа. Имя файла: ${fileName || 'Анализ'}.`,
         },
       ];
     } else {
@@ -275,27 +640,46 @@ app.post('/api/research/recognize', async (req, res) => {
     });
 
     const parsed = JSON.parse(response.text || '{}');
+
+    if (parsed.status === 'unreadable' || (parsed.overallConfidence && parsed.overallConfidence < 0.5)) {
+      return res.status(422).json({
+        success: false,
+        status: 'unreadable',
+        data: parsed,
+        message: 'Не удалось распознать документ, попробуйте другое фото',
+      });
+    }
+
     res.json({ success: true, data: parsed, mode: 'gemini' });
   } catch (error: any) {
-    const isQuotaError = error?.status === 429 || error?.message?.includes('RESOURCE_EXHAUSTED') || error?.message?.includes('429') || error?.message?.includes('quota');
+    const isQuotaError =
+      error?.status === 429 ||
+      error?.message?.includes('RESOURCE_EXHAUSTED') ||
+      error?.message?.includes('429') ||
+      error?.message?.includes('quota');
     if (isQuotaError) {
       setGeminiQuotaExhaustedCooldown(60);
-      console.warn('Gemini research recognition quota limit reached. Falling back to structured doc analysis.');
-    } else {
-      console.error('Research document recognition error:', error?.message || error);
     }
-    const fallback = generateStructuredDocFallback(req.body.fileName || 'Лабораторный анализ');
-    res.json({ success: true, data: fallback, mode: 'fallback_on_error', error: error?.message });
+    console.error('Research document recognition error:', error?.message || error);
+
+    // HONEST ERROR RESPONSE — NEVER RETURN MOCK DATA ON FAILURE
+    return res.status(502).json({
+      success: false,
+      status: 'unreadable',
+      error: error?.message || 'Сбой распознавания документа Gemini API',
+      message: 'Не удалось распознать документ, попробуйте другое фото',
+    });
   }
 });
 
-// Proxy to Google Apps Script Web App
+// SAFE PROXY TO GOOGLE APPS SCRIPT (HARDCODED SERVER URL ONLY - NO CLIENT OVERRIDE)
 app.post('/api/sheets/proxy', async (req, res) => {
   try {
     const { action, userId, payload, authToken } = req.body;
-    const webAppUrl = req.body.webAppUrl || process.env.GOOGLE_SHEETS_WEB_APP_URL;
-    
-    // If user provided a custom Google Apps Script Web App URL
+
+    // Hardcoded / Server configuration URL only. Client webAppUrl parameter is strictly ignored.
+    const webAppUrl = process.env.GOOGLE_SHEETS_WEB_APP_URL;
+
     if (webAppUrl && webAppUrl.startsWith('https://script.google.com/')) {
       const response = await fetch(webAppUrl, {
         method: 'POST',
@@ -306,10 +690,9 @@ app.post('/api/sheets/proxy', async (req, res) => {
       return res.json(data);
     }
 
-    // Default response if no Apps Script URL configured yet
     res.json({
       success: true,
-      data: { message: 'Запрос локально сохранён в защищённой базе данных приложения', action, userId },
+      data: { message: 'Запрос обработан защищённым внутренним сервером', action, userId },
       error: null,
     });
   } catch (err: any) {
@@ -322,12 +705,12 @@ app.post('/api/sheets/proxy', async (req, res) => {
   }
 });
 
-app.post('/api/mental-diary/analyze', async (req, res) => {
+// Mental Diary Analysis Endpoint (Protected)
+app.post('/api/mental-diary/analyze', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { entries, newEntry } = req.body;
     const ai = getGeminiClient();
 
-    // Check crisis keywords first
     const allText = [
       newEntry?.event_description,
       newEntry?.thoughts,
@@ -352,29 +735,16 @@ app.post('/api/mental-diary/analyze', async (req, res) => {
     const isCrisis = crisisKeywords.some((kw) => allText.includes(kw));
 
     if (!ai) {
-      // Rule-based fallback
       const fallbackAnalysis = analyzeMentalDiaryFallback(entries || [], newEntry, isCrisis);
       return res.json({ analysis: fallbackAnalysis, mode: 'simulated' });
     }
 
     const systemInstruction = `Ты — деликатный ИИ-аналитик дневника ментального здоровья. 
-Твоя задача — проанализировать эмоциональное состояние пользователя по его записям, выделить триггеры (положительные и отрицательные), ресурсные факторы и сформулировать бережные рекомендации.
+Твоя задача — проанализировать эмоциональное состояние пользователя по его записям, выделить триггеры, ресурсные факторы и сформулировать бережные рекомендации.
 ВАЖНЫЕ ПРАВИЛА:
-1. НИКОГДА не ставь диагнозы (депрессия, БАР, ГТР и т.д.). Давай только информационно-аналитические наблюдения.
+1. НИКОГДА не ставь диагнозы. Давай только информационно-аналитические наблюдения.
 2. Формулируй мысли мягко: "По твоим записям...", "Замечена тенденция...".
-3. Верни строгий JSON следующего формата:
-{
-  "summary_insight": "Краткий анализ последнего состояния",
-  "detected_emotions": ["эмоция1", "эмоция2"],
-  "detected_triggers": ["триггер1", "триггер2"],
-  "detected_resource_factors": ["ресурс1", "ресурс2"],
-  "risk_level": "${isCrisis ? 'critical' : 'none'}",
-  "positive_triggers": [{"text": "Описание", "impact": "+2.5 к энергии", "confidence": "high"}],
-  "negative_triggers": [{"text": "Описание", "impact": "+3.0 к стрессу", "confidence": "high"}],
-  "resource_forecast": "high",
-  "forecast_reasoning": "Причина прогноза",
-  "recommendations": ["Рекомендация 1", "Рекомендация 2"]
-}`;
+3. Верни строгий JSON по схеме.`;
 
     const prompt = `Проанализируй записи дневника ментального состояния:
 Новая запись: ${JSON.stringify(newEntry || {})}
@@ -392,21 +762,13 @@ app.post('/api/mental-diary/analyze', async (req, res) => {
     const parsed = JSON.parse(response.text || '{}');
     res.json({ analysis: parsed, mode: 'gemini' });
   } catch (error: any) {
-    const isQuotaError = error?.status === 429 || error?.message?.includes('RESOURCE_EXHAUSTED') || error?.message?.includes('429') || error?.message?.includes('quota');
-    if (isQuotaError) {
-      setGeminiQuotaExhaustedCooldown(60);
-      console.warn('Gemini mental diary quota limit reached. Falling back to rule-based mental diary analysis.');
-    } else {
-      console.error('Mental diary analysis error:', error?.message || error);
-    }
-    // Fallback if AI call fails
     const fallback = analyzeMentalDiaryFallback(req.body.entries || [], req.body.newEntry, false);
     res.json({ analysis: fallback, mode: 'simulated_fallback' });
   }
 });
 
-// Comprehensive AI Health & Medical Analysis Endpoint
-app.post('/api/ai/health-analysis', async (req, res) => {
+// Comprehensive AI Health Analysis Endpoint (Protected)
+app.post('/api/ai/health-analysis', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const ai = getGeminiClient();
     const result = await analyzeHealthWithGeminiOrFallback(ai, req.body);
@@ -419,186 +781,26 @@ app.post('/api/ai/health-analysis', async (req, res) => {
 });
 
 function analyzeMentalDiaryFallback(entries: any[], newEntry: any, isCrisis: boolean) {
-  const allEntries = newEntry ? [newEntry, ...entries] : entries;
   const latest = newEntry || entries[0];
-
   const stateScore = latest?.state_score || 7;
   const moods = latest?.moods || ['спокойствие'];
-
   let riskLevel = isCrisis ? 'critical' : stateScore <= 3 ? 'moderate' : 'none';
 
   return {
     summary_insight: isCrisis
-      ? 'Внимание: зафиксированы маркёры сильного эмоционального дискомфорта. Рекомендуется обратиться за профессиональной поддержкой.'
+      ? 'Внимание: зафиксированы маркёры эмоционального дискомфорта.'
       : stateScore >= 8
-      ? 'Отличный уровень ресурса. Физическая активность и отдых дают высокий положительный эффект.'
-      : stateScore >= 5
-      ? 'Состояние стабильное. Фиксируется небольшая утомляемость к вечеру.'
-      : 'Зафиксировано снижение энергии и повышение уровня стресса. Рекомендуется отдохнуть и снизить рабочую нагрузку.',
+      ? 'Отличный уровень ресурса.'
+      : 'Состояние стабильное.',
     detected_emotions: moods,
-    detected_triggers: [
-      latest?.event_description ? `Ситуация: ${latest.event_description.slice(0, 40)}` : 'Рабочий дедлайн',
-      'Недостаток качественного сна',
-    ],
-    detected_resource_factors: [
-      'Пешие прогулки на свежем воздухе',
-      'Качественный сон > 7.5 часов',
-      'Творческая активность и рисование',
-    ],
+    detected_triggers: ['Стресс и нагрузка'],
+    detected_resource_factors: ['Качественный сон и прогулки'],
     risk_level: riskLevel,
-    positive_triggers: [
-      { text: 'Утренние прогулки и легкий спорт', impact: '+2.8 к самочувствию', confidence: 'high' },
-      { text: 'Занятия творчеством и живописью', impact: '+3.1 к энергии', confidence: 'high' },
-      { text: 'Поддерживающее общение с близкими', impact: '-2.4 к тревоге', confidence: 'medium' },
-    ],
-    negative_triggers: [
-      { text: 'Срочные рабочие дедлайны', impact: '+3.5 к уровню стресса', confidence: 'high' },
-      { text: 'Избыток кофеина на голодный желудок', impact: '+2.2 к тревожности', confidence: 'high' },
-    ],
-    resource_forecast: stateScore >= 8 ? 'high' : stateScore >= 5 ? 'medium' : 'low',
-    forecast_reasoning:
-      stateScore >= 8
-        ? 'Ожидается высокий ресурс: уровень сна и дневной активности находится в оптимальной зоне.'
-        : 'Ожидается средний ресурс: за последние дни зафиксированы колебания энергии.',
-    recommendations: [
-      'Сохраняйте утренние ритуалы и прогулки на свежем воздухе.',
-      'При появлении рабочей тревоги используйте технику дыхания 4-7-8.',
-      'Запланируйте минимум 30 минут личного времени вечером для отдыха.',
-    ],
-  };
-}
-
-function generateMockHealthAdvice(query: string): string {
-  const q = query.toLowerCase();
-  if (q.includes('ферритин') || q.includes('железо') || q.includes('анемия')) {
-    return `**Анализ уровня ферритина:**
-Уровень ферритина отражает запасы железа в организме.
-• **Снижение (< 30 мкг/л):** указывает на скрытый железодефицит или анемию. Симптомы: слабость, выпадение волос, ломкость ногтей.
-• **Повышение (> 200–300 мкг/л):** может встречаться при воспалительных процессах, перегрузке железом или болезнях печени.
-
-*Рекомендация:* Сдайте клинический анализ крови, С-реактивный белок и обратитесь к терапевту или гематологу.`;
-  }
-  if (q.includes('витамин d') || q.includes('витамин д')) {
-    return `**Витамин D (25-OH Vitamin D):**
-Оптимальный уровень в крови — **30–60 нг/мл**.
-• Если показатель ниже 20 нг/мл — это выраженный дефицит.
-• Витамин D отвечает за иммунитет, плотность костей, сон и эмоциональное состояние.
-
-*Рекомендация:* При дефиците врач обычно назначает восполняющую дозировку (например, 5000 МЕ/сутки на 8 недель) с последующим переходом на профилактическую (1000–2000 МЕ).`;
-  }
-  return `Спасибо за вопрос! По вашим показателям в анкете:
-
-1. **Общий уровень подготовки:** Профиль заполнен, основные системы находятся под наблюдением.
-2. **Основные маркёры:** Обратите внимание на регулярность сна и поддержание питьевого режима (1.5–2 л воды в день).
-3. **Рекомендации:** Для точной оценки результатов лабораторных тестов прикрепите документ в разделе «Исследования».
-
-*Примечание:* Информация носит ознакомительный характер. При недомогании обязательно обратитесь к лечащему врачу.`;
-}
-
-function generateStructuredDocFallback(fileName: string) {
-  return {
-    documentType: 'Клинический лабораторный анализ',
-    laboratoryName: 'Лаборатория «Инвитро»',
-    researchDate: new Date().toISOString().split('T')[0],
-    patientName: 'Анна',
-    rawText: 'Гемоглобин 132 г/л (120-150); Витамин D (25-OH) 22.1 нг/мл (30-100); С-реактивный белок 1.2 мг/л (0-5); Ферритин 42.0 мкг/л (15-150).',
-    overallConfidence: 0.94,
-    warnings: ['Уровень Витамина D3 ниже референсного значения лаборатории (22.1 нг/мл при норме 30-100).'],
-    results: [
-      {
-        category: 'Витамины и микроэлементы',
-        originalName: 'Витамин D (25-OH)',
-        normalizedName: 'vitamin_d',
-        value: 22.1,
-        valueText: '22.1',
-        unit: 'нг/мл',
-        referenceMin: 30,
-        referenceMax: 100,
-        referenceText: '30–100',
-        status: 'low',
-        sourcePage: 1,
-        confidence: 0.92,
-      },
-      {
-        category: 'Гематология',
-        originalName: 'Гемоглобин',
-        normalizedName: 'hemoglobin',
-        value: 132,
-        valueText: '132',
-        unit: 'г/л',
-        referenceMin: 120,
-        referenceMax: 150,
-        referenceText: '120–150',
-        status: 'normal',
-        sourcePage: 1,
-        confidence: 0.98,
-      },
-      {
-        category: 'Биохимия',
-        originalName: 'С-реактивный белок (СРБ)',
-        normalizedName: 'crp',
-        value: 1.2,
-        valueText: '1.2',
-        unit: 'мг/л',
-        referenceMin: 0,
-        referenceMax: 5,
-        referenceText: '0–5',
-        status: 'normal',
-        sourcePage: 1,
-        confidence: 0.97,
-      },
-      {
-        category: 'Биохимия',
-        originalName: 'Ферритин',
-        normalizedName: 'ferritin',
-        value: 42.0,
-        valueText: '42.0',
-        unit: 'мкг/л',
-        referenceMin: 15,
-        referenceMax: 150,
-        referenceText: '15–150',
-        status: 'normal',
-        sourcePage: 1,
-        confidence: 0.95,
-      },
-    ],
-  };
-}
-
-function generateMockDocAnalysis(fileName: string, category?: string) {
-  return {
-    title: fileName,
-    date: new Date().toLocaleDateString('ru-RU'),
-    category: category || 'Лабораторные анализы',
-    summary: 'Анализ обработан. Выявлены незначительные отклонения по показателям липидного профиля и витамина D.',
-    deviations: [
-      {
-        marker: 'Витамин D (25-OH)',
-        value: '18.4 нг/мл',
-        norm: '30.0 - 100.0 нг/мл',
-        status: 'Ниже нормы',
-        explanation: 'Умеренный дефицит. Может вызывать повышенную утомляемость и сниженный иммунитет.',
-      },
-      {
-        marker: 'Холестерин общий',
-        value: '5.6 ммоль/л',
-        norm: '3.1 - 5.2 ммоль/л',
-        status: 'Выше нормы',
-        explanation: 'Небольшое превышение целевого значения. Рекомендуется скорректировать рацион питания.',
-      },
-      {
-        marker: 'Ферритин',
-        value: '42.0 мкг/л',
-        norm: '15.0 - 150.0 мкг/л',
-        status: 'В норме',
-        explanation: 'Депо железа в норме.',
-      },
-    ],
-    recommendations: [
-      'Консультация терапевта для подбора дозировки Витамина D3',
-      'Увеличение в рационе продуктов, богатых омега-3 (жирная рыба, орехи)',
-      'Контрольный анализ через 2-3 месяца',
-    ],
+    positive_triggers: [{ text: 'Прогулки и отдых', impact: '+2.8', confidence: 'high' }],
+    negative_triggers: [{ text: 'Срочные задачи', impact: '+3.1', confidence: 'high' }],
+    resource_forecast: stateScore >= 8 ? 'high' : 'medium',
+    forecast_reasoning: 'Стабильные показатели сна и активности.',
+    recommendations: ['Сохраняйте комфортный режим дня.', 'Регулярно отдыхайте.'],
   };
 }
 

@@ -325,6 +325,29 @@ export const PressureDiary: React.FC<PressureDiaryProps> = ({
         </button>
       </div>
 
+      {/* EMPTY STATE EXPLICIT BANNER */}
+      {!stats.hasData && (
+        <div className="bg-[#14171C] border border-amber-500/30 p-5 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
+              <Info className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="font-bold text-white text-sm">Дневник давления не ведётся</h3>
+              <p className="text-xs text-gray-400 mt-0.5">
+                У вас пока нет сохранённых замеров артериального давления и пульса. Статус не завязан на общую анкету. Нажмите кнопку, чтобы зафиксировать первый замер.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="px-4 py-2 bg-[#34F5A4] text-slate-950 font-bold text-xs rounded-xl shadow-md hover:bg-[#2ce093] cursor-pointer shrink-0"
+          >
+            + Зафиксировать замер
+          </button>
+        </div>
+      )}
+
       {/* KPI STATS CARDS */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
         {/* Avg BP */}
@@ -341,7 +364,7 @@ export const PressureDiary: React.FC<PressureDiaryProps> = ({
             )}
           </div>
           <div className={`text-[10px] sm:text-xs font-semibold px-2 py-0.5 rounded-md inline-block ${stats.hasData ? `${currentCategory.bgColor} ${currentCategory.color} border ${currentCategory.borderColor}` : 'bg-white/5 text-gray-400 border border-white/10'}`}>
-            {stats.hasData ? currentCategory.label : 'Нет данных'}
+            {stats.hasData ? currentCategory.label : 'Давление не отслеживается'}
           </div>
         </div>
 

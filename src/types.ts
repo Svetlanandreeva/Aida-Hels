@@ -42,11 +42,27 @@ export interface Reminder {
   days?: string[]; // e.g., ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
   frequency: ReminderFrequency;
   dosage?: string;
+  // Structured dosage fields
+  doseQuantity?: number; // e.g. 1
+  doseForm?: string; // e.g., 'таблетка', 'капсула', 'мл', 'инъекция', 'пакетик', 'капли', 'спрей'
+  doseActiveIngredient?: string; // e.g., '100 мг'
+  schedule?: MedicationSchedule;
+  startDate?: string;
+  archivedAt?: string;
+  archivedReason?: string;
   notes?: string;
   isEnabled: boolean;
   sound?: 'chime' | 'gentle' | 'pulse';
   lastCompletedDate?: string; // YYYY-MM-DD when marked completed for the day
   linkedId?: string; // optional linked appointment or medication ID
+}
+
+export interface WaterTrackerState {
+  targetMl: number; // e.g. 2000
+  consumedMl: number; // e.g. 1250
+  logs: Array<{ id: string; amountMl: number; timestamp: string }>;
+  remindersEnabled: boolean;
+  schedule?: MedicationSchedule;
 }
 
 export interface QuestionnaireSnapshot {
@@ -168,11 +184,6 @@ export interface MedicalDocument {
     status: 'Выше' | 'Ниже' | 'Внимание' | 'В норме';
     explanation: string;
   }>;
-  // Names of every marker actually recognized in this document, including normal ones
-  // (deviations above only holds abnormal markers) - lets the backend tell "this document
-  // covers X" apart from "this document covers everything", instead of assuming any
-  // uploaded document proves every body system is fine.
-  testedMarkers?: string[];
   recommendations: string[];
 }
 
