@@ -1,6 +1,9 @@
 import express from 'express';
 import path from 'path';
 import dotenv from 'dotenv';
+import cookieParser from 'cookie-parser';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import {
@@ -14,13 +17,16 @@ import {
   generateSmartHealthAdvice,
 } from './server/chatAnalyzer';
 import { sanitizeText, calculateAgeInYears } from './server/sanitizerService';
+import { createUser, getUserByEmail, markEmailVerified } from './server/db';
 
 dotenv.config();
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
+const JWT_SECRET = process.env.JWT_SECRET || 'dev_only_insecure_secret_change_me';
 
 app.use(express.json({ limit: '10mb' }));
+app.use(cookieParser());
 
 // Lightweight audit trail for security-relevant client actions (logout, PIN/biometrics
 // changes, profile deletion). No auth required - it's a log sink, not a gated resource.
@@ -28,6 +34,204 @@ app.post('/api/security/log', (req, res) => {
   const { event, severity, timestamp } = req.body || {};
   console.log(`[SECURITY EVENT${severity ? ` (${String(severity).toUpperCase()})` : ''}] ${timestamp || new Date().toISOString()}: ${event}`);
   res.json({ success: true });
+});
+
+// ==========================================
+// REAL AUTHENTICATION (YDB-backed)
+// ==========================================
+// Verification codes are generated and delivered by the existing Google Apps Script
+// mail channel (same one used for password-reset style flows already in production) -
+// we don't reinvent email sending here, just call the same webhook the client used to
+// call directly.
+async function sendVerificationEmailViaSheets(email: string): Promise<boolean> {
+  const webAppUrl = process.env.GOOGLE_SHEETS_WEB_APP_URL;
+  if (!webAppUrl || !webAppUrl.startsWith('https://script.google.com/')) return false;
+  try {
+    const res = await fetch(webAppUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'sendVerificationCode', payload: { email } }),
+    });
+    const data = await res.json();
+    return Boolean(data?.data?.emailSent ?? data?.data?.sent);
+  } catch (err) {
+    console.error('sendVerificationEmailViaSheets error:', err);
+    return false;
+  }
+}
+
+async function verifyEmailCodeViaSheets(email: string, code: string): Promise<boolean> {
+  const webAppUrl = process.env.GOOGLE_SHEETS_WEB_APP_URL;
+  if (!webAppUrl || !webAppUrl.startsWith('https://script.google.com/')) return false;
+  try {
+    const res = await fetch(webAppUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'verifyEmailCode', payload: { email, code } }),
+    });
+    const data = await res.json();
+    return Boolean(data?.success ?? data?.data?.verified);
+  } catch (err) {
+    console.error('verifyEmailCodeViaSheets error:', err);
+    return false;
+  }
+}
+
+function issueSessionCookie(res: express.Response, user: { id: string; email: string; fullName: string }) {
+  const token = jwt.sign(user, JWT_SECRET, { expiresIn: '30d' });
+  res.cookie('session_token', token, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: 30 * 24 * 3600 * 1000,
+  });
+}
+
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    const password = String(req.body?.password || '');
+    const fullName = String(req.body?.fullName || '').trim();
+
+    if (!email || !email.includes('@')) {
+      return res.status(400).json({ success: false, message: 'Укажите корректный адрес электронной почты' });
+    }
+    if (password.length < 4) {
+      return res.status(400).json({ success: false, message: 'Пароль должен содержать не менее 4 символов' });
+    }
+    if (!fullName) {
+      return res.status(400).json({ success: false, message: 'Укажите ваше ФИО' });
+    }
+
+    const existing = await getUserByEmail(email);
+    if (existing?.emailVerified) {
+      return res.status(409).json({ success: false, message: 'Пользователь с таким email уже зарегистрирован' });
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+    const id = `usr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+
+    await createUser({
+      id,
+      email,
+      passwordHash,
+      fullName,
+      verificationCode: code,
+      verificationExpiresAt: Date.now() + 15 * 60 * 1000,
+    });
+
+    const emailSent = await sendVerificationEmailViaSheets(email);
+
+    res.json({
+      success: true,
+      email,
+      message: emailSent
+        ? 'Код подтверждения отправлен на ваш email.'
+        : 'Аккаунт создан, но письмо с кодом отправить не удалось - попробуйте войти позже или обратитесь в поддержку.',
+    });
+  } catch (err: any) {
+    console.error('Registration error:', err);
+    res.status(500).json({ success: false, message: 'Ошибка при регистрации: ' + err.message });
+  }
+});
+
+app.post('/api/auth/verify-code', async (req, res) => {
+  try {
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    const code = String(req.body?.code || '').trim();
+
+    if (!email || !/^\d{6}$/.test(code)) {
+      return res.status(400).json({ success: false, message: 'Введите 6-значный код из письма' });
+    }
+
+    const user = await getUserByEmail(email);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Пользователь не найден' });
+    }
+
+    const verified = await verifyEmailCodeViaSheets(email, code);
+    if (!verified) {
+      return res.status(401).json({ success: false, message: 'Неверный или истёкший код подтверждения' });
+    }
+
+    await markEmailVerified(email);
+    issueSessionCookie(res, { id: user.id, email: user.email, fullName: user.fullName });
+
+    res.json({ success: true, user: { id: user.id, email: user.email, fullName: user.fullName } });
+  } catch (err: any) {
+    console.error('Verify code error:', err);
+    res.status(500).json({ success: false, message: 'Ошибка проверки кода: ' + err.message });
+  }
+});
+
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    const password = String(req.body?.password || '');
+
+    if (!email || !password) {
+      return res.status(400).json({ success: false, message: 'Укажите email и пароль' });
+    }
+
+    const user = await getUserByEmail(email);
+    if (!user) {
+      return res.status(401).json({ success: false, message: 'Неверный логин или пароль' });
+    }
+    if (!user.emailVerified) {
+      return res.status(403).json({ success: false, message: 'Email ещё не подтверждён. Проверьте почту.' });
+    }
+
+    const passwordValid = await bcrypt.compare(password, user.passwordHash);
+    if (!passwordValid) {
+      return res.status(401).json({ success: false, message: 'Неверный логин или пароль' });
+    }
+
+    issueSessionCookie(res, { id: user.id, email: user.email, fullName: user.fullName });
+    res.json({ success: true, user: { id: user.id, email: user.email, fullName: user.fullName } });
+  } catch (err: any) {
+    console.error('Login error:', err);
+    res.status(500).json({ success: false, message: 'Ошибка при входе: ' + err.message });
+  }
+});
+
+app.post('/api/auth/resend-code', async (req, res) => {
+  try {
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    if (!email) {
+      return res.status(400).json({ success: false, message: 'Укажите email' });
+    }
+    const user = await getUserByEmail(email);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Пользователь не найден' });
+    }
+    const emailSent = await sendVerificationEmailViaSheets(email);
+    res.json({
+      success: true,
+      message: emailSent ? 'Новый код отправлен на почту.' : 'Не удалось отправить письмо, попробуйте позже.',
+    });
+  } catch (err: any) {
+    console.error('Resend code error:', err);
+    res.status(500).json({ success: false, message: 'Ошибка при повторной отправке кода: ' + err.message });
+  }
+});
+
+app.post('/api/auth/logout', (_req, res) => {
+  res.clearCookie('session_token');
+  res.json({ success: true });
+});
+
+app.get('/api/auth/me', (req, res) => {
+  const token = req.cookies?.session_token;
+  if (!token) {
+    return res.status(401).json({ success: false, message: 'Не авторизован' });
+  }
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET) as { id: string; email: string; fullName: string };
+    res.json({ success: true, user: decoded });
+  } catch {
+    res.status(401).json({ success: false, message: 'Сессия недействительна или истекла' });
+  }
 });
 
 // Helper to initialize Gemini SDK safely. When GEMINI_PROXY_URL is set, requests are

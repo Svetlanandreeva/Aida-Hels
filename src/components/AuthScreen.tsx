@@ -21,29 +21,6 @@ interface AuthScreenProps {
   initialTab?: 'login' | 'register';
 }
 
-function getVerifiedEmails(): string[] {
-  try {
-    const raw = localStorage.getItem('app_verified_emails');
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
-
-function markEmailAsVerified(email: string) {
-  const norm = email.trim().toLowerCase();
-  const list = getVerifiedEmails();
-  if (!list.includes(norm)) {
-    list.push(norm);
-    localStorage.setItem('app_verified_emails', JSON.stringify(list));
-  }
-}
-
-function isEmailVerifiedLocally(email: string): boolean {
-  const norm = email.trim().toLowerCase();
-  return getVerifiedEmails().includes(norm);
-}
-
 export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess, onDemoLogin, initialTab = 'login' }) => {
   const [tab, setTab] = useState<'login' | 'register'>(initialTab);
   const [step, setStep] = useState<'form' | 'verify_code'>('form');
@@ -54,12 +31,12 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess, onDemoLo
     }
   }, [initialTab]);
 
-  // Check for stored credentials
+  // Remember only email/name for convenience - never the password (that's the server's job now).
   const savedCredsRaw = localStorage.getItem('app_saved_credentials');
   const savedCreds = savedCredsRaw ? JSON.parse(savedCredsRaw) : null;
 
   const [email, setEmail] = useState(savedCreds?.email || '');
-  const [password, setPassword] = useState(savedCreds?.password || '');
+  const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState(savedCreds?.fullName || '');
   const [rememberMe, setRememberMe] = useState(true);
 
@@ -105,39 +82,26 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess, onDemoLo
     if (tab === 'register') {
       setIsSubmitting(true);
       try {
-        const savedSheetUrl = localStorage.getItem('app_google_sheet_url') || '';
-        const res = await fetch('/api/sheets/proxy', {
+        const res = await fetch('/api/auth/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'sendVerificationCode',
-            payload: { email: normEmail },
-            webAppUrl: savedSheetUrl,
-          }),
+          body: JSON.stringify({ email: normEmail, password, fullName }),
         });
         const data = await res.json();
 
-        // Fallback code if proxy returns default response
-        const sentCode = data?.data?.code || Math.floor(100000 + Math.random() * 900000).toString();
+        if (!res.ok || !data.success) {
+          setAuthError(data.message || 'Не удалось зарегистрироваться');
+          return;
+        }
 
-        const pending = JSON.parse(localStorage.getItem('app_pending_verifications') || '{}');
-        pending[normEmail] = {
-          code: String(sentCode),
-          createdAt: Date.now(),
-          password,
-          fullName,
-        };
-        localStorage.setItem('app_pending_verifications', JSON.stringify(pending));
-
-        localStorage.setItem(
-          'app_saved_credentials',
-          JSON.stringify({ email: normEmail, password, fullName })
-        );
+        if (rememberMe) {
+          localStorage.setItem('app_saved_credentials', JSON.stringify({ email: normEmail, fullName }));
+        }
 
         setStep('verify_code');
         setVerificationCode('');
         setResendCountdown(60);
-        setInfoMessage(`На ваш email ${normEmail} отправлен 6-значный код подтверждения.`);
+        setInfoMessage(data.message || `На ваш email ${normEmail} отправлен 6-значный код подтверждения.`);
       } catch (err: any) {
         setAuthError('Ошибка отправки кода подтверждения: ' + (err.message || 'Сбой сети'));
       } finally {
@@ -146,85 +110,42 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess, onDemoLo
       return;
     }
 
-    // LOGIN FLOW
+    // LOGIN FLOW - real server-side bcrypt password check
     setIsSubmitting(true);
-    let isVerified = isEmailVerifiedLocally(normEmail);
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: normEmail, password }),
+      });
+      const data = await res.json();
 
-    if (!isVerified) {
-      try {
-        const savedSheetUrl = localStorage.getItem('app_google_sheet_url') || '';
-        const res = await fetch('/api/sheets/proxy', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'checkEmailVerified',
-            payload: { email: normEmail },
-            webAppUrl: savedSheetUrl,
-          }),
-        });
-        const data = await res.json();
-        if (data?.data?.isVerified) {
-          isVerified = true;
-          markEmailAsVerified(normEmail);
-        }
-      } catch (err) {
-        // use local state
+      if (!res.ok || !data.success) {
+        setAuthError(data.message || 'Неверный логин или пароль');
+        return;
       }
-    }
 
-    if (!isVerified) {
-      // User hasn't verified email yet -> require verification code before allowing access
-      try {
-        const savedSheetUrl = localStorage.getItem('app_google_sheet_url') || '';
-        const res = await fetch('/api/sheets/proxy', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'sendVerificationCode',
-            payload: { email: normEmail },
-            webAppUrl: savedSheetUrl,
-          }),
-        });
-        const data = await res.json();
-        const sentCode = data?.data?.code || Math.floor(100000 + Math.random() * 900000).toString();
-
-        const pending = JSON.parse(localStorage.getItem('app_pending_verifications') || '{}');
-        pending[normEmail] = {
-          code: String(sentCode),
-          createdAt: Date.now(),
-          password,
-          fullName: fullName || normEmail.split('@')[0],
-        };
-        localStorage.setItem('app_pending_verifications', JSON.stringify(pending));
-
-        setStep('verify_code');
-        setVerificationCode('');
-        setResendCountdown(60);
-        setAuthError('Адрес email еще не подтвержден. На вашу почту отправлен 6-значный код.');
-      } catch (err: any) {
-        setAuthError('Email не подтвержден. Не удалось отправить код: ' + (err.message || 'Ошибка сети'));
-      } finally {
-        setIsSubmitting(false);
+      if (rememberMe) {
+        localStorage.setItem(
+          'app_saved_credentials',
+          JSON.stringify({ email: normEmail, fullName: data.user?.fullName || fullName })
+        );
       }
-      return;
+
+      onLoginSuccess({
+        id: data.user?.id,
+        email: normEmail,
+        fullName: data.user?.fullName || fullName || normEmail.split('@')[0],
+        isAuthenticated: true,
+        isQuestionnaireCompleted: true,
+        registrationDate: new Date().toISOString(),
+        introCardDismissedAt: null,
+      });
+    } catch (err: any) {
+      setAuthError('Ошибка входа: ' + (err.message || 'Сбой сети'));
+    } finally {
+      setIsSubmitting(false);
     }
-
-    // Email IS verified -> proceed with login
-    localStorage.setItem(
-      'app_saved_credentials',
-      JSON.stringify({ email: normEmail, password, fullName })
-    );
-
-    setIsSubmitting(false);
-    onLoginSuccess({
-      email: normEmail,
-      password,
-      fullName: fullName || normEmail.split('@')[0],
-      isAuthenticated: true,
-      isQuestionnaireCompleted: true,
-      registrationDate: new Date().toISOString(),
-      introCardDismissedAt: null,
-    });
   };
 
   const handleVerifyCodeSubmit = async (e: React.FormEvent) => {
@@ -241,73 +162,39 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess, onDemoLo
     }
 
     setIsSubmitting(true);
-    let verifiedSuccess = false;
-    let serverMessage = '';
 
     try {
-      const savedSheetUrl = localStorage.getItem('app_google_sheet_url') || '';
-      const res = await fetch('/api/sheets/proxy', {
+      const res = await fetch('/api/auth/verify-code', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'verifyEmailCode',
-          payload: { email: normEmail, code: cleanCode },
-          webAppUrl: savedSheetUrl,
-        }),
+        body: JSON.stringify({ email: normEmail, code: cleanCode }),
       });
       const data = await res.json();
-      if (data?.data?.verified) {
-        verifiedSuccess = true;
-      } else if (data?.data?.message) {
-        serverMessage = data.data.message;
-      }
-    } catch (err) {
-      console.warn('Verify code proxy error:', err);
-    }
 
-    // Local fallback verification
-    if (!verifiedSuccess) {
-      const pending = JSON.parse(localStorage.getItem('app_pending_verifications') || '{}');
-      const entry = pending[normEmail];
-      if (entry && String(entry.code).trim() === cleanCode) {
-        const isExpired = Date.now() - entry.createdAt > 15 * 60 * 1000;
-        if (!isExpired) {
-          verifiedSuccess = true;
-        } else {
-          serverMessage = 'Срок действия кода истёк (15 минут). Запросите новый код.';
-        }
+      if (!res.ok || !data.success) {
+        setAuthError(data.message || 'Неверный код подтверждения. Проверьте цифры из письма.');
+        return;
       }
-    }
 
-    if (!verifiedSuccess) {
+      const storedName = data.user?.fullName || fullName || normEmail.split('@')[0];
+      if (rememberMe) {
+        localStorage.setItem('app_saved_credentials', JSON.stringify({ email: normEmail, fullName: storedName }));
+      }
+
+      onLoginSuccess({
+        id: data.user?.id,
+        email: normEmail,
+        fullName: storedName,
+        isAuthenticated: true,
+        isQuestionnaireCompleted: false,
+        registrationDate: new Date().toISOString(),
+        introCardDismissedAt: null,
+      });
+    } catch (err: any) {
+      setAuthError('Ошибка проверки кода: ' + (err.message || 'Сбой сети'));
+    } finally {
       setIsSubmitting(false);
-      setAuthError(serverMessage || 'Неверный код подтверждения. Проверьте цифры из письма.');
-      return;
     }
-
-    // Code verified successfully!
-    markEmailAsVerified(normEmail);
-
-    const pending = JSON.parse(localStorage.getItem('app_pending_verifications') || '{}');
-    const storedName = pending[normEmail]?.fullName || fullName || normEmail.split('@')[0];
-    delete pending[normEmail];
-    localStorage.setItem('app_pending_verifications', JSON.stringify(pending));
-
-    localStorage.setItem(
-      'app_saved_credentials',
-      JSON.stringify({ email: normEmail, password, fullName: storedName })
-    );
-
-    setIsSubmitting(false);
-    onLoginSuccess({
-      email: normEmail,
-      password,
-      fullName: storedName,
-      isAuthenticated: true,
-      isQuestionnaireCompleted: tab === 'register' ? false : true,
-      registrationDate: new Date().toISOString(),
-      introCardDismissedAt: null,
-    });
   };
 
   const handleResendCode = async () => {
@@ -318,30 +205,20 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess, onDemoLo
     setInfoMessage(null);
 
     try {
-      const savedSheetUrl = localStorage.getItem('app_google_sheet_url') || '';
-      const res = await fetch('/api/sheets/proxy', {
+      const res = await fetch('/api/auth/resend-code', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'sendVerificationCode',
-          payload: { email: normEmail },
-          webAppUrl: savedSheetUrl,
-        }),
+        body: JSON.stringify({ email: normEmail }),
       });
       const data = await res.json();
-      const sentCode = data?.data?.code || Math.floor(100000 + Math.random() * 900000).toString();
 
-      const pending = JSON.parse(localStorage.getItem('app_pending_verifications') || '{}');
-      pending[normEmail] = {
-        code: String(sentCode),
-        createdAt: Date.now(),
-        password,
-        fullName,
-      };
-      localStorage.setItem('app_pending_verifications', JSON.stringify(pending));
+      if (!res.ok || !data.success) {
+        setAuthError(data.message || 'Не удалось отправить код повторно');
+        return;
+      }
 
       setResendCountdown(60);
-      setInfoMessage(`Новый код отправлен на ${normEmail}`);
+      setInfoMessage(data.message || `Новый код отправлен на ${normEmail}`);
     } catch (err: any) {
       setAuthError('Не удалось отправить код повторно: ' + (err.message || 'Ошибка сети'));
     } finally {

@@ -49,5 +49,9 @@ jobs:
             GEMINI_PROXY_URL=${{ secrets.GEMINI_PROXY_URL }}
             GEMINI_PROXY_SECRET=${{ secrets.GEMINI_PROXY_SECRET }}
             GOOGLE_SHEETS_WEB_APP_URL=${{ secrets.GOOGLE_SHEETS_WEB_APP_URL }}
+            YDB_ENDPOINT=${{ secrets.YDB_ENDPOINT }}
+            YDB_DATABASE=${{ secrets.YDB_DATABASE }}
+            YDB_SA_JSON_CREDENTIALS=${{ secrets.YDB_SA_JSON_CREDENTIALS }}
+            JWT_SECRET=${{ secrets.JWT_SECRET }}
             NODE_ENV=production
           public: true
