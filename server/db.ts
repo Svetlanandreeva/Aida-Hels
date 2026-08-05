@@ -55,7 +55,7 @@ async function getDriver(): Promise<Driver> {
 }
 
 async function ensureSchema(driver: Driver) {
-  await driver.queryClient.do({
+  await driver.queryClient.doTx({
     fn: async (session) => {
       await session.execute({
         text: `
@@ -92,7 +92,7 @@ function rowToUser(row: any): UserRecord {
 
 export async function getUserByEmail(email: string): Promise<UserRecord | null> {
   const driver = await getDriver();
-  return driver.queryClient.do({
+  return driver.queryClient.doTx({
     fn: async (session) => {
       const result = await session.execute({
         text: `
@@ -120,7 +120,7 @@ export async function createUser(user: {
   verificationExpiresAt: number;
 }): Promise<void> {
   const driver = await getDriver();
-  await driver.queryClient.do({
+  await driver.queryClient.doTx({
     fn: async (session) => {
       await session.execute({
         text: `
@@ -150,7 +150,7 @@ export async function createUser(user: {
 
 export async function markEmailVerified(email: string): Promise<void> {
   const driver = await getDriver();
-  await driver.queryClient.do({
+  await driver.queryClient.doTx({
     fn: async (session) => {
       await session.execute({
         text: `
@@ -166,7 +166,7 @@ export async function markEmailVerified(email: string): Promise<void> {
 
 export async function setVerificationCode(email: string, code: string, expiresAt: number): Promise<void> {
   const driver = await getDriver();
-  await driver.queryClient.do({
+  await driver.queryClient.doTx({
     fn: async (session) => {
       await session.execute({
         text: `
