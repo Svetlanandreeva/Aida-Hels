@@ -55,7 +55,7 @@ async function getDriver(): Promise<Driver> {
 }
 
 async function ensureSchema(driver: Driver) {
-  await driver.queryClient.doTx({
+  await driver.queryClient.do({
     fn: async (session) => {
       await session.execute({
         text: `
