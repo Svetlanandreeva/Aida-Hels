@@ -571,6 +571,7 @@ export default function App() {
         {/* SCREEN 12: REMINDERS & MEDICATION SCHEDULE */}
         {currentScreen === 'reminders' && (
           <RemindersScreen
+            user={user}
             reminders={reminders}
             setReminders={setReminders}
             onNavigateToCheckin={() => setCurrentScreen('daily_checkin')}
@@ -635,6 +636,8 @@ export default function App() {
         user={user}
         documents={documents}
         systems={bodySystems}
+        reminders={reminders}
+        diaryEntries={diaryEntries}
       />
 
       {/* Modal 4: Onboarding & Interactive Tutorial */}

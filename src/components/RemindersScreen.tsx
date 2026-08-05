@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Reminder, ReminderCategory, ReminderFrequency } from '../types';
+import React, { useState, useEffect } from 'react';
+import { Reminder, ReminderCategory, ReminderFrequency, UserProfile } from '../types';
 import { AutocompleteInput } from './AutocompleteInput';
 import { MEDICATIONS_SUGGESTIONS } from '../data/medicalSuggestions';
 import {
@@ -17,9 +17,11 @@ import {
   Check,
   X,
   AlertCircle,
+  ShieldAlert,
 } from 'lucide-react';
 
 interface RemindersScreenProps {
+  user: UserProfile;
   reminders: Reminder[];
   setReminders: React.Dispatch<React.SetStateAction<Reminder[]>>;
   onNavigateToCheckin?: () => void;
@@ -87,6 +89,7 @@ const playSoundAlert = (type: 'chime' | 'gentle' | 'pulse' | 'complete' = 'chime
 };
 
 export const RemindersScreen: React.FC<RemindersScreenProps> = ({
+  user,
   reminders,
   setReminders,
   onNavigateToCheckin,
@@ -105,6 +108,49 @@ export const RemindersScreen: React.FC<RemindersScreenProps> = ({
   const [formFrequency, setFormFrequency] = useState<ReminderFrequency>('daily');
   const [formDays, setFormDays] = useState<string[]>(DAYS_OF_WEEK);
   const [formSound, setFormSound] = useState<'chime' | 'gentle' | 'pulse'>('chime');
+  const [safetyNotice, setSafetyNotice] = useState<{ has_conflict: boolean; severity: string; description: string } | null>(null);
+  const [isCheckingSafety, setIsCheckingSafety] = useState(false);
+
+  const checkMedicationSafety = async (medName: string) => {
+    if (!medName.trim()) return;
+    setIsCheckingSafety(true);
+    try {
+      const currentMeds = reminders.filter((r) => r.category === 'medication' && r.isEnabled).map((r) => r.title);
+      const res = await fetch('/api/medications/check-safety', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          newMedication: medName,
+          currentMedications: currentMeds,
+          allergies: user.allergies || [],
+          chronicConditions: (user.chronicDiagnoses || []).map((c) => c.name),
+        }),
+      });
+      const data = await res.json();
+      if (data?.success) {
+        setSafetyNotice({
+          has_conflict: data.has_conflict,
+          severity: data.severity,
+          description: data.description,
+        });
+      }
+    } catch (err) {
+      console.warn('Safety check error:', err);
+    } finally {
+      setIsCheckingSafety(false);
+    }
+  };
+
+  // Debounced medication safety check while typing a new medication name
+  useEffect(() => {
+    if (!showModal || formCategory !== 'medication' || !formTitle.trim()) {
+      setSafetyNotice(null);
+      return;
+    }
+    const timer = setTimeout(() => checkMedicationSafety(formTitle), 900);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formTitle, formCategory, showModal]);
 
   // Test Notification Toast
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -610,6 +656,26 @@ export const RemindersScreen: React.FC<RemindersScreenProps> = ({
                   placeholder="Например: Приём L-тироксина 50 мкг"
                   className="w-full px-3 py-2.5 bg-gray-900 border border-gray-700 text-gray-100 rounded-xl focus:border-emerald-500 focus:outline-none text-xs"
                 />
+                {formCategory === 'medication' && isCheckingSafety && (
+                  <p className="mt-1.5 text-[11px] text-gray-500 flex items-center gap-1.5">
+                    <Sparkles className="w-3 h-3 animate-spin" />
+                    Проверяю совместимость с текущими препаратами...
+                  </p>
+                )}
+                {formCategory === 'medication' && !isCheckingSafety && safetyNotice && (
+                  <div
+                    className={`mt-1.5 p-2.5 rounded-xl border text-[11px] flex items-start gap-2 ${
+                      safetyNotice.severity === 'HIGH'
+                        ? 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+                        : safetyNotice.severity === 'MEDIUM'
+                        ? 'bg-amber-500/10 border-amber-500/30 text-amber-300'
+                        : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                    }`}
+                  >
+                    <ShieldAlert className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                    <span>{safetyNotice.description}</span>
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">

@@ -1,6 +1,6 @@
-import React from 'react';
-import { UserProfile, MedicalDocument, BodySystem } from '../../types';
-import { Printer, X, Download, Share2, ShieldCheck, Heart, FileText, CheckCircle2 } from 'lucide-react';
+import React, { useState } from 'react';
+import { UserProfile, MedicalDocument, BodySystem, Reminder, DiaryEntry } from '../../types';
+import { Printer, X, Download, ShieldCheck, Heart, FileText, CheckCircle2 } from 'lucide-react';
 
 interface DoctorReportModalProps {
   isOpen: boolean;
@@ -8,6 +8,8 @@ interface DoctorReportModalProps {
   user: UserProfile;
   documents: MedicalDocument[];
   systems: BodySystem[];
+  reminders?: Reminder[];
+  diaryEntries?: DiaryEntry[];
 }
 
 export const DoctorReportModal: React.FC<DoctorReportModalProps> = ({
@@ -16,11 +18,51 @@ export const DoctorReportModal: React.FC<DoctorReportModalProps> = ({
   user,
   documents,
   systems,
+  reminders = [],
+  diaryEntries = [],
 }) => {
+  const [isDownloading, setIsDownloading] = useState(false);
+
   if (!isOpen) return null;
 
   const handlePrint = () => {
     window.print();
+  };
+
+  const handleServerDownload = async () => {
+    setIsDownloading(true);
+    try {
+      const response = await fetch('/api/reports/doctor-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          date_from: '2026-01-01',
+          date_to: new Date().toISOString().split('T')[0],
+          profile: user,
+          medications: reminders,
+          diaryEntries,
+          documents,
+        }),
+      });
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Health_Doctor_Report_${new Date().toISOString().split('T')[0]}.html`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+      } else {
+        alert('Не удалось сформировать отчёт на сервере.');
+      }
+    } catch (e) {
+      console.error('Download report error:', e);
+      alert('Ошибка скачивания отчёта.');
+    } finally {
+      setIsDownloading(false);
+    }
   };
 
   return (
@@ -34,6 +76,14 @@ export const DoctorReportModal: React.FC<DoctorReportModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              onClick={handleServerDownload}
+              disabled={isDownloading}
+              className="px-3.5 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
+            >
+              <Download className="w-4 h-4" />
+              <span>{isDownloading ? 'Формирую...' : 'Скачать файл'}</span>
+            </button>
             <button
               onClick={handlePrint}
               className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5 cursor-pointer"

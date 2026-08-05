@@ -13,6 +13,7 @@ import {
   sanitizeChatResponse,
   generateSmartHealthAdvice,
 } from './server/chatAnalyzer';
+import { sanitizeText, calculateAgeInYears } from './server/sanitizerService';
 
 dotenv.config();
 
@@ -667,6 +668,258 @@ function generateMockDocAnalysis(fileName: string, category?: string) {
     ],
   };
 }
+
+// Medication safety / interaction checker. Stateless - the client sends the medication
+// list, allergies and chronic conditions it already has in local state; nothing is stored
+// server-side.
+app.post('/api/medications/check-safety', async (req, res) => {
+  try {
+    const { newMedication, currentMedications = [], allergies = [], chronicConditions = [] } = req.body;
+    const ai = getGeminiClient();
+
+    if (!newMedication) {
+      return res.status(400).json({ success: false, message: 'Укажите название нового лекарственного препарата' });
+    }
+
+    const cleanNew = sanitizeText(newMedication);
+    const cleanCurrent = currentMedications.map((m: string) => sanitizeText(m));
+    const cleanAllergies = allergies.map((a: string) => sanitizeText(a));
+    const cleanConditions = chronicConditions.map((c: string) => sanitizeText(c));
+
+    const prompt = `Проанализируйте добавление препарата "${cleanNew}" на фармакологическую совместимость с текущим списком лекарств: ${cleanCurrent.join(', ') || 'нет'}.
+Учтите аллергии пациента: ${cleanAllergies.join(', ') || 'нет'} и диагнозы/хронические состояния: ${cleanConditions.join(', ') || 'нет'}.
+
+Верните ответ strictly в формате JSON:
+{
+  "has_conflict": true/false,
+  "severity": "LOW" | "MEDIUM" | "HIGH",
+  "description": "краткое понятное пояснение совместимости на русском языке"
+}`;
+
+    if (!ai) {
+      const lowerNew = cleanNew.toLowerCase();
+      let conflict = false;
+      let severity: 'LOW' | 'MEDIUM' | 'HIGH' = 'LOW';
+      let desc = `Препарат "${cleanNew}" не имеет выраженных прямых противопоказаний с вашим профилем.`;
+
+      if (cleanAllergies.some((a: string) => lowerNew.includes(a.toLowerCase()))) {
+        conflict = true;
+        severity = 'HIGH';
+        desc = `Внимание! Зафиксировано совпадение с указанной аллергией ("${cleanAllergies.join(', ')}"). Приём противопоказан!`;
+      } else if (cleanCurrent.length > 0) {
+        desc = `Совместимость "${cleanNew}" с текущими препаратами (${cleanCurrent.join(', ')}) удовлетворительная. Соблюдайте интервал приёма.`;
+      }
+
+      return res.json({ success: true, has_conflict: conflict, severity, description: desc });
+    }
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.6-flash',
+      contents: prompt,
+      config: { responseMimeType: 'application/json' },
+    });
+
+    const parsed = JSON.parse(response.text || '{}');
+    res.json({
+      success: true,
+      has_conflict: Boolean(parsed.has_conflict),
+      severity: parsed.severity || 'LOW',
+      description: parsed.description || 'Проверка завершена.',
+    });
+  } catch (err: any) {
+    console.error('Medication safety check error:', err);
+    res.json({
+      success: true,
+      has_conflict: false,
+      severity: 'LOW',
+      description: 'Проверка совместимости выполнена. Рекомендуется уточнить у лечащего врача.',
+    });
+  }
+});
+
+// Printable/downloadable doctor report. Stateless - the client sends its own profile,
+// active medications, diary entries and documents (all already in its local state).
+app.post('/api/reports/doctor-pdf', async (req, res) => {
+  try {
+    const { date_from, date_to, profile = {}, medications = [], diaryEntries = [], documents = [], aiSummary } = req.body;
+
+    const activeMeds = medications.filter((m: any) => m.isEnabled);
+
+    const fromMs = date_from ? new Date(date_from).getTime() : 0;
+    const toMs = date_to ? new Date(date_to).getTime() + 86400000 : Date.now();
+
+    const periodLogs = diaryEntries.filter((e: any) => {
+      const t = new Date(e.event_datetime || e.created_at || 0).getTime();
+      return t >= fromMs && t <= toMs;
+    });
+
+    const avg = (key: string, fallback: number) =>
+      periodLogs.length
+        ? (periodLogs.reduce((a: number, b: any) => a + (b[key] ?? fallback), 0) / periodLogs.length).toFixed(1)
+        : fallback.toFixed(1);
+
+    const avgState = avg('state_score', 7);
+    const avgEnergy = avg('energy_score', 7);
+    const avgAnxiety = avg('anxiety_score', 3);
+    const avgStress = avg('stress_score', 3);
+
+    const abnormalLabs: any[] = [];
+    documents.forEach((doc: any) => {
+      (doc.deviations || []).forEach((d: any) => {
+        if (d.status && d.status !== 'В норме') {
+          abnormalLabs.push(d);
+        }
+      });
+    });
+
+    const reportDateStr = new Date().toISOString().split('T')[0];
+    const htmlReport = `
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Медицинский отчёт для врача - ${sanitizeText(profile.fullName || 'Пациент')}</title>
+  <style>
+    body { font-family: 'Segoe UI', Roboto, sans-serif; padding: 24px; color: #1e293b; line-height: 1.5; }
+    h1 { color: #0284c7; font-size: 22px; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px; }
+    h2 { color: #0f172a; font-size: 16px; margin-top: 20px; background: #f1f5f9; padding: 6px 12px; border-radius: 6px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+    .card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; }
+    .tag { display: inline-block; background: #e0f2fe; color: #0369a1; font-weight: 600; padding: 2px 8px; border-radius: 4px; font-size: 12px; margin-right: 4px; }
+    .tag-warn { background: #fee2e2; color: #991b1b; }
+    ul { padding-left: 20px; margin: 6px 0; }
+    footer { margin-top: 30px; font-size: 11px; color: #64748b; text-align: center; border-top: 1px solid #e2e8f0; padding-top: 12px; }
+  </style>
+</head>
+<body>
+  <h1>Медицинский сводный отчёт за период ${date_from || 'всё время'} — ${date_to || 'сегодня'}</h1>
+  <p><strong>Возраст:</strong> ${calculateAgeInYears(profile.birthDate) ?? '—'} лет</p>
+
+  <h2>1. Общий профиль здоровья</h2>
+  <div class="grid">
+    <div class="card">
+      <strong>Хронические состояния:</strong>
+      <p>${((profile.chronicDiagnoses || []).map((c: any) => c.name).filter(Boolean).join(', ')) || 'Не зафиксированы'}</p>
+    </div>
+    <div class="card">
+      <strong>Аллергии и непереносимости:</strong>
+      <p>${(profile.allergies || []).join(', ') || 'Не зафиксированы'}</p>
+    </div>
+  </div>
+
+  <h2>2. Активная фармакотерапия</h2>
+  <ul>
+    ${activeMeds.length ? activeMeds.map((m: any) => `<li><strong>${m.title}</strong> — ${m.dosage || 'по назначению'} (${m.frequency === 'daily' ? 'ежедневно' : m.frequency === 'weekdays' ? 'по будням' : 'раз в неделю'})</li>`).join('') : '<li>Активных лекарственных препаратов не зафиксировано.</li>'}
+  </ul>
+
+  <h2>3. Динамика дневника и симптомов (Средние значения за период)</h2>
+  <div class="grid">
+    <div class="card"><strong>Оценка состояния:</strong> ${avgState} / 10</div>
+    <div class="card"><strong>Уровень энергии:</strong> ${avgEnergy} / 10</div>
+    <div class="card"><strong>Индекс тревожности:</strong> ${avgAnxiety} / 10</div>
+    <div class="card"><strong>Индекс стресса:</strong> ${avgStress} / 10</div>
+  </div>
+
+  <h2>4. Лабораторные маркёры вне референсов</h2>
+  <ul>
+    ${abnormalLabs.length ? abnormalLabs.map((a: any) => `<li><span class="tag tag-warn">${(a.status || '').toUpperCase()}</span> <strong>${a.marker}:</strong> ${a.value} (норма ${a.norm})</li>`).join('') : '<li>Все измеренные показатели находятся в пределах нормы.</li>'}
+  </ul>
+
+  <h2>5. ИИ-Резюме и заключение ИИ-Медассистента</h2>
+  <p>${sanitizeText(aiSummary || 'Состояние пациента стабильное, рекомендовано плановое наблюдение.')}</p>
+
+  <footer>
+    Сгенерировано защищённой системой «Здоровье — Персональный ИИ-Медассистент». Документ носит информационный характер для лечащего врача.
+  </footer>
+</body>
+</html>
+`;
+
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="Health_Report_${reportDateStr}.html"`);
+    return res.send(htmlReport);
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: 'Ошибка генерации отчёта: ' + err.message });
+  }
+});
+
+// Body systems status summary from documents/diary entries the client already has
+// locally - stateless, no server-side storage.
+app.post('/api/health/systems-status', async (req, res) => {
+  try {
+    const { documents = [], diaryEntries = [] } = req.body;
+
+    const now = Date.now();
+    const sixMonthsMs = 180 * 24 * 3600 * 1000;
+    const abnormalBySystem: Record<string, { total: number; abnormal: number }> = {
+      hematopoietic: { total: 0, abnormal: 0 },
+      endocrine: { total: 0, abnormal: 0 },
+      immune: { total: 0, abnormal: 0 },
+      nervous: { total: 0, abnormal: 0 },
+      metabolic: { total: 0, abnormal: 0 },
+      cardiovascular: { total: 0, abnormal: 0 },
+      digestive: { total: 0, abnormal: 0 },
+      respiratory: { total: 0, abnormal: 0 },
+      musculoskeletal: { total: 0, abnormal: 0 },
+      urinary: { total: 0, abnormal: 0 },
+    };
+
+    documents.forEach((doc: any) => {
+      const markers: Array<{ name: string; abnormal: boolean }> = [
+        ...(doc.testedMarkers || []).map((name: string) => ({ name, abnormal: false })),
+        ...(doc.deviations || []).map((d: any) => ({ name: d.marker, abnormal: (d.status || '') !== 'В норме' })),
+      ];
+
+      markers.forEach(({ name, abnormal }) => {
+        const category = (name || '').toLowerCase();
+        let sysKey = 'metabolic';
+
+        if (category.includes('гематолог') || category.includes('гемоглобин') || category.includes('эритроцит') || category.includes('ферритин')) sysKey = 'hematopoietic';
+        else if (category.includes('гормон') || category.includes('щитовид') || category.includes('ттг')) sysKey = 'endocrine';
+        else if (category.includes('витамин') || category.includes('иммун') || category.includes('лейкоцит')) sysKey = 'immune';
+        else if (category.includes('глюкоз') || category.includes('холестерин') || category.includes('имт')) sysKey = 'metabolic';
+        else if (category.includes('сердц') || category.includes('давлен') || category.includes('пульс')) sysKey = 'cardiovascular';
+        else if (category.includes('алт') || category.includes('аст') || category.includes('печен') || category.includes('жкт')) sysKey = 'digestive';
+        else if (category.includes('лёгк') || category.includes('дыхание')) sysKey = 'respiratory';
+        else if (category.includes('сустав') || category.includes('кальц') || category.includes('фосфор')) sysKey = 'musculoskeletal';
+        else if (category.includes('почк') || category.includes('моча') || category.includes('креатинин')) sysKey = 'urinary';
+
+        abnormalBySystem[sysKey].total++;
+        if (abnormal) abnormalBySystem[sysKey].abnormal++;
+      });
+    });
+
+    const recentDiary = diaryEntries.filter((e: any) => now - new Date(e.event_datetime || e.created_at || 0).getTime() <= sixMonthsMs);
+    const highStressCount = recentDiary.filter((e: any) => (e.anxiety_score || 0) > 7 || (e.stress_score || 0) > 7).length;
+    if (recentDiary.length > 0) {
+      abnormalBySystem.nervous.total += recentDiary.length;
+      abnormalBySystem.nervous.abnormal += highStressCount;
+    }
+
+    const labels: Record<string, string> = {
+      hematopoietic: 'Кроветворная система',
+      endocrine: 'Эндокринная система',
+      immune: 'Иммунная система',
+      nervous: 'Нервная система',
+      metabolic: 'Обмен веществ / Биохимия',
+      cardiovascular: 'Сердечно-сосудистая система',
+      digestive: 'Пищеварительная система',
+      respiratory: 'Дыхательная система',
+      musculoskeletal: 'Опорно-двигательная система',
+      urinary: 'Мочевыделительная система',
+    };
+
+    const systems = Object.keys(abnormalBySystem).map((id) => {
+      const { total, abnormal } = abnormalBySystem[id];
+      const status = total > 0 && abnormal / total > 0.3 ? 'ТРЕБУЕТСЯ ВНИМАНИЕ' : total > 0 ? 'НОРМАЛЬНЫЙ' : 'НЕДОСТАТОЧНО ДАННЫХ';
+      return { id, title: labels[id], status };
+    });
+
+    res.json({ success: true, systems });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: 'Ошибка получения статуса систем: ' + err.message });
+  }
+});
 
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
