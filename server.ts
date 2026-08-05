@@ -29,11 +29,60 @@ app.post('/api/security/log', (req, res) => {
   res.json({ success: true });
 });
 
-// Helper to initialize Gemini SDK safely
-function getGeminiClient() {
+// Helper to initialize Gemini SDK safely. When GEMINI_PROXY_URL is set, requests are
+// routed through an external relay (e.g. a Cloudflare Worker) instead of calling Google
+// directly - needed because the Gemini API rejects requests from Russian IP addresses,
+// which is what this server runs on. The relay shim mimics the subset of the
+// @google/genai client's interface (`models.generateContent`) actually used in this
+// codebase, so every call site works unmodified regardless of which path is active.
+function getGeminiClient(): any {
   if (isGeminiQuotaExhausted()) {
     return null;
   }
+
+  const proxyUrl = process.env.GEMINI_PROXY_URL;
+  const proxySecret = process.env.GEMINI_PROXY_SECRET;
+
+  if (proxyUrl) {
+    return {
+      models: {
+        async generateContent({ model, contents, config }: any) {
+          const parts = Array.isArray(contents) ? contents : [contents];
+          const isWrapped = parts.length > 0 && parts[0] && typeof parts[0] === 'object' && 'role' in parts[0];
+          const body: any = {
+            contents: isWrapped ? parts : [{ role: 'user', parts }],
+          };
+          if (config?.systemInstruction) {
+            body.systemInstruction = { parts: [{ text: config.systemInstruction }] };
+          }
+          if (config?.responseMimeType) {
+            body.generationConfig = { responseMimeType: config.responseMimeType };
+          }
+
+          const res = await fetch(`${proxyUrl.replace(/\/$/, '')}/v1beta/models/${model}:generateContent`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(proxySecret ? { 'X-Relay-Secret': proxySecret } : {}),
+            },
+            body: JSON.stringify(body),
+          });
+
+          if (!res.ok) {
+            const errText = await res.text();
+            const err: any = new Error(`Gemini proxy error ${res.status}: ${errText}`);
+            err.status = res.status;
+            throw err;
+          }
+
+          const json: any = await res.json();
+          const text = json?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+          return { text };
+        },
+      },
+    };
+  }
+
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey || apiKey === 'MY_GEMINI_API_KEY') {
     return null;
