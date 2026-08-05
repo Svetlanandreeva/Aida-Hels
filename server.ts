@@ -332,6 +332,45 @@ app.post('/api/auth/logout', (req, res) => {
 });
 
 // ==========================================
+// SECURITY MONITORING & AUDIT LOGGING
+// ==========================================
+
+interface SecurityEventRecord {
+  id: string;
+  event: string;
+  severity: 'low' | 'high';
+  timestamp: string;
+  ip?: string;
+  userAgent?: string;
+}
+
+const securityAuditLogs: SecurityEventRecord[] = [];
+
+app.post('/api/security/log', (req, res) => {
+  try {
+    const { event, severity } = req.body;
+    const logEntry: SecurityEventRecord = {
+      id: `sec-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      event: event || 'Неизвестное событие безопасности',
+      severity: severity === 'high' ? 'high' : 'low',
+      timestamp: new Date().toISOString(),
+      ip: req.ip || (req.headers['x-forwarded-for'] as string) || '127.0.0.1',
+      userAgent: req.headers['user-agent'] || 'browser',
+    };
+    securityAuditLogs.push(logEntry);
+    console.log(`[SECURITY AUDIT] [${logEntry.severity.toUpperCase()}] ${logEntry.event} at ${logEntry.timestamp}`);
+    res.json({ success: true, logged: true, eventId: logEntry.id });
+  } catch (err: any) {
+    console.error('Error logging security event:', err);
+    res.status(500).json({ success: false, message: 'Ошибка записи события безопасности' });
+  }
+});
+
+app.get('/api/security/logs', (req, res) => {
+  res.json({ success: true, count: securityAuditLogs.length, logs: securityAuditLogs.slice(-50) });
+});
+
+// ==========================================
 // PERSISTENT DATA STORAGE ENDPOINTS
 // ==========================================
 

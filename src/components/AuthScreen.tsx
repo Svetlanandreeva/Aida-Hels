@@ -14,6 +14,7 @@ import {
   ArrowLeft,
 } from 'lucide-react';
 import { UserProfile } from '../types';
+import { logSecurityEvent } from '../App';
 
 interface AuthScreenProps {
   onLoginSuccess: (userData?: Partial<UserProfile>) => void;
@@ -157,7 +158,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess, onDemoLo
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        setAuthError(data.message || 'Неверный логин или пароль');
+        const errReason = data.message || 'Неверный логин или пароль';
+        setAuthError(errReason);
+        logSecurityEvent(`Неуспешная попытка входа (email: ${normEmail}): ${errReason}`, 'high');
         setIsSubmitting(false);
         return;
       }
