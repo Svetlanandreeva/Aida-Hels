@@ -53,6 +53,26 @@ import { SystemDetailModal } from './components/modals/SystemDetailModal';
 import { DoctorReportModal } from './components/modals/DoctorReportModal';
 import { OnboardingModal } from './components/modals/OnboardingModal';
 
+/**
+ * Sends critical security monitoring events to the server endpoint.
+ */
+export const logSecurityEvent = async (event: string, severity: 'low' | 'high') => {
+  try {
+    console.log(`[SECURITY EVENT LOG (${severity.toUpperCase()})]: ${event}`);
+    await fetch('/api/security/log', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        event,
+        severity,
+        timestamp: new Date().toISOString(),
+      }),
+    });
+  } catch (err) {
+    console.warn('Failed to send security log to server:', err);
+  }
+};
+
 const isDemoUser = (u: UserProfile) => {
   return u.email === 'anna.ivanova@health.ru' || u.id === 'usr-1' || Boolean((u as any).isDemoUser);
 };
@@ -325,12 +345,14 @@ export default function App() {
   };
 
   const handleLogout = () => {
+    logSecurityEvent(`Выход из аккаунта (пользователь: ${user.email || user.fullName || 'аноним'})`, 'low');
     setUser((prev) => ({ ...prev, isAuthenticated: false }));
     setAuthTab('login');
     setCurrentScreen('auth');
   };
 
   const handleDeleteProfile = async () => {
+    logSecurityEvent(`КРИТИЧЕСКОЕ СОБЫТИЕ: Запрос на полное удаление профиля (пользователь ${user.email || user.id})`, 'high');
     const currentUserId = user.id || 'usr-1';
     const savedSheetUrl = localStorage.getItem('app_google_sheet_url') || '';
 
@@ -503,13 +525,18 @@ export default function App() {
             setBiometricsEnabled={(enabled) => {
               setBiometricsEnabled(enabled);
               localStorage.setItem('app_biometrics_enabled', JSON.stringify(enabled));
+              logSecurityEvent(`Изменение настроек безопасности: биометрическая защита ${enabled ? 'включена' : 'отключена'}`, 'high');
             }}
             userPin={userPin}
             setUserPin={(pin) => {
               setUserPin(pin);
               localStorage.setItem('app_pin_code', pin);
+              logSecurityEvent(`Изменение настроек безопасности: ${pin ? 'установлен новый PIN-код' : 'PIN-код сброшен'}`, 'high');
             }}
-            onLockApp={() => setIsAppLocked(true)}
+            onLockApp={() => {
+              setIsAppLocked(true);
+              logSecurityEvent('Ручная блокировка экрана приложения пользователем', 'low');
+            }}
           />
         )}
 
