@@ -280,7 +280,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           setRecognizedData(data.data);
           setIsVerificationModalOpen(true);
         } else {
-          alert('Ошибка распознавания. Документ будет открыт с шаблонными полями.');
+          alert(data.error || 'Ошибка распознавания документа. Попробуйте позже.');
         }
       } catch (err) {
         console.error('File recognition error:', err);

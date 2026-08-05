@@ -256,7 +256,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
       const data = await res.json();
 
       if (!data.success || !data.data) {
-        throw new Error('Ошибка распознавания документа');
+        throw new Error(data.error || 'Ошибка распознавания документа');
       }
 
       const recognized = data.data as {
@@ -291,7 +291,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
       setSelectedFile(null);
     } catch (err) {
       console.error('Document recognition error:', err);
-      alert('Не удалось распознать документ. Попробуйте загрузить его ещё раз.');
+      alert(err instanceof Error ? err.message : 'Не удалось распознать документ. Попробуйте загрузить его ещё раз.');
     } finally {
       setIsAnalyzingFile(false);
     }

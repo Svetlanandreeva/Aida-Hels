@@ -240,8 +240,11 @@ app.post('/api/research/recognize', async (req, res) => {
 Допустимые значения статусов (status): "low", "normal", "high", "critical", "unknown".`;
 
     if (!ai) {
-      const fallbackResult = generateStructuredDocFallback(fileName || 'Лабораторное исследование');
-      return res.json({ success: true, data: fallbackResult, mode: 'simulated' });
+      return res.json({
+        success: false,
+        mode: 'unavailable',
+        error: 'Сервис распознавания временно недоступен (превышена дневная квота ИИ). Попробуйте загрузить документ позже.',
+      });
     }
 
     let contents: any[] = [];
@@ -284,8 +287,13 @@ app.post('/api/research/recognize', async (req, res) => {
     } else {
       console.error('Research document recognition error:', error?.message || error);
     }
-    const fallback = generateStructuredDocFallback(req.body.fileName || 'Лабораторный анализ');
-    res.json({ success: true, data: fallback, mode: 'fallback_on_error', error: error?.message });
+    res.json({
+      success: false,
+      mode: isQuotaError ? 'quota_exhausted' : 'error',
+      error: isQuotaError
+        ? 'Сервис распознавания временно недоступен (превышена дневная квота ИИ). Попробуйте загрузить документ позже.'
+        : 'Не удалось распознать документ. Попробуйте загрузить его ещё раз.',
+    });
   }
 });
 
