@@ -47,11 +47,15 @@ function getGeminiClient(): any {
     return {
       models: {
         async generateContent({ model, contents, config }: any) {
-          const parts = Array.isArray(contents) ? contents : [contents];
-          const isWrapped = parts.length > 0 && parts[0] && typeof parts[0] === 'object' && 'role' in parts[0];
-          const body: any = {
-            contents: isWrapped ? parts : [{ role: 'user', parts }],
-          };
+          let apiContents: any[];
+          if (typeof contents === 'string') {
+            apiContents = [{ role: 'user', parts: [{ text: contents }] }];
+          } else {
+            const parts = Array.isArray(contents) ? contents : [contents];
+            const isWrapped = parts.length > 0 && parts[0] && typeof parts[0] === 'object' && 'role' in parts[0];
+            apiContents = isWrapped ? parts : [{ role: 'user', parts }];
+          }
+          const body: any = { contents: apiContents };
           if (config?.systemInstruction) {
             body.systemInstruction = { parts: [{ text: config.systemInstruction }] };
           }
