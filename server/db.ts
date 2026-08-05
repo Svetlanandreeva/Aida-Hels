@@ -39,7 +39,8 @@ async function getDriver(): Promise<Driver> {
         throw new Error('YDB_ENDPOINT / YDB_DATABASE are not configured');
       }
       const driver = new Driver({
-        connectionString: `${endpoint}/?database=${database}`,
+        endpoint,
+        database,
         authService: buildAuthService(),
       });
       const ready = await driver.ready(10_000);
