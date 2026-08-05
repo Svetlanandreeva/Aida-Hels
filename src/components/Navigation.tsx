@@ -127,122 +127,31 @@ export const Navigation: React.FC<NavigationProps> = ({
 
   return (
     <>
-      {/* TOP NAVIGATION (ВЕРХНЯЯ НАВИГАЦИЯ - 80px) */}
-      <header className="sticky top-0 z-40 bg-[#050A12]/90 backdrop-blur-xl border-b border-white/[0.06] h-16 sm:h-20 px-3 sm:px-12 overflow-hidden">
+      {/* TOP NAVIGATION (ВЕРХНЯЯ НАВИГАЦИЯ) */}
+      <header className="sticky top-0 z-40 bg-[#050711]/80 backdrop-blur-2xl border-b border-[#99AEFF]/15 h-16 sm:h-20 px-3 sm:px-12 overflow-hidden">
         <div className="max-w-[1320px] mx-auto h-full flex items-center justify-between gap-2">
-          {/* LEFT: LOGO + TITLE + BADGE */}
+          {/* LEFT: LOGO + TITLE + EYEBROW */}
           <button
             onClick={() => {
               setCurrentScreen('dashboard');
               setDashboardTab('main');
             }}
-            className="flex items-center gap-2.5 sm:gap-3 group text-left cursor-pointer shrink-0"
+            className="flex items-center gap-3 group text-left cursor-pointer shrink-0"
           >
-            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-[#34F5A4]/10 border border-[#34F5A4]/30 flex items-center justify-center text-[#34F5A4] shadow-[0_0_15px_rgba(52,245,164,0.15)] group-hover:scale-105 transition-transform">
-              <Heart className="w-4.5 h-4.5 sm:w-5 sm:h-5 fill-[#34F5A4]" />
+            <div className="w-10 h-10 rounded-2xl bg-[#734CFF]/15 border border-[#9E7CFF]/40 flex items-center justify-center text-[#C8BAFF] shadow-[0_0_20px_rgba(116,72,255,0.2)] group-hover:scale-105 transition-transform">
+              <Heart className="w-5 h-5 fill-[#8968FF] text-[#8968FF]" />
             </div>
-            <div className="flex items-center gap-1.5 sm:gap-2">
-              <span className="font-bold text-white tracking-tight text-lg sm:text-xl font-[SF Pro Display],Inter">
-                Здоровье
+            <div className="flex flex-col">
+              <span className="text-[10px] uppercase tracking-widest font-bold text-gray-400 hidden sm:inline">
+                Персональный ИИ-мониторинг
               </span>
-              <span className="hidden sm:inline-block px-1.5 sm:px-2 py-0.5 text-[10px] sm:text-[11px] font-extrabold bg-[#34F5A4]/15 text-[#34F5A4] border border-[#34F5A4]/30 rounded-md uppercase tracking-wider">
-                ИИ 2.0
+              <span className="font-extrabold text-white tracking-tight text-lg sm:text-xl">
+                Аида
               </span>
             </div>
           </button>
 
-          {/* CENTER: TABS (Главная, Дневник, Аналитика, Карта тела, Помощник) */}
-          <nav className="hidden md:flex items-center gap-1 sm:gap-6 h-full">
-            <button
-              onClick={() => {
-                setCurrentScreen('dashboard');
-                setDashboardTab('main');
-              }}
-              className={`h-full flex items-center px-3 text-sm font-medium transition-all relative cursor-pointer ${
-                isTabActive('main')
-                  ? 'text-white font-semibold'
-                  : 'text-white/68 hover:text-white'
-              }`}
-            >
-              <span>Главная</span>
-              {isTabActive('main') && (
-                <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#34F5A4] shadow-[0_0_8px_#34F5A4]" />
-              )}
-            </button>
 
-            <button
-              onClick={() => setCurrentScreen('mental_diary')}
-              className={`h-full flex items-center px-3 text-sm font-medium transition-all relative cursor-pointer ${
-                isTabActive('diary')
-                  ? 'text-white font-semibold'
-                  : 'text-white/68 hover:text-white'
-              }`}
-            >
-              <span>Дневник</span>
-              {isTabActive('diary') && (
-                <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#34F5A4] shadow-[0_0_8px_#34F5A4]" />
-              )}
-            </button>
-
-            <button
-              onClick={() => setCurrentScreen('pressure_diary')}
-              className={`h-full flex items-center px-3 text-sm font-medium transition-all relative cursor-pointer ${
-                isTabActive('pressure_diary')
-                  ? 'text-white font-semibold'
-                  : 'text-white/68 hover:text-white'
-              }`}
-            >
-              <span>Давление</span>
-              {isTabActive('pressure_diary') && (
-                <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#34F5A4] shadow-[0_0_8px_#34F5A4]" />
-              )}
-            </button>
-
-            <button
-              onClick={() => {
-                setCurrentScreen('dashboard');
-                setDashboardTab('lab');
-              }}
-              className={`h-full flex items-center px-3 text-sm font-medium transition-all relative cursor-pointer ${
-                isTabActive('analytics')
-                  ? 'text-white font-semibold'
-                  : 'text-white/68 hover:text-white'
-              }`}
-            >
-              <span>Аналитика</span>
-              {isTabActive('analytics') && (
-                <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#34F5A4] shadow-[0_0_8px_#34F5A4]" />
-              )}
-            </button>
-
-            <button
-              onClick={() => setCurrentScreen('body_map')}
-              className={`h-full flex items-center px-3 text-sm font-medium transition-all relative cursor-pointer ${
-                isTabActive('body_map')
-                  ? 'text-white font-semibold'
-                  : 'text-white/68 hover:text-white'
-              }`}
-            >
-              <span>Карта тела</span>
-              {isTabActive('body_map') && (
-                <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#34F5A4] shadow-[0_0_8px_#34F5A4]" />
-              )}
-            </button>
-
-            <button
-              onClick={() => setCurrentScreen('ai_chat')}
-              className={`h-full flex items-center px-3 text-sm font-medium transition-all relative cursor-pointer ${
-                isTabActive('ai_chat')
-                  ? 'text-white font-semibold'
-                  : 'text-white/68 hover:text-white'
-              }`}
-            >
-              <span>Помощник</span>
-              {isTabActive('ai_chat') && (
-                <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#34F5A4] shadow-[0_0_8px_#34F5A4]" />
-              )}
-            </button>
-          </nav>
 
           {/* RIGHT: NOTIFICATIONS + SETTINGS + USER AVATAR + NAME + ARROW */}
           <div className="flex items-center gap-2 sm:gap-3">
@@ -371,62 +280,69 @@ export const Navigation: React.FC<NavigationProps> = ({
         </div>
       </header>
 
-      {/* FLOATING BOTTOM MENU (НИЖНЕЕ МЕНЮ - ИКОНКИ НА МОБИЛЬНОМ, ИКОНКИ+ТЕКСТ НА ДЕСКТОПЕ) */}
+      {/* FLOATING BOTTOM MENU (НИЖНЕЕ МЕНЮ - СТЕКЛЯННОЕ, ПЛАВАЮЩЕЕ) */}
       {isAppView && (
-        <nav className="md:hidden fixed bottom-3 sm:bottom-6 left-1/2 -translate-x-1/2 z-50 bg-[#0B1320]/95 backdrop-blur-2xl border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.7)] rounded-[24px] sm:rounded-[32px] px-1.5 sm:px-4 py-1.5 sm:py-2.5 flex items-center justify-between gap-1 sm:gap-2 w-[96vw] max-w-[680px] select-none [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+        <nav
+          aria-label="Мобильная навигация"
+          className="fixed bottom-2 sm:bottom-6 left-1/2 -translate-x-1/2 z-50 bg-[#0A0E1D]/90 backdrop-blur-2xl border border-[#98AEEB]/20 shadow-[0_24px_80px_rgba(0,0,0,0.7)] rounded-[28px] px-1.5 py-2 flex items-center justify-between gap-1 w-[96vw] max-w-[680px] select-none"
+        >
           <button
             onClick={() => {
               setCurrentScreen('dashboard');
               setDashboardTab('main');
             }}
             title="Главная"
-            className={`flex-1 flex items-center justify-center gap-1 sm:gap-2 px-1.5 sm:px-3 py-2 rounded-xl sm:rounded-2xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap min-h-[40px] min-w-[36px] ${
+            type="button"
+            className={`flex-1 flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 px-1 sm:px-2 py-1.5 rounded-2xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap min-h-[44px] ${
               isTabActive('main')
-                ? 'bg-[#34F5A4] text-[#050A12] shadow-lg shadow-[#34F5A4]/25 font-bold'
-                : 'text-white/68 hover:text-white hover:bg-white/[0.06]'
+                ? 'bg-gradient-to-r from-[#8968FF] to-[#47D8FF] text-[#050711] font-extrabold shadow-lg shadow-[#8968FF]/30'
+                : 'text-gray-400 hover:text-white hover:bg-white/[0.06]'
             }`}
           >
-            <LayoutDashboard className="w-5 h-5 sm:w-4 sm:h-4 shrink-0" />
-            <span className="hidden sm:inline">Главная</span>
+            <LayoutDashboard className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
+            <span className="text-[9px] sm:text-xs">Главная</span>
           </button>
 
           <button
             onClick={() => setCurrentScreen('mental_diary')}
-            title="Дневник эмоций"
-            className={`flex-1 flex items-center justify-center gap-1 sm:gap-2 px-1.5 sm:px-3 py-2 rounded-xl sm:rounded-2xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap min-h-[40px] min-w-[36px] ${
+            title="Психика"
+            type="button"
+            className={`flex-1 flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 px-1 sm:px-2 py-1.5 rounded-2xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap min-h-[44px] ${
               isTabActive('diary')
-                ? 'bg-[#34F5A4] text-[#050A12] shadow-lg shadow-[#34F5A4]/25 font-bold'
-                : 'text-white/68 hover:text-white hover:bg-white/[0.06]'
+                ? 'bg-gradient-to-r from-[#8968FF] to-[#47D8FF] text-[#050711] font-extrabold shadow-lg shadow-[#8968FF]/30'
+                : 'text-gray-400 hover:text-white hover:bg-white/[0.06]'
             }`}
           >
-            <Brain className="w-5 h-5 sm:w-4 sm:h-4 shrink-0" />
-            <span className="hidden sm:inline">Дневник</span>
+            <Brain className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
+            <span className="text-[9px] sm:text-xs">Психика</span>
           </button>
 
           <button
             onClick={() => setCurrentScreen('pressure_diary')}
-            title="Дневник давления"
-            className={`flex-1 flex items-center justify-center gap-1 sm:gap-2 px-1.5 sm:px-3 py-2 rounded-xl sm:rounded-2xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap min-h-[40px] min-w-[36px] ${
+            title="Давление"
+            type="button"
+            className={`flex-1 flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 px-1 sm:px-2 py-1.5 rounded-2xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap min-h-[44px] ${
               isTabActive('pressure_diary')
-                ? 'bg-[#34F5A4] text-[#050A12] shadow-lg shadow-[#34F5A4]/25 font-bold'
-                : 'text-white/68 hover:text-white hover:bg-white/[0.06]'
+                ? 'bg-gradient-to-r from-[#8968FF] to-[#47D8FF] text-[#050711] font-extrabold shadow-lg shadow-[#8968FF]/30'
+                : 'text-gray-400 hover:text-white hover:bg-white/[0.06]'
             }`}
           >
-            <Activity className="w-5 h-5 sm:w-4 sm:h-4 shrink-0" />
-            <span className="hidden sm:inline">Давление</span>
+            <Activity className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
+            <span className="text-[9px] sm:text-xs">Давление</span>
           </button>
 
           <button
             onClick={() => setCurrentScreen('body_map')}
-            title="Карта тела"
-            className={`flex-1 flex items-center justify-center gap-1 sm:gap-2 px-1.5 sm:px-3 py-2 rounded-xl sm:rounded-2xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap min-h-[40px] min-w-[36px] ${
+            title="Организм"
+            type="button"
+            className={`flex-1 flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 px-1 sm:px-2 py-1.5 rounded-2xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap min-h-[44px] ${
               isTabActive('body_map')
-                ? 'bg-[#34F5A4] text-[#050A12] shadow-lg shadow-[#34F5A4]/25 font-bold'
-                : 'text-white/68 hover:text-white hover:bg-white/[0.06]'
+                ? 'bg-gradient-to-r from-[#8968FF] to-[#47D8FF] text-[#050711] font-extrabold shadow-lg shadow-[#8968FF]/30'
+                : 'text-gray-400 hover:text-white hover:bg-white/[0.06]'
             }`}
           >
-            <User className="w-5 h-5 sm:w-4 sm:h-4 shrink-0" />
-            <span className="hidden sm:inline">Карта тела</span>
+            <User className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
+            <span className="text-[9px] sm:text-xs">Организм</span>
           </button>
 
           <button
@@ -434,41 +350,44 @@ export const Navigation: React.FC<NavigationProps> = ({
               setCurrentScreen('dashboard');
               setDashboardTab('lab');
             }}
-            title="Лабораторные анализы"
-            className={`flex-1 flex items-center justify-center gap-1 sm:gap-2 px-1.5 sm:px-3 py-2 rounded-xl sm:rounded-2xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap min-h-[40px] min-w-[36px] ${
+            title="Анализы"
+            type="button"
+            className={`flex-1 flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 px-1 sm:px-2 py-1.5 rounded-2xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap min-h-[44px] ${
               isTabActive('analytics')
-                ? 'bg-[#34F5A4] text-[#050A12] shadow-lg shadow-[#34F5A4]/25 font-bold'
-                : 'text-white/68 hover:text-white hover:bg-white/[0.06]'
+                ? 'bg-gradient-to-r from-[#8968FF] to-[#47D8FF] text-[#050711] font-extrabold shadow-lg shadow-[#8968FF]/30'
+                : 'text-gray-400 hover:text-white hover:bg-white/[0.06]'
             }`}
           >
-            <FileText className="w-5 h-5 sm:w-4 sm:h-4 shrink-0" />
-            <span className="hidden sm:inline">Аналитика</span>
+            <FileText className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
+            <span className="text-[9px] sm:text-xs">Анализы</span>
           </button>
 
           <button
             onClick={() => setCurrentScreen('ai_chat')}
-            title="ИИ Помощник"
-            className={`flex-1 flex items-center justify-center gap-1 sm:gap-2 px-1.5 sm:px-3 py-2 rounded-xl sm:rounded-2xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap min-h-[40px] min-w-[36px] ${
+            title="Аида"
+            type="button"
+            className={`flex-1 flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 px-1 sm:px-2 py-1.5 rounded-2xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap min-h-[44px] ${
               isTabActive('ai_chat')
-                ? 'bg-[#34F5A4] text-[#050A12] shadow-lg shadow-[#34F5A4]/25 font-bold'
-                : 'text-white/68 hover:text-white hover:bg-white/[0.06]'
+                ? 'bg-gradient-to-r from-[#8968FF] to-[#47D8FF] text-[#050711] font-extrabold shadow-lg shadow-[#8968FF]/30'
+                : 'text-gray-400 hover:text-white hover:bg-white/[0.06]'
             }`}
           >
-            <Sparkles className="w-5 h-5 sm:w-4 sm:h-4 shrink-0" />
-            <span className="hidden sm:inline">ИИ Чат</span>
+            <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
+            <span className="text-[9px] sm:text-xs">Аида</span>
           </button>
 
           <button
-            onClick={() => setCurrentScreen('daily_checkin')}
-            title="Ежедневный опрос"
-            className={`flex-1 flex items-center justify-center gap-1 sm:gap-2 px-1.5 sm:px-3 py-2 rounded-xl sm:rounded-2xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap min-h-[40px] min-w-[36px] ${
-              isTabActive('daily_checkin')
-                ? 'bg-[#34F5A4] text-[#050A12] shadow-lg shadow-[#34F5A4]/25 font-bold'
-                : 'text-white/68 hover:text-white hover:bg-white/[0.06]'
+            onClick={() => setCurrentScreen('reminders')}
+            title="Задачи"
+            type="button"
+            className={`flex-1 flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 px-1 sm:px-2 py-1.5 rounded-2xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap min-h-[44px] ${
+              currentScreen === 'reminders'
+                ? 'bg-gradient-to-r from-[#8968FF] to-[#47D8FF] text-[#050711] font-extrabold shadow-lg shadow-[#8968FF]/30'
+                : 'text-gray-400 hover:text-white hover:bg-white/[0.06]'
             }`}
           >
-            <CheckSquare className="w-5 h-5 sm:w-4 sm:h-4 shrink-0" />
-            <span className="hidden sm:inline">Опрос</span>
+            <CheckSquare className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
+            <span className="text-[9px] sm:text-xs">Задачи</span>
           </button>
         </nav>
       )}

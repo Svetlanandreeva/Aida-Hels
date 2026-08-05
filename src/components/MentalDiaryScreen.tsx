@@ -294,12 +294,12 @@ export const MentalDiaryScreen: React.FC<MentalDiaryScreenProps> = ({
   }, []);
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 pb-32 sm:pb-36 pt-4 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto space-y-8 select-none">
+    <div className="min-h-screen bg-[#050711] text-[#F7F8FF] pb-32 sm:pb-36 pt-4 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto space-y-8 select-none">
       {/* CRISIS BANNER IF SAFETY TRIGGERED */}
       {hasCriticalRisk && (
-        <div className="bg-gradient-to-r from-rose-900/90 via-red-900/80 to-slate-900 border-2 border-rose-500/80 rounded-3xl p-6 shadow-2xl space-y-4 animate-pulse">
+        <div className="bg-gradient-to-r from-[#FF6685]/20 via-red-950/60 to-[#0F142A] border-2 border-[#FF6685]/60 rounded-3xl p-6 shadow-2xl space-y-4 animate-pulse backdrop-blur-xl">
           <div className="flex items-start gap-4">
-            <div className="p-3 bg-rose-500/20 text-rose-400 rounded-2xl border border-rose-500/40 shrink-0">
+            <div className="p-3 bg-[#FF6685]/20 text-[#FF6685] rounded-2xl border border-[#FF6685]/40 shrink-0">
               <AlertOctagon className="w-8 h-8" />
             </div>
             <div className="space-y-1">
@@ -315,23 +315,23 @@ export const MentalDiaryScreen: React.FC<MentalDiaryScreenProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
             <a
               href="tel:112"
-              className="flex items-center justify-center gap-2 px-4 py-3 bg-rose-600 hover:bg-rose-500 text-white rounded-2xl font-bold text-xs transition shadow-lg shadow-rose-600/30"
+              className="flex items-center justify-center gap-2 px-4 py-3 bg-[#FF6685] hover:brightness-110 text-white rounded-2xl font-bold text-xs transition shadow-lg shadow-[#FF6685]/30"
             >
               <PhoneCall className="w-4 h-4" />
               112 (Единая служба спасения)
             </a>
             <a
               href="tel:88002000122"
-              className="flex items-center justify-center gap-2 px-4 py-3 bg-slate-800 hover:bg-slate-700 border border-rose-500/40 text-rose-200 rounded-2xl font-semibold text-xs transition"
+              className="flex items-center justify-center gap-2 px-4 py-3 bg-[#0F142A] hover:bg-[#151C3B] border border-[#FF6685]/40 text-rose-200 rounded-2xl font-semibold text-xs transition"
             >
-              <PhoneCall className="w-4 h-4 text-rose-400" />
+              <PhoneCall className="w-4 h-4 text-[#FF6685]" />
               8-800-200-01-22 (Телефон доверия)
             </a>
             <a
               href="tel:7495051"
-              className="flex items-center justify-center gap-2 px-4 py-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 rounded-2xl font-semibold text-xs transition"
+              className="flex items-center justify-center gap-2 px-4 py-3 bg-[#0F142A] hover:bg-[#151C3B] border border-white/10 text-slate-200 rounded-2xl font-semibold text-xs transition"
             >
-              <Heart className="w-4 h-4 text-rose-400" />
+              <Heart className="w-4 h-4 text-[#FF6685]" />
               +7 (495) 051 (Психологическая служба)
             </a>
           </div>
@@ -339,17 +339,17 @@ export const MentalDiaryScreen: React.FC<MentalDiaryScreenProps> = ({
       )}
 
       {/* TOP MODULE HEADER & NAVIGATION TABS */}
-      <div className="bg-slate-900/90 border border-slate-800/80 rounded-3xl p-5 shadow-2xl relative overflow-hidden backdrop-blur-xl">
+      <div className="bg-[#0F142A]/80 border border-[#99AEFF]/15 rounded-3xl p-5 shadow-2xl relative overflow-hidden backdrop-blur-2xl">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 relative z-10">
           <div className="flex items-center gap-3">
-            <div className="p-3 bg-gradient-to-br from-teal-500/20 to-emerald-500/20 border border-teal-500/30 text-teal-300 rounded-2xl shadow-inner">
+            <div className="p-3 bg-[#8968FF]/15 border border-[#8968FF]/30 text-[#8968FF] rounded-2xl shadow-inner">
               <HeartPulse className="w-6 h-6" />
             </div>
             <div>
               <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">
                 Дневник психического состояния
               </h1>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-gray-400">
                 Персональный ИИ-аналитик эмоций, триггеров и ресурсности
               </p>
             </div>
@@ -359,15 +359,15 @@ export const MentalDiaryScreen: React.FC<MentalDiaryScreenProps> = ({
           <div className="flex items-center gap-2.5 w-full md:w-auto">
             <button
               onClick={() => handleOpenAdd('quick')}
-              className="flex-1 md:flex-initial px-3.5 py-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-semibold text-xs transition flex items-center justify-center gap-2"
+              className="flex-1 md:flex-initial px-3.5 py-2.5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-semibold text-xs transition flex items-center justify-center gap-2 cursor-pointer"
             >
-              <Zap className="w-4 h-4 text-amber-400" />
+              <Zap className="w-4 h-4 text-[#FFB957]" />
               ⚡ Быстрая запись
             </button>
 
             <button
               onClick={() => handleOpenAdd('full')}
-              className="flex-1 md:flex-initial px-4 py-2.5 rounded-2xl bg-gradient-to-r from-teal-500 to-emerald-600 hover:from-teal-400 hover:to-emerald-500 text-slate-950 font-bold text-xs transition shadow-lg shadow-teal-500/20 flex items-center justify-center gap-2"
+              className="flex-1 md:flex-initial px-4 py-2.5 rounded-2xl bg-gradient-to-r from-[#8968FF] to-[#47D8FF] hover:brightness-110 text-[#050711] font-extrabold text-xs transition shadow-lg shadow-[#8968FF]/25 flex items-center justify-center gap-2 cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               Зафиксировать состояние
@@ -376,25 +376,25 @@ export const MentalDiaryScreen: React.FC<MentalDiaryScreenProps> = ({
         </div>
 
         {/* NAVIGATION TABS */}
-        <div className="flex border-t border-slate-800/80 mt-5 pt-3 gap-2 overflow-x-auto">
+        <div className="flex border-t border-white/10 mt-5 pt-3 gap-2 overflow-x-auto">
           <button
             onClick={() => setActiveTab('start')}
-            className={`px-4 py-2.5 font-bold text-xs rounded-2xl flex items-center gap-2 transition whitespace-nowrap ${
+            className={`px-4 py-2.5 font-bold text-xs rounded-2xl flex items-center gap-2 transition whitespace-nowrap cursor-pointer ${
               activeTab === 'start'
-                ? 'bg-teal-500/20 text-teal-300 border border-teal-500/40 shadow-inner'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+                ? 'bg-gradient-to-r from-[#8968FF] to-[#47D8FF] text-[#050711] font-extrabold shadow-md'
+                : 'text-gray-400 hover:text-white hover:bg-white/5'
             }`}
           >
-            <Compass className="w-4 h-4 text-teal-400" />
+            <Compass className="w-4 h-4" />
             Главный экран (Старт)
           </button>
 
           <button
             onClick={() => setActiveTab('feed')}
-            className={`px-4 py-2.5 font-semibold text-xs rounded-2xl flex items-center gap-2 transition whitespace-nowrap ${
+            className={`px-4 py-2.5 font-semibold text-xs rounded-2xl flex items-center gap-2 transition whitespace-nowrap cursor-pointer ${
               activeTab === 'feed'
-                ? 'bg-teal-500/20 text-teal-300 border border-teal-500/40'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+                ? 'bg-gradient-to-r from-[#8968FF] to-[#47D8FF] text-[#050711] font-extrabold shadow-md'
+                : 'text-gray-400 hover:text-white hover:bg-white/5'
             }`}
           >
             <FileText className="w-4 h-4" />
@@ -403,10 +403,10 @@ export const MentalDiaryScreen: React.FC<MentalDiaryScreenProps> = ({
 
           <button
             onClick={() => setActiveTab('analytics')}
-            className={`px-4 py-2.5 font-semibold text-xs rounded-2xl flex items-center gap-2 transition whitespace-nowrap ${
+            className={`px-4 py-2.5 font-semibold text-xs rounded-2xl flex items-center gap-2 transition whitespace-nowrap cursor-pointer ${
               activeTab === 'analytics'
-                ? 'bg-teal-500/20 text-teal-300 border border-teal-500/40'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+                ? 'bg-gradient-to-r from-[#8968FF] to-[#47D8FF] text-[#050711] font-extrabold shadow-md'
+                : 'text-gray-400 hover:text-white hover:bg-white/5'
             }`}
           >
             <BarChart2 className="w-4 h-4" />
@@ -415,10 +415,10 @@ export const MentalDiaryScreen: React.FC<MentalDiaryScreenProps> = ({
 
           <button
             onClick={() => setActiveTab('privacy')}
-            className={`px-4 py-2.5 font-semibold text-xs rounded-2xl flex items-center gap-2 transition whitespace-nowrap ${
+            className={`px-4 py-2.5 font-semibold text-xs rounded-2xl flex items-center gap-2 transition whitespace-nowrap cursor-pointer ${
               activeTab === 'privacy'
-                ? 'bg-teal-500/20 text-teal-300 border border-teal-500/40'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+                ? 'bg-gradient-to-r from-[#8968FF] to-[#47D8FF] text-[#050711] font-extrabold shadow-md'
+                : 'text-gray-400 hover:text-white hover:bg-white/5'
             }`}
           >
             <Shield className="w-4 h-4" />
@@ -1294,14 +1294,7 @@ export const MentalDiaryScreen: React.FC<MentalDiaryScreenProps> = ({
               </div>
 
               <span className="px-3.5 py-1.5 rounded-xl bg-teal-500/20 text-teal-300 font-bold text-xs border border-teal-500/40">
-                Прогноз:{' '}
-                {patterns.resource_forecast === 'insufficient_data'
-                  ? 'Появится позже'
-                  : patterns.resource_forecast === 'high'
-                  ? 'Высокий ресурс'
-                  : patterns.resource_forecast === 'low'
-                  ? 'Низкий ресурс'
-                  : 'Средний ресурс'}
+                Прогноз: {patterns.resource_forecast === 'high' ? 'Высокий ресурс' : 'Средний ресурс'}
               </span>
             </div>
 

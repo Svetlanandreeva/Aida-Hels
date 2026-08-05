@@ -24,8 +24,7 @@
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
     "recharts": "^3.10.1",
-    "vite": "^6.2.3",
-    "ydb-sdk": "^5.11.1"
+    "vite": "^6.2.3"
   },
   "devDependencies": {
     "@types/bcryptjs": "^3.0.0",

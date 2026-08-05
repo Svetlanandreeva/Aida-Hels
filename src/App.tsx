@@ -46,6 +46,7 @@ import { MentalDiaryScreen } from './components/MentalDiaryScreen';
 import { PressureDiary } from './components/PressureDiary';
 
 import { SecurityLockModal } from './components/SecurityLockModal';
+import { checkAndTriggerReminders } from './services/notificationService';
 
 // Modals
 import { BodyMapOverviewModal } from './components/modals/BodyMapOverviewModal';
@@ -120,29 +121,6 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('app_user_profile', JSON.stringify(user));
   }, [user]);
-
-  // On a fresh device/browser with no local session, check whether a real server-side
-  // session cookie is already valid (e.g. after logging in elsewhere) and restore it.
-  // Never overrides an existing local session - localStorage stays authoritative for
-  // profile/documents/etc in this phase, this only rehydrates identity on first load.
-  useEffect(() => {
-    if (user.isAuthenticated) return;
-    fetch('/api/auth/me')
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (data?.success && data.user) {
-          setUser((prev) => ({
-            ...prev,
-            id: data.user.id,
-            email: data.user.email,
-            fullName: data.user.fullName || prev.fullName,
-            isAuthenticated: true,
-          }));
-        }
-      })
-      .catch(() => {});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const [bodySystems, setBodySystems] = useState<BodySystem[]>(() => {
     if (isDemoUser(user)) return initialBodySystems;
@@ -230,6 +208,21 @@ export default function App() {
       localStorage.setItem('app_user_weekly_report', JSON.stringify(weeklyReport));
     }
   }, [user, bodySystems, documents, appointments, dailyLogs, reminders, pressureLogs, diaryEntries, mentalPatterns, weeklyReport]);
+
+  // Background timer for active browser notifications
+  useEffect(() => {
+    if (!user.isAuthenticated) return;
+
+    // Check immediately on mount/login
+    checkAndTriggerReminders(reminders);
+
+    // Periodically check every 15 seconds
+    const interval = setInterval(() => {
+      checkAndTriggerReminders(reminders);
+    }, 15000);
+
+    return () => clearInterval(interval);
+  }, [user.isAuthenticated, reminders]);
   const handleAddDiaryEntry = async (entryData: Partial<DiaryEntry>) => {
     const newEntry: DiaryEntry = {
       id: `diary-${Date.now()}`,
@@ -369,7 +362,6 @@ export default function App() {
 
   const handleLogout = () => {
     logSecurityEvent(`Выход из аккаунта (пользователь: ${user.email || user.fullName || 'аноним'})`, 'low');
-    fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
     setUser((prev) => ({ ...prev, isAuthenticated: false }));
     setAuthTab('login');
     setCurrentScreen('auth');
@@ -595,7 +587,6 @@ export default function App() {
         {/* SCREEN 12: REMINDERS & MEDICATION SCHEDULE */}
         {currentScreen === 'reminders' && (
           <RemindersScreen
-            user={user}
             reminders={reminders}
             setReminders={setReminders}
             onNavigateToCheckin={() => setCurrentScreen('daily_checkin')}
@@ -660,8 +651,6 @@ export default function App() {
         user={user}
         documents={documents}
         systems={bodySystems}
-        reminders={reminders}
-        diaryEntries={diaryEntries}
       />
 
       {/* Modal 4: Onboarding & Interactive Tutorial */}

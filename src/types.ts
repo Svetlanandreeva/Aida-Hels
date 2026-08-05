@@ -184,11 +184,6 @@ export interface MedicalDocument {
     status: 'Выше' | 'Ниже' | 'Внимание' | 'В норме';
     explanation: string;
   }>;
-  // Names of every marker actually recognized in this document, including normal ones
-  // (deviations above only holds abnormal markers) - lets the backend tell "this document
-  // covers X" apart from "this document covers everything", instead of assuming any
-  // uploaded document proves every body system is fine.
-  testedMarkers?: string[];
   recommendations: string[];
 }
 

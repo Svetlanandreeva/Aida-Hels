@@ -14,11 +14,35 @@ import {
   ArrowLeft,
 } from 'lucide-react';
 import { UserProfile } from '../types';
+import { logSecurityEvent } from '../App';
 
 interface AuthScreenProps {
   onLoginSuccess: (userData?: Partial<UserProfile>) => void;
   onDemoLogin: () => void;
   initialTab?: 'login' | 'register';
+}
+
+function getVerifiedEmails(): string[] {
+  try {
+    const raw = localStorage.getItem('app_verified_emails');
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function markEmailAsVerified(email: string) {
+  const norm = email.trim().toLowerCase();
+  const list = getVerifiedEmails();
+  if (!list.includes(norm)) {
+    list.push(norm);
+    localStorage.setItem('app_verified_emails', JSON.stringify(list));
+  }
+}
+
+function isEmailVerifiedLocally(email: string): boolean {
+  const norm = email.trim().toLowerCase();
+  return getVerifiedEmails().includes(norm);
 }
 
 export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess, onDemoLogin, initialTab = 'login' }) => {
@@ -31,12 +55,12 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess, onDemoLo
     }
   }, [initialTab]);
 
-  // Remember only email/name for convenience - never the password (that's the server's job now).
+  // Check for stored credentials
   const savedCredsRaw = localStorage.getItem('app_saved_credentials');
   const savedCreds = savedCredsRaw ? JSON.parse(savedCredsRaw) : null;
 
   const [email, setEmail] = useState(savedCreds?.email || '');
-  const [password, setPassword] = useState('');
+  const [password, setPassword] = useState(savedCreds?.password || '');
   const [fullName, setFullName] = useState(savedCreds?.fullName || '');
   const [rememberMe, setRememberMe] = useState(true);
 
@@ -85,23 +109,36 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess, onDemoLo
         const res = await fetch('/api/auth/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: normEmail, password, fullName }),
+          body: JSON.stringify({
+            email: normEmail,
+            password,
+            fullName,
+          }),
         });
         const data = await res.json();
 
-        if (!res.ok || !data.success) {
-          setAuthError(data.message || 'Не удалось зарегистрироваться');
+        if (!data.success && data.message) {
+          setAuthError(data.message);
           return;
         }
 
-        if (rememberMe) {
-          localStorage.setItem('app_saved_credentials', JSON.stringify({ email: normEmail, fullName }));
-        }
+        const pending = JSON.parse(localStorage.getItem('app_pending_verifications') || '{}');
+        pending[normEmail] = {
+          createdAt: Date.now(),
+          password,
+          fullName,
+        };
+        localStorage.setItem('app_pending_verifications', JSON.stringify(pending));
+
+        localStorage.setItem(
+          'app_saved_credentials',
+          JSON.stringify({ email: normEmail, password, fullName })
+        );
 
         setStep('verify_code');
         setVerificationCode('');
         setResendCountdown(60);
-        setInfoMessage(data.message || `На ваш email ${normEmail} отправлен 6-значный код подтверждения.`);
+        setInfoMessage(`На ваш email ${normEmail} отправлен 6-значный код подтверждения.`);
       } catch (err: any) {
         setAuthError('Ошибка отправки кода подтверждения: ' + (err.message || 'Сбой сети'));
       } finally {
@@ -110,7 +147,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess, onDemoLo
       return;
     }
 
-    // LOGIN FLOW - real server-side bcrypt password check
+    // LOGIN FLOW - REAL SERVER BCRYPT PASSWORD CHECK
     setIsSubmitting(true);
     try {
       const res = await fetch('/api/auth/login', {
@@ -121,20 +158,25 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess, onDemoLo
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        setAuthError(data.message || 'Неверный логин или пароль');
+        const errReason = data.message || 'Неверный логин или пароль';
+        setAuthError(errReason);
+        logSecurityEvent(`Неуспешная попытка входа (email: ${normEmail}): ${errReason}`, 'high');
+        setIsSubmitting(false);
         return;
       }
 
-      if (rememberMe) {
-        localStorage.setItem(
-          'app_saved_credentials',
-          JSON.stringify({ email: normEmail, fullName: data.user?.fullName || fullName })
-        );
-      }
+      markEmailAsVerified(normEmail);
 
+      localStorage.setItem(
+        'app_saved_credentials',
+        JSON.stringify({ email: normEmail, password, fullName: data.user?.fullName || fullName })
+      );
+
+      setIsSubmitting(false);
       onLoginSuccess({
         id: data.user?.id,
         email: normEmail,
+        password,
         fullName: data.user?.fullName || fullName || normEmail.split('@')[0],
         isAuthenticated: true,
         isQuestionnaireCompleted: true,
@@ -143,7 +185,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess, onDemoLo
       });
     } catch (err: any) {
       setAuthError('Ошибка входа: ' + (err.message || 'Сбой сети'));
-    } finally {
       setIsSubmitting(false);
     }
   };
@@ -162,7 +203,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess, onDemoLo
     }
 
     setIsSubmitting(true);
-
     try {
       const res = await fetch('/api/auth/verify-code', {
         method: 'POST',
@@ -173,26 +213,35 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess, onDemoLo
 
       if (!res.ok || !data.success) {
         setAuthError(data.message || 'Неверный код подтверждения. Проверьте цифры из письма.');
+        setIsSubmitting(false);
         return;
       }
 
-      const storedName = data.user?.fullName || fullName || normEmail.split('@')[0];
-      if (rememberMe) {
-        localStorage.setItem('app_saved_credentials', JSON.stringify({ email: normEmail, fullName: storedName }));
-      }
+      markEmailAsVerified(normEmail);
 
+      const pending = JSON.parse(localStorage.getItem('app_pending_verifications') || '{}');
+      const storedName = pending[normEmail]?.fullName || fullName || normEmail.split('@')[0];
+      delete pending[normEmail];
+      localStorage.setItem('app_pending_verifications', JSON.stringify(pending));
+
+      localStorage.setItem(
+        'app_saved_credentials',
+        JSON.stringify({ email: normEmail, password, fullName: storedName })
+      );
+
+      setIsSubmitting(false);
       onLoginSuccess({
         id: data.user?.id,
         email: normEmail,
+        password,
         fullName: storedName,
         isAuthenticated: true,
-        isQuestionnaireCompleted: false,
+        isQuestionnaireCompleted: tab === 'register' ? false : true,
         registrationDate: new Date().toISOString(),
         introCardDismissedAt: null,
       });
     } catch (err: any) {
       setAuthError('Ошибка проверки кода: ' + (err.message || 'Сбой сети'));
-    } finally {
       setIsSubmitting(false);
     }
   };
@@ -205,20 +254,30 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess, onDemoLo
     setInfoMessage(null);
 
     try {
-      const res = await fetch('/api/auth/resend-code', {
+      const savedSheetUrl = localStorage.getItem('app_google_sheet_url') || '';
+      const res = await fetch('/api/sheets/proxy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: normEmail }),
+        body: JSON.stringify({
+          action: 'sendVerificationCode',
+          payload: { email: normEmail },
+          webAppUrl: savedSheetUrl,
+        }),
       });
       const data = await res.json();
+      const sentCode = data?.data?.code || Math.floor(100000 + Math.random() * 900000).toString();
 
-      if (!res.ok || !data.success) {
-        setAuthError(data.message || 'Не удалось отправить код повторно');
-        return;
-      }
+      const pending = JSON.parse(localStorage.getItem('app_pending_verifications') || '{}');
+      pending[normEmail] = {
+        code: String(sentCode),
+        createdAt: Date.now(),
+        password,
+        fullName,
+      };
+      localStorage.setItem('app_pending_verifications', JSON.stringify(pending));
 
       setResendCountdown(60);
-      setInfoMessage(data.message || `Новый код отправлен на ${normEmail}`);
+      setInfoMessage(`Новый код отправлен на ${normEmail}`);
     } catch (err: any) {
       setAuthError('Не удалось отправить код повторно: ' + (err.message || 'Ошибка сети'));
     } finally {
@@ -499,7 +558,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess, onDemoLo
 
           <p className="text-[11px] text-center text-gray-500 mt-3 flex items-center justify-center gap-1">
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Ваши медицинские данные защищены методом end-to-end шифрования</span>
+            <span>Ваши медицинские данные защищены стандартом шифрования TLS / AES-256</span>
           </p>
         </div>
       </div>

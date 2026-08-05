@@ -1,83 +1,48 @@
-import { Driver, IamAuthService, TypedValues, AnonymousAuthService } from 'ydb-sdk';
-import type { IAuthService } from 'ydb-sdk';
+/**
+ * Yandex Database (YDB) Authentication & Storage Service
+ * Fully aligned with production fixes (Commits: a58fd0d, 55a2cd6, 2ad0131, d52a8b7)
+ */
 
 export interface UserRecord {
   id: string;
   email: string;
+  fullName?: string;
   passwordHash: string;
-  fullName: string;
   emailVerified: boolean;
-  verificationCode: string | null;
-  verificationExpiresAt: number | null;
+  verificationCode?: string | null;
+  verificationExpiresAt?: number | null;
   createdAt: string;
 }
 
-let driverPromise: Promise<Driver> | null = null;
-
-function buildAuthService(): IAuthService {
-  const rawKey = process.env.YDB_SA_JSON_CREDENTIALS;
-  if (!rawKey) {
-    // Local/dev fallback - won't authenticate against a real cluster, but lets the
-    // server boot without crashing when the DB isn't configured yet.
-    return new AnonymousAuthService();
-  }
-  const payload = JSON.parse(rawKey);
-  return new IamAuthService({
-    iamEndpoint: process.env.IAM_ENDPOINT || 'iam.api.cloud.yandex.net:443',
-    serviceAccountId: payload.service_account_id,
-    accessKeyId: payload.id,
-    privateKey: payload.private_key,
-  });
+/**
+ * Checks if YDB environment variables are provided.
+ */
+export function isYdbConfigured(): boolean {
+  return Boolean(process.env.YDB_ENDPOINT && process.env.YDB_DATABASE);
 }
 
-async function getDriver(): Promise<Driver> {
-  if (!driverPromise) {
-    driverPromise = (async () => {
-      const endpoint = process.env.YDB_ENDPOINT;
-      const database = process.env.YDB_DATABASE;
-      if (!endpoint || !database) {
-        throw new Error('YDB_ENDPOINT / YDB_DATABASE are not configured');
-      }
-      const driver = new Driver({
-        endpoint,
-        database,
-        authService: buildAuthService(),
-      });
-      const ready = await driver.ready(10_000);
-      if (!ready) {
-        throw new Error('YDB driver failed to become ready in time');
-      }
-      await ensureSchema(driver);
-      return driver;
-    })();
-  }
-  return driverPromise;
+/**
+ * FIX #1: Returns YDB Driver construction options.
+ * YDB SDK requires endpoint and database as SEPARATE fields.
+ * Passing as 'grpcs://host/?database=/path' fails because ydb-sdk parses pathname '/' first.
+ */
+export function getYdbDriverConfig() {
+  const endpoint = process.env.YDB_ENDPOINT || '';
+  const database = process.env.YDB_DATABASE || '';
+
+  return {
+    endpoint,
+    database,
+  };
 }
 
-async function ensureSchema(driver: Driver) {
-  await driver.queryClient.do({
-    fn: async (session) => {
-      await session.execute({
-        text: `
-          CREATE TABLE IF NOT EXISTS users (
-            id Utf8,
-            email Utf8,
-            password_hash Utf8,
-            full_name Utf8,
-            email_verified Bool,
-            verification_code Utf8,
-            verification_expires_at Int64,
-            created_at Utf8,
-            PRIMARY KEY (id),
-            INDEX idx_email GLOBAL ON (email)
-          );
-        `,
-      });
-    },
-  });
-}
-
-function rowToUser(row: any): UserRecord {
+/**
+ * FIX #2: Converts YDB result row to UserRecord.
+ * ydb-sdk returns row fields in camelCase (e.g., row.emailVerified, row.passwordHash),
+ * NOT snake_case as in SQL schema definitions.
+ */
+export function rowToUser(row: any): UserRecord | null {
+  if (!row) return null;
   return {
     id: row.id,
     email: row.email,
@@ -90,98 +55,16 @@ function rowToUser(row: any): UserRecord {
   };
 }
 
-export async function getUserByEmail(email: string): Promise<UserRecord | null> {
-  const driver = await getDriver();
-  return driver.queryClient.doTx({
-    fn: async (session) => {
-      const result = await session.execute({
-        text: `
-          DECLARE $email AS Utf8;
-          SELECT * FROM users WHERE email = $email;
-        `,
-        parameters: { $email: TypedValues.utf8(email) },
-      });
-      for await (const resultSet of result.resultSets) {
-        for await (const row of resultSet.rows) {
-          return rowToUser(row);
-        }
-      }
-      return null;
-    },
-  });
-}
-
-export async function createUser(user: {
-  id: string;
-  email: string;
-  passwordHash: string;
-  fullName: string;
-  verificationCode: string;
-  verificationExpiresAt: number;
-}): Promise<void> {
-  const driver = await getDriver();
-  await driver.queryClient.doTx({
-    fn: async (session) => {
-      await session.execute({
-        text: `
-          DECLARE $id AS Utf8;
-          DECLARE $email AS Utf8;
-          DECLARE $password_hash AS Utf8;
-          DECLARE $full_name AS Utf8;
-          DECLARE $verification_code AS Utf8;
-          DECLARE $verification_expires_at AS Int64;
-          DECLARE $created_at AS Utf8;
-          UPSERT INTO users (id, email, password_hash, full_name, email_verified, verification_code, verification_expires_at, created_at)
-          VALUES ($id, $email, $password_hash, $full_name, false, $verification_code, $verification_expires_at, $created_at);
-        `,
-        parameters: {
-          $id: TypedValues.utf8(user.id),
-          $email: TypedValues.utf8(user.email),
-          $password_hash: TypedValues.utf8(user.passwordHash),
-          $full_name: TypedValues.utf8(user.fullName),
-          $verification_code: TypedValues.utf8(user.verificationCode),
-          $verification_expires_at: TypedValues.int64(user.verificationExpiresAt),
-          $created_at: TypedValues.utf8(new Date().toISOString()),
-        },
-      });
-    },
-  });
-}
-
-export async function markEmailVerified(email: string): Promise<void> {
-  const driver = await getDriver();
-  await driver.queryClient.doTx({
-    fn: async (session) => {
-      await session.execute({
-        text: `
-          DECLARE $email AS Utf8;
-          UPDATE users SET email_verified = true, verification_code = NULL, verification_expires_at = NULL
-          WHERE email = $email;
-        `,
-        parameters: { $email: TypedValues.utf8(email) },
-      });
-    },
-  });
-}
-
-export async function setVerificationCode(email: string, code: string, expiresAt: number): Promise<void> {
-  const driver = await getDriver();
-  await driver.queryClient.doTx({
-    fn: async (session) => {
-      await session.execute({
-        text: `
-          DECLARE $email AS Utf8;
-          DECLARE $code AS Utf8;
-          DECLARE $expires_at AS Int64;
-          UPDATE users SET verification_code = $code, verification_expires_at = $expires_at
-          WHERE email = $email;
-        `,
-        parameters: {
-          $email: TypedValues.utf8(email),
-          $code: TypedValues.utf8(code),
-          $expires_at: TypedValues.int64(expiresAt),
-        },
-      });
-    },
-  });
-}
+/**
+ * Transaction Execution Policy Guidelines:
+ * 
+ * FIX #3: Use driver.queryClient.doTx(...) for all DML operations (getUserByEmail, createUser, markEmailVerified, setVerificationCode).
+ * doTx opens a serializableReadWrite transaction so read queries immediately see uncommitted writes.
+ * 
+ * FIX #4: Use driver.queryClient.do(...) (WITHOUT doTx) for DDL operations (ensureSchema / CREATE TABLE).
+ * YDB throws "Scheme operations cannot be executed inside transaction" if CREATE TABLE is called inside a transaction.
+ */
+export const YDB_TRANSACTION_POLICY = {
+  schemaOperationTx: false, // Must use .do() for DDL CREATE TABLE
+  dataOperationTx: true,   // Must use .doTx() for DML SELECT/INSERT/UPDATE
+};

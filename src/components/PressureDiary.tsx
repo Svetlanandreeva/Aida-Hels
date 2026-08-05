@@ -294,7 +294,7 @@ export const PressureDiary: React.FC<PressureDiaryProps> = ({
   return (
     <div className="max-w-6xl mx-auto space-y-6 pb-32 sm:pb-36 px-3 sm:px-6">
       {/* HEADER BAR */}
-      <div className="bg-[#14171C] p-5 sm:p-7 rounded-3xl border border-gray-800 shadow-md flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+      <div className="bg-[#0F142A]/80 p-5 sm:p-7 rounded-3xl border border-[#99AEFF]/15 shadow-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4 backdrop-blur-2xl">
         <div className="space-y-1">
           {onNavigateBack && (
             <button
@@ -306,7 +306,7 @@ export const PressureDiary: React.FC<PressureDiaryProps> = ({
             </button>
           )}
           <h1 className="text-xl sm:text-2xl font-bold text-white flex items-center gap-2.5">
-            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center text-rose-400 shrink-0">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-[#FF6685]/15 border border-[#FF6685]/30 flex items-center justify-center text-[#FF6685] shrink-0">
               <Activity className="w-5 h-5" />
             </div>
             <span>Дневник давления и пульса</span>
@@ -318,7 +318,7 @@ export const PressureDiary: React.FC<PressureDiaryProps> = ({
 
         <button
           onClick={() => setIsModalOpen(true)}
-          className="w-full md:w-auto px-5 py-3 bg-[#34F5A4] hover:bg-[#2be093] text-slate-950 font-bold text-xs sm:text-sm rounded-2xl shadow-lg shadow-[#34F5A4]/20 transition-all flex items-center justify-center gap-2 cursor-pointer shrink-0"
+          className="w-full md:w-auto px-5 py-3 bg-gradient-to-r from-[#8968FF] to-[#47D8FF] hover:brightness-110 text-[#050711] font-extrabold text-xs sm:text-sm rounded-2xl shadow-lg shadow-[#8968FF]/25 transition-all flex items-center justify-center gap-2 cursor-pointer shrink-0"
         >
           <Plus className="w-4 h-4" />
           <span>Зафиксировать замер</span>
@@ -327,21 +327,21 @@ export const PressureDiary: React.FC<PressureDiaryProps> = ({
 
       {/* EMPTY STATE EXPLICIT BANNER */}
       {!stats.hasData && (
-        <div className="bg-[#14171C] border border-amber-500/30 p-5 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm">
+        <div className="bg-[#0F142A]/80 border border-[#FFB957]/30 p-5 rounded-3xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xl backdrop-blur-2xl">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
+            <div className="w-10 h-10 rounded-2xl bg-[#FFB957]/15 border border-[#FFB957]/30 text-[#FFB957] flex items-center justify-center shrink-0">
               <Info className="w-5 h-5" />
             </div>
             <div>
               <h3 className="font-bold text-white text-sm">Дневник давления не ведётся</h3>
               <p className="text-xs text-gray-400 mt-0.5">
-                У вас пока нет сохранённых замеров артериального давления и пульса. Статус не завязан на общую анкету. Нажмите кнопку, чтобы зафиксировать первый замер.
+                У вас пока нет сохранённых замеров артериального давления и пульса. Нажмите кнопку, чтобы зафиксировать первый замер.
               </p>
             </div>
           </div>
           <button
             onClick={() => setIsModalOpen(true)}
-            className="px-4 py-2 bg-[#34F5A4] text-slate-950 font-bold text-xs rounded-xl shadow-md hover:bg-[#2ce093] cursor-pointer shrink-0"
+            className="px-4 py-2 bg-gradient-to-r from-[#8968FF] to-[#47D8FF] text-[#050711] font-extrabold text-xs rounded-2xl shadow-md hover:brightness-110 cursor-pointer shrink-0"
           >
             + Зафиксировать замер
           </button>

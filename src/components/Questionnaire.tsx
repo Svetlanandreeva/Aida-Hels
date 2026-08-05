@@ -455,7 +455,8 @@ export const Questionnaire: React.FC<QuestionnaireProps> = ({
                     max="230"
                     required
                     value={user.height || ''}
-                    onChange={(e) => setUser({ ...user, height: Number(e.target.value) })}
+                    onChange={(e) => setUser({ ...user, height: e.target.value === '' ? 0 : Number(e.target.value) })}
+                    placeholder="Например, 168"
                     className="w-full px-3.5 py-2.5 bg-gray-900 border border-gray-700 rounded-xl text-sm text-gray-100 focus:outline-none focus:border-emerald-500"
                   />
                   <span className="absolute right-3 top-3 text-xs text-gray-500">см</span>
@@ -473,7 +474,8 @@ export const Questionnaire: React.FC<QuestionnaireProps> = ({
                     max="200"
                     required
                     value={user.weight || ''}
-                    onChange={(e) => setUser({ ...user, weight: Number(e.target.value) })}
+                    onChange={(e) => setUser({ ...user, weight: e.target.value === '' ? 0 : Number(e.target.value) })}
+                    placeholder="Например, 58"
                     className="w-full px-3.5 py-2.5 bg-gray-900 border border-gray-700 rounded-xl text-sm text-gray-100 focus:outline-none focus:border-emerald-500"
                   />
                   <span className="absolute right-3 top-3 text-xs text-gray-500">кг</span>
@@ -716,16 +718,17 @@ export const Questionnaire: React.FC<QuestionnaireProps> = ({
                       type="number"
                       min="20"
                       max="45"
-                      value={user.womenHealth.cycleLength}
+                      value={user.womenHealth.cycleLength || ''}
                       onChange={(e) =>
                         setUser({
                           ...user,
                           womenHealth: {
                             ...user.womenHealth!,
-                            cycleLength: Number(e.target.value),
+                            cycleLength: e.target.value === '' ? 0 : Number(e.target.value),
                           },
                         })
                       }
+                      placeholder="Например, 28"
                       className="w-full px-3.5 py-2 bg-gray-900 border border-pink-500/30 text-gray-100 rounded-xl text-xs"
                     />
                   </div>
@@ -858,16 +861,17 @@ export const Questionnaire: React.FC<QuestionnaireProps> = ({
                 step="0.5"
                 min="3"
                 max="14"
-                value={user.psychology.sleepHours}
+                value={user.psychology.sleepHours || ''}
                 onChange={(e) =>
                   setUser({
                     ...user,
                     psychology: {
                       ...user.psychology,
-                      sleepHours: Number(e.target.value),
+                      sleepHours: e.target.value === '' ? 0 : Number(e.target.value),
                     },
                   })
                 }
+                placeholder="Укажите количество часов, например 8"
                 className="w-full px-3.5 py-2.5 bg-gray-900 border border-gray-700 rounded-xl text-sm text-gray-100 focus:outline-none focus:border-emerald-500"
               />
             </div>

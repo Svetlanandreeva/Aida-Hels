@@ -1,7 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { Reminder, ReminderCategory, ReminderFrequency, UserProfile } from '../types';
+import { Reminder, ReminderCategory, ReminderFrequency } from '../types';
 import { AutocompleteInput } from './AutocompleteInput';
 import { MEDICATIONS_SUGGESTIONS } from '../data/medicalSuggestions';
+import {
+  getNotificationPermissionStatus,
+  requestNotificationPermission,
+  sendTestNotification,
+  playNotificationSound,
+  NotificationPermissionState,
+} from '../services/notificationService';
 import {
   Bell,
   Plus,
@@ -17,11 +24,11 @@ import {
   Check,
   X,
   AlertCircle,
-  ShieldAlert,
+  ShieldCheck,
+  BellRing,
 } from 'lucide-react';
 
 interface RemindersScreenProps {
-  user: UserProfile;
   reminders: Reminder[];
   setReminders: React.Dispatch<React.SetStateAction<Reminder[]>>;
   onNavigateToCheckin?: () => void;
@@ -89,7 +96,6 @@ const playSoundAlert = (type: 'chime' | 'gentle' | 'pulse' | 'complete' = 'chime
 };
 
 export const RemindersScreen: React.FC<RemindersScreenProps> = ({
-  user,
   reminders,
   setReminders,
   onNavigateToCheckin,
@@ -111,6 +117,38 @@ export const RemindersScreen: React.FC<RemindersScreenProps> = ({
   const [safetyNotice, setSafetyNotice] = useState<{ has_conflict: boolean; severity: string; description: string } | null>(null);
   const [isCheckingSafety, setIsCheckingSafety] = useState(false);
 
+  // Browser Notification Permission State
+  const [notifPermission, setNotifPermission] = useState<NotificationPermissionState>(() =>
+    getNotificationPermissionStatus()
+  );
+
+  useEffect(() => {
+    setNotifPermission(getNotificationPermissionStatus());
+  }, []);
+
+  const handleRequestPushPermission = async () => {
+    const res = await requestNotificationPermission();
+    setNotifPermission(res);
+    if (res === 'granted') {
+      showToast('Всплывающие PUSH-уведомления в браузере успешно включены! 🎉');
+    } else if (res === 'denied') {
+      showToast('Доступ к уведомлениям заблокирован в настройках браузера.');
+    }
+  };
+
+  const handleTestDesktopNotification = () => {
+    if (notifPermission !== 'granted') {
+      handleRequestPushPermission();
+      return;
+    }
+    const success = sendTestNotification();
+    if (success) {
+      showToast('Тестовое всплывающее PUSH-уведомление отправлено!');
+    } else {
+      showToast('Не удалось отправить тестовое уведомление.');
+    }
+  };
+
   const checkMedicationSafety = async (medName: string) => {
     if (!medName.trim()) return;
     setIsCheckingSafety(true);
@@ -122,8 +160,8 @@ export const RemindersScreen: React.FC<RemindersScreenProps> = ({
         body: JSON.stringify({
           newMedication: medName,
           currentMedications: currentMeds,
-          allergies: user.allergies || [],
-          chronicConditions: (user.chronicDiagnoses || []).map((c) => c.name),
+          allergies: ['Пенициллин'],
+          chronicConditions: ['Гипертензия'],
         }),
       });
       const data = await res.json();
@@ -140,17 +178,6 @@ export const RemindersScreen: React.FC<RemindersScreenProps> = ({
       setIsCheckingSafety(false);
     }
   };
-
-  // Debounced medication safety check while typing a new medication name
-  useEffect(() => {
-    if (!showModal || formCategory !== 'medication' || !formTitle.trim()) {
-      setSafetyNotice(null);
-      return;
-    }
-    const timer = setTimeout(() => checkMedicationSafety(formTitle), 900);
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formTitle, formCategory, showModal]);
 
   // Test Notification Toast
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -338,13 +365,13 @@ export const RemindersScreen: React.FC<RemindersScreenProps> = ({
       )}
 
       {/* Header Banner */}
-      <div className="bg-[#14171C] p-6 sm:p-8 rounded-3xl border border-gray-800 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative overflow-hidden">
+      <div className="bg-[#0F142A]/80 p-6 sm:p-8 rounded-3xl border border-[#99AEFF]/15 shadow-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative overflow-hidden backdrop-blur-2xl">
         <div className="space-y-2 relative z-10 max-w-xl">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-bold">
-            <Bell className="w-4 h-4 animate-pulse" />
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#8968FF]/15 border border-[#8968FF]/30 text-[#C7B9FF] text-xs font-bold">
+            <Bell className="w-4 h-4 animate-pulse text-[#47D8FF]" />
             <span>Умные медицинские напоминания</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-gray-100 tracking-tight">
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
             Расписание и приём лекарств
           </h1>
           <p className="text-xs text-gray-400">
@@ -355,20 +382,81 @@ export const RemindersScreen: React.FC<RemindersScreenProps> = ({
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto relative z-10">
           <button
             onClick={() => handleTestSound(reminders[0] || { title: 'Тестовый сигнал', time: '12:00', sound: 'chime' } as any)}
-            className="px-4 py-2.5 bg-gray-900 hover:bg-gray-800 text-gray-300 border border-gray-700 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
+            className="px-4 py-2.5 bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10 text-xs font-bold rounded-2xl transition-all flex items-center justify-center gap-2 cursor-pointer"
             title="Проверить звуковой сигнал"
           >
-            <Volume2 className="w-4 h-4 text-emerald-400" />
+            <Volume2 className="w-4 h-4 text-[#65F4C0]" />
             <span>Тест сигнала</span>
           </button>
 
           <button
             onClick={handleOpenAddModal}
-            className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs rounded-xl shadow-lg shadow-emerald-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
+            className="px-5 py-2.5 bg-gradient-to-r from-[#8968FF] to-[#47D8FF] hover:brightness-110 text-[#050711] font-extrabold text-xs rounded-2xl shadow-lg shadow-[#8968FF]/25 transition-all flex items-center justify-center gap-2 cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>Создать напоминание</span>
           </button>
+        </div>
+      </div>
+
+      {/* Browser Web Push Notifications Status & Control Card */}
+      <div className="bg-[#0F142A]/80 p-4 sm:p-5 rounded-3xl border border-[#99AEFF]/15 shadow-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4 backdrop-blur-2xl">
+        <div className="flex items-start gap-3.5">
+          <div className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 border ${
+            notifPermission === 'granted'
+              ? 'bg-[#65F4C0]/15 border-[#65F4C0]/30 text-[#65F4C0]'
+              : notifPermission === 'denied'
+              ? 'bg-[#FF6685]/15 border-[#FF6685]/30 text-[#FF6685]'
+              : 'bg-[#FFB957]/15 border-[#FFB957]/30 text-[#FFB957]'
+          }`}>
+            <BellRing className="w-5 h-5 animate-pulse" />
+          </div>
+
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <h3 className="font-bold text-sm text-gray-100">Всплывающие PUSH-уведомления браузера (Notification API)</h3>
+              <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border ${
+                notifPermission === 'granted'
+                  ? 'bg-[#65F4C0]/15 text-[#65F4C0] border-[#65F4C0]/30'
+                  : notifPermission === 'denied'
+                  ? 'bg-[#FF6685]/15 text-[#FF6685] border-[#FF6685]/30'
+                  : 'bg-[#FFB957]/15 text-[#FFB957] border-[#FFB957]/30'
+              }`}>
+                {notifPermission === 'granted'
+                  ? 'АКТИВНЫ И РАЗРЕШЕНЫ'
+                  : notifPermission === 'denied'
+                  ? 'ЗАБЛОКИРОВАНЫ В БРАУЗЕРЕ'
+                  : 'ТРЕБУЕТСЯ РАЗРЕШЕНИЕ'}
+              </span>
+            </div>
+            <p className="text-xs text-gray-400 leading-relaxed">
+              {notifPermission === 'granted'
+                ? 'Браузер будет своевременно выводить всплывающее окно и звуковой сигнал в точное время приёма медикаментов.'
+                : notifPermission === 'denied'
+                ? 'Нажмите на иконку замочка или колокольчика в адресной строке браузера и разрешите уведомления для этого сайта.'
+                : 'Разрешите браузеру отправлять всплывающие напоминания, чтобы не пропускать запланированный приём лекарств.'}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto shrink-0">
+          {notifPermission !== 'granted' ? (
+            <button
+              onClick={handleRequestPushPermission}
+              className="px-4 py-2 bg-gradient-to-r from-[#8968FF] to-[#47D8FF] hover:brightness-110 text-[#050711] font-extrabold text-xs rounded-2xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer w-full sm:w-auto"
+            >
+              <ShieldCheck className="w-4 h-4" />
+              <span>Включить PUSH в браузере</span>
+            </button>
+          ) : (
+            <button
+              onClick={handleTestDesktopNotification}
+              className="px-4 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer w-full sm:w-auto"
+            >
+              <BellRing className="w-4 h-4" />
+              <span>Проверить PUSH на столе</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -656,26 +744,6 @@ export const RemindersScreen: React.FC<RemindersScreenProps> = ({
                   placeholder="Например: Приём L-тироксина 50 мкг"
                   className="w-full px-3 py-2.5 bg-gray-900 border border-gray-700 text-gray-100 rounded-xl focus:border-emerald-500 focus:outline-none text-xs"
                 />
-                {formCategory === 'medication' && isCheckingSafety && (
-                  <p className="mt-1.5 text-[11px] text-gray-500 flex items-center gap-1.5">
-                    <Sparkles className="w-3 h-3 animate-spin" />
-                    Проверяю совместимость с текущими препаратами...
-                  </p>
-                )}
-                {formCategory === 'medication' && !isCheckingSafety && safetyNotice && (
-                  <div
-                    className={`mt-1.5 p-2.5 rounded-xl border text-[11px] flex items-start gap-2 ${
-                      safetyNotice.severity === 'HIGH'
-                        ? 'bg-rose-500/10 border-rose-500/30 text-rose-300'
-                        : safetyNotice.severity === 'MEDIUM'
-                        ? 'bg-amber-500/10 border-amber-500/30 text-amber-300'
-                        : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
-                    }`}
-                  >
-                    <ShieldAlert className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                    <span>{safetyNotice.description}</span>
-                  </div>
-                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">

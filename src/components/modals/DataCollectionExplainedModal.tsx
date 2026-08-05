@@ -78,10 +78,10 @@ export const DataCollectionExplainedModal: React.FC<DataCollectionExplainedModal
           <div className="bg-emerald-500/10 border border-emerald-500/20 p-4 rounded-2xl text-xs text-emerald-200/90 space-y-1.5">
             <div className="font-bold text-emerald-300 flex items-center gap-2">
               <ShieldCheck className="w-4 h-4 text-emerald-400" />
-              <span>Главный принцип накопления</span>
+              <span>Безопасность и региональные стандарты (152-ФЗ)</span>
             </div>
             <p className="leading-relaxed">
-              Каждая новая запись дополняет ваш персональный профиль. Мы не перезаписываем старые данные новыми: вся история сохраняется, позволяя ИИ отслеживать динамику и замечать важные изменения во времени.
+              Приложение адаптировано для работы в России и за рубежом. Хранение данных и распознавание анализов (OCR) осуществляются с использованием облачных сервисов Яндекс Облако (Yandex Cloud) с соблюдением требований 152-ФЗ, а также глобальных стандартов защищённости (GDPR).
             </p>
           </div>
 

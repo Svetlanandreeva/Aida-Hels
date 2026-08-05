@@ -102,7 +102,7 @@ export const emptyUserProfile: UserProfile = {
   },
   psychology: {
     stressLevel: 5,
-    sleepHours: 8,
+    sleepHours: 0,
     mood: 'good',
     hasPsychiatricHistory: false,
   },
