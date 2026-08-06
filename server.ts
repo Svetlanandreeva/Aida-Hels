@@ -1360,13 +1360,6 @@ function analyzeMentalDiaryFallback(entries: any[], newEntry: any, isCrisis: boo
 }
 
 async function startServer() {
-  if (isPostgresConfigured()) {
-    console.log('[Server] Connecting to Postgres database and verifying schema...');
-    await ensureSchema();
-  } else {
-    console.log('[Server] Postgres environment variables not set. Using in-memory database fallback.');
-  }
-
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -1383,6 +1376,12 @@ async function startServer() {
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://0.0.0.0:${PORT}`);
+    if (isPostgresConfigured()) {
+      console.log('[Server] Connecting to YDB database and verifying schema in background...');
+      ensureSchema().catch((err) => console.error('[Server] Schema initialization error:', err));
+    } else {
+      console.log('[Server] YDB environment variables not set. Using in-memory database fallback.');
+    }
   });
 }
 

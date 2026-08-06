@@ -278,7 +278,7 @@ export default function HomeDashboard({
 
       {/* 2. ГЛАВНАЯ КАРТОЧКА «ОБЩЕЕ СОСТОЯНИЕ» */}
       <div
-        onClick={() => onNavigate('daily_checkin')}
+        onClick={() => onNavigate('body_map')}
         className="w-full text-left bg-[#0B1320] hover:bg-[#0E182A] border border-[#8E74FF]/30 hover:border-[#8E74FF]/60 rounded-2xl sm:rounded-3xl p-4 sm:p-6 transition-all duration-200 cursor-pointer shadow-xl relative overflow-hidden group space-y-4"
       >
         <div className="absolute -top-24 -right-24 w-48 h-48 bg-[#8E74FF]/10 rounded-full blur-3xl pointer-events-none group-hover:bg-[#8E74FF]/20 transition-all" />

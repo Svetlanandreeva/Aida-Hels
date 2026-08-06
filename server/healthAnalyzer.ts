@@ -792,6 +792,42 @@ export async function analyzeHealthWithGeminiOrFallback(
     return { analysis: fallback, mode: 'rule_fallback' };
   }
 
+  // Check if Cloudflare Worker Relay URL ("helt-aida-gemini-relay") is configured
+  const relayUrl = process.env.HELT_AIDA_GEMINI_RELAY_URL || process.env.GEMINI_RELAY_URL || process.env.CLOUDFLARE_WORKER_URL;
+
+  if (relayUrl && !isGeminiQuotaExhausted()) {
+    try {
+      console.log(`[Gemini Relay] Calling Cloudflare Worker relay at ${relayUrl}...`);
+      const systemInstruction = `Ты — профессиональный ИИ-ассистент по анализу здоровья ("Здоровье 2.0").
+Твоя задача — провести глубокий медицинский и психологический анализ всех поступивших данных пользователя.`;
+      const prompt = `Проанализируй данные пользователя и сформируй полный отчёт: ${JSON.stringify(data)}`;
+
+      const relayRes = await fetch(relayUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'gemini-3.6-flash',
+          prompt,
+          systemInstruction,
+          data,
+        }),
+      });
+
+      if (relayRes.ok) {
+        const relayData = await relayRes.json();
+        const parsed = typeof relayData === 'string' ? JSON.parse(relayData) : (relayData.result || relayData.analysis || relayData);
+        if (parsed?.overallStatus && Array.isArray(parsed?.systems)) {
+          console.log('[Gemini Relay] Successfully received health analysis from Cloudflare Worker relay.');
+          return { analysis: parsed, mode: 'gemini' };
+        }
+      } else {
+        console.warn(`[Gemini Relay] Relay HTTP error ${relayRes.status}. Falling back to SDK/Rules.`);
+      }
+    } catch (relayErr: any) {
+      console.warn('[Gemini Relay] Error calling Cloudflare Worker relay:', relayErr?.message || relayErr);
+    }
+  }
+
   if (!aiClient || isGeminiQuotaExhausted()) {
     return { analysis: generateFallbackHealthAnalysis(data), mode: 'rule_fallback' };
   }
