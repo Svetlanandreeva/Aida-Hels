@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { analyzeMedicalDocument } from '../utils/analyzeMedicalDocument';
 import {
   UserProfile,
   DashboardTab,
@@ -33,6 +34,7 @@ import {
   Filter,
   Bell,
   Pill,
+  RotateCcw,
   Check,
   Brain,
   Smile,
@@ -156,12 +158,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
           appointments,
         }),
       });
-      const data = await res.json();
-      if (data.success && data.analysis) {
-        setHealthAnalysis(data.analysis);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.analysis) {
+          setHealthAnalysis(data.analysis);
+        }
       }
     } catch (err) {
-      console.error('Failed to fetch health analysis:', err);
+      console.warn('Health analysis fetch notice:', err);
     } finally {
       setIsLoadingAnalysis(false);
     }
@@ -243,62 +247,53 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [uploadStatusStep, setUploadStatusStep] = useState('Загружаем документ...');
   const [selectedFilePreview, setSelectedFilePreview] = useState<string | null>(null);
   const [selectedFileName, setSelectedFileName] = useState<string>('');
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [lastFailedFile, setLastFailedFile] = useState<File | null>(null);
   const [isVerificationModalOpen, setIsVerificationModalOpen] = useState(false);
   const [recognizedData, setRecognizedData] = useState<RecognizedDocumentData | null>(null);
 
-  // Real 2-Stage OCR & Gemini Recognition Upload Handler
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Real OCR & Gemini Recognition Upload Handler
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement> | { target: { files: File[] } }) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setSelectedFileName(file.name);
+    setUploadError(null);
+    setLastFailedFile(null);
     setIsUploading(true);
-    setUploadProgress(15);
-    setUploadStatusStep('Загружаем документ на сервер...');
+    setUploadProgress(10);
+    setUploadStatusStep('Проверка формата и чтение файла...');
 
-    // Convert file to Base64
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const result = reader.result as string;
-      setSelectedFilePreview(result);
-      const base64Content = result.split(',')[1] || '';
-
-      setUploadProgress(40);
-      setUploadStatusStep('ИИ считывает бланковые данные (OCR)...');
-
-      try {
-        setUploadProgress(70);
-        setUploadStatusStep('Извлекаем показатели и референсы...');
-
-        const res = await fetch('/api/research/recognize', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            fileBase64: base64Content,
-            mimeType: file.type || 'image/png',
-            fileName: file.name,
-            userId: user.id || 'usr-1',
-          }),
-        });
-
-        const data = await res.json();
-        setUploadProgress(100);
-
-        if (data.success && data.data && data.data.status === 'recognized' && Array.isArray(data.data.results)) {
-          setRecognizedData(data.data);
-          setIsVerificationModalOpen(true);
-        } else {
-          alert('Не удалось распознать документ, попробуйте другое фото');
-        }
-      } catch (err) {
-        console.error('File recognition error:', err);
-        alert('Не удалось распознать документ, попробуйте другое фото');
-      } finally {
-        setIsUploading(false);
-        setUploadProgress(0);
+    try {
+      // Create local preview URL for image files
+      if (file.type.startsWith('image/')) {
+        setSelectedFilePreview(URL.createObjectURL(file));
+      } else {
+        setSelectedFilePreview(null);
       }
-    };
-    reader.readAsDataURL(file);
+
+      const parsedResult = await analyzeMedicalDocument(file, 'lab', (step, percent) => {
+        setUploadStatusStep(step);
+        setUploadProgress(percent);
+      });
+
+      setRecognizedData(parsedResult);
+      setIsVerificationModalOpen(true);
+    } catch (err: any) {
+      console.error('Document analysis error:', err);
+      const errMsg = err?.message || 'Не удалось распознать медицинский документ';
+      setUploadError(errMsg);
+      setLastFailedFile(file);
+    } finally {
+      setIsUploading(false);
+      setUploadProgress(0);
+    }
+  };
+
+  const handleRetryUpload = () => {
+    if (lastFailedFile) {
+      handleFileUpload({ target: { files: [lastFailedFile] } });
+    }
   };
 
   // Confirm and save user verified data
@@ -440,14 +435,66 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 </p>
               </div>
             </div>
-            <button
-              onClick={() => onNavigate('settings')}
-              className="px-4 py-2.5 bg-[#4DEBFF] hover:bg-[#3cd2e6] text-[#050A12] font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-2 cursor-pointer shrink-0"
-            >
-              <Upload className="w-4 h-4" />
-              <span>Загрузить исследование в Настройках</span>
-            </button>
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              <label className="px-4 py-2.5 bg-[#34F5A4] hover:bg-[#2be093] text-[#050A12] font-extrabold text-xs rounded-xl shadow-lg shadow-[#34F5A4]/20 transition-all flex items-center gap-2 cursor-pointer relative">
+                <Upload className="w-4 h-4" />
+                <span>Загрузить бланк (JPG, PNG, PDF)</span>
+                <input
+                  type="file"
+                  accept=".pdf,.png,.jpg,.jpeg"
+                  onChange={handleFileUpload}
+                  className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                />
+              </label>
+              <button
+                onClick={() => onNavigate('settings')}
+                className="px-3 py-2.5 bg-white/5 hover:bg-white/10 text-white font-bold text-xs rounded-xl border border-white/10 transition-all flex items-center gap-2 cursor-pointer shrink-0"
+              >
+                <span>Все настройки</span>
+              </button>
+            </div>
           </div>
+
+          {/* Uploading Status Banner */}
+          {isUploading && (
+            <div className="bg-[#101A28] border border-[#4DEBFF]/30 p-4 rounded-2xl space-y-2 text-xs text-[#4DEBFF]">
+              <div className="flex items-center justify-between font-bold">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 animate-spin text-[#4DEBFF]" />
+                  <span>{uploadStatusStep}</span>
+                </div>
+                <span>{uploadProgress}%</span>
+              </div>
+              <div className="w-full bg-white/10 rounded-full h-1.5 overflow-hidden">
+                <div
+                  className="bg-gradient-to-r from-[#4DEBFF] to-[#34F5A4] h-full transition-all duration-300"
+                  style={{ width: `${uploadProgress}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Upload Error Banner */}
+          {uploadError && (
+            <div className="bg-red-500/10 border border-red-500/30 p-4 rounded-2xl flex items-start justify-between gap-3 text-xs text-red-200">
+              <div className="flex items-start gap-2.5">
+                <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-bold text-red-300">Ошибка обработки документа</p>
+                  <p className="text-red-200/80 mt-0.5">{uploadError}</p>
+                </div>
+              </div>
+              {lastFailedFile && (
+                <button
+                  onClick={handleRetryUpload}
+                  className="px-3 py-1.5 bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 text-red-100 font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shrink-0"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Повторить</span>
+                </button>
+              )}
+            </div>
+          )}
 
           {/* Research Document Verification Modal */}
           <ResearchVerificationModal

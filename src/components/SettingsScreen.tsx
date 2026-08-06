@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { UserProfile, Reminder, MedicalDocument, ScreenId, MedicationSchedule, WaterTrackerState } from '../types';
 import { SecurityLockModal } from './SecurityLockModal';
 import { MedicationSchedulePicker } from './MedicationSchedulePicker';
+import { ResearchVerificationModal } from './modals/ResearchVerificationModal';
+import { analyzeMedicalDocument, RecognizedDocumentData } from '../utils/analyzeMedicalDocument';
 import {
   Settings,
   Users,
@@ -229,6 +231,10 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   const [docCategory, setDocCategory] = useState<'lab' | 'ultrasound' | 'instrumental' | 'consultations'>('lab');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isAnalyzingFile, setIsAnalyzingFile] = useState(false);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [analysisProgress, setAnalysisProgress] = useState<string>('');
+  const [recognizedData, setRecognizedData] = useState<RecognizedDocumentData | null>(null);
+  const [isVerificationModalOpen, setIsVerificationModalOpen] = useState(false);
 
   // Partner sync & cloud backup state
   const [linkedPartnerCode, setLinkedPartnerCode] = useState<string>(() => {
@@ -461,46 +467,89 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     setDocuments((prev) => prev.filter((d) => d.id !== id));
   };
 
-  const handleUploadDocument = (e: React.FormEvent) => {
+  const handleUploadDocument = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!docTitle.trim() || !setDocuments) return;
+    if (!setDocuments) return;
 
-    setIsAnalyzingFile(true);
-
-    setTimeout(() => {
+    if (!selectedFile) {
+      if (!docTitle.trim()) return;
       const categoryLabels: Record<string, string> = {
         lab: 'Лабораторные анализы',
         ultrasound: 'УЗИ и МРТ',
         instrumental: 'Инструментальная диагностика',
         consultations: 'Консультации врачей',
       };
-
       const newDoc: MedicalDocument = {
         id: `doc-${Date.now()}`,
         title: docTitle,
         date: new Date().toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }),
         category: docCategory,
         categoryLabel: categoryLabels[docCategory] || 'Лабораторные анализы',
-        summary: 'Загруженный документ обработан ИИ. Основные показатели находятся в пределах возрастной нормы.',
-        fileUrl: selectedFile ? URL.createObjectURL(selectedFile) : undefined,
-        deviations: [
-          {
-            marker: 'Общий статус',
-            value: 'В норме',
-            norm: '100%',
-            status: 'В норме',
-            explanation: 'Показатели исследования не содержат критических отклонений.',
-          },
-        ],
-        recommendations: ['Сохраняйте регулярность профилактических осмотров.'],
+        summary: 'Запись о медицинском исследовании (ручной ввод).',
+        deviations: [],
+        recommendations: ['Сохраняйте плановый порядок консультаций с лечащим врачом.'],
       };
-
       setDocuments((prev) => [newDoc, ...prev]);
-      setIsAnalyzingFile(false);
       setShowAddDocModal(false);
       setDocTitle('');
-      setSelectedFile(null);
-    }, 1200);
+      return;
+    }
+
+    setIsAnalyzingFile(true);
+    setAnalysisError(null);
+    setAnalysisProgress('Чтение файла...');
+
+    try {
+      const parsedResult = await analyzeMedicalDocument(selectedFile, docCategory, (step) => {
+        setAnalysisProgress(step);
+      });
+      setRecognizedData(parsedResult);
+      setIsAnalyzingFile(false);
+      setShowAddDocModal(false);
+      setIsVerificationModalOpen(true);
+    } catch (err: any) {
+      console.error('Document analysis error:', err);
+      setIsAnalyzingFile(false);
+      setAnalysisError(err?.message || 'Не удалось распознать документ. Проверьте формат бланка и четкость фото.');
+    }
+  };
+
+  const handleConfirmSaveRecognizedDoc = (confirmed: RecognizedDocumentData) => {
+    if (!setDocuments) return;
+    const categoryLabels: Record<string, string> = {
+      lab: 'Лабораторные анализы',
+      ultrasound: 'УЗИ и МРТ',
+      instrumental: 'Инструментальная диагностика',
+      consultations: 'Консультации врачей',
+    };
+
+    const newDoc: MedicalDocument = {
+      id: `doc-${Date.now()}`,
+      title: confirmed.documentType || docTitle || 'Распознанный анализ',
+      date: confirmed.researchDate || new Date().toLocaleDateString('ru-RU'),
+      category: docCategory,
+      categoryLabel: categoryLabels[docCategory] || 'Лабораторные анализы',
+      summary: `Исследование обработано ИИ. Проверено показателей: ${(confirmed.markers || confirmed.results || []).length}. Лаборатория: ${confirmed.laboratory || confirmed.laboratoryName || 'Не указана'}.`,
+      fileUrl: selectedFile ? URL.createObjectURL(selectedFile) : undefined,
+      deviations: (confirmed.markers || confirmed.results || [])
+        .filter((item) => item.status !== 'normal')
+        .map((item) => ({
+          marker: item.name || item.originalName || 'Показатель',
+          value: `${item.value ?? item.rawValue ?? ''} ${item.unit}`.trim(),
+          norm: item.normalRange || (item.min !== null || item.max !== null ? `${item.min ?? ''} - ${item.max ?? ''}` : 'Не указан'),
+          status: item.status === 'low' ? 'Ниже' : item.status === 'high' ? 'Выше' : 'Внимание',
+          explanation: item.status === 'low' ? 'Ниже референсного диапазона лаборатории.' : 'Выше референсного диапазона лаборатории.',
+        })),
+      recommendations: [
+        'Показатели успешно сохранены в историю медицинского профиля.',
+        'Обратитесь к лечащему врачу для консультации по отклонениям.',
+      ],
+    };
+
+    setDocuments((prev) => [newDoc, ...prev]);
+    setIsVerificationModalOpen(false);
+    setSelectedFile(null);
+    setDocTitle('');
   };
 
   return (
@@ -1404,6 +1453,29 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             </div>
 
             <form onSubmit={handleUploadDocument} className="space-y-4 text-xs">
+              {analysisError && (
+                <div className="p-3 bg-red-500/15 border border-red-500/30 rounded-xl text-red-300 flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-red-400" />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-xs">{analysisError}</p>
+                    <button
+                      type="submit"
+                      className="mt-2 px-3 py-1 bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 text-red-200 text-[11px] font-bold rounded-lg transition-all flex items-center gap-1 cursor-pointer"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      <span>Повторить попытку</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {isAnalyzingFile && (
+                <div className="p-3 bg-[#4DEBFF]/10 border border-[#4DEBFF]/20 rounded-xl text-[#4DEBFF] flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 animate-spin shrink-0" />
+                  <span className="font-semibold text-xs">{analysisProgress || 'Сканирование файла...'}</span>
+                </div>
+              )}
+
               <div className="space-y-1">
                 <label className="text-white/70 font-semibold block">Название исследования *</label>
                 <input
@@ -1474,6 +1546,16 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           </div>
         </div>
       )}
+      {/* RESEARCH VERIFICATION MODAL FOR SETTINGS UPLOAD */}
+      <ResearchVerificationModal
+        isOpen={isVerificationModalOpen}
+        onClose={() => setIsVerificationModalOpen(false)}
+        documentData={recognizedData}
+        filePreviewUrl={selectedFile ? URL.createObjectURL(selectedFile) : null}
+        fileName={selectedFile?.name || docTitle}
+        onConfirmSave={handleConfirmSaveRecognizedDoc}
+      />
+
       {/* BIOMETRICS FACE ID / PIN LOCK MODAL */}
       <SecurityLockModal
         isOpen={showLockModal}

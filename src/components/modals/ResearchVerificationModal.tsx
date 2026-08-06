@@ -15,6 +15,7 @@ import {
   Calendar,
   User,
   Sparkles,
+  Plus,
 } from 'lucide-react';
 
 export interface RecognizedMarker {
@@ -80,6 +81,24 @@ export const ResearchVerificationModal: React.FC<ResearchVerificationModalProps>
 
   const handleRemoveMarker = (index: number) => {
     setResults((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleAddMarker = () => {
+    setResults((prev) => [
+      ...prev,
+      {
+        category: 'Пользовательский',
+        originalName: 'Новый показатель',
+        normalizedName: 'custom',
+        value: 0,
+        valueText: '0',
+        unit: 'ед',
+        referenceText: '0 - 100',
+        status: 'normal',
+        confidence: 1.0,
+        lowConfidence: false,
+      },
+    ]);
   };
 
   const handleSave = () => {
@@ -229,13 +248,20 @@ export const ResearchVerificationModal: React.FC<ResearchVerificationModalProps>
 
           {/* TABLE OF RECOGNIZED MARKERS */}
           <div className="space-y-2">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <h3 className="font-extrabold text-white text-sm sm:text-base flex items-center gap-2">
                 <span>Извлечённые показатели ({results.length})</span>
-                <span className="text-[11px] text-white/50 font-normal">
+                <span className="text-[11px] text-white/50 font-normal hidden sm:inline">
                   (нажмите на ячейку для ручной корректировки)
                 </span>
               </h3>
+              <button
+                onClick={handleAddMarker}
+                className="px-3 py-1.5 bg-[#34F5A4]/10 hover:bg-[#34F5A4]/20 text-[#34F5A4] border border-[#34F5A4]/30 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Добавить показатель</span>
+              </button>
             </div>
 
             <div className="overflow-x-auto rounded-2xl border border-white/10 bg-[#0B1320]">
