@@ -184,6 +184,13 @@ export interface MedicalDocument {
     status: 'Выше' | 'Ниже' | 'Внимание' | 'В норме';
     explanation: string;
   }>;
+  allMarkers?: Array<{
+    marker: string;
+    value: string;
+    norm: string;
+    status: 'Выше' | 'Ниже' | 'Внимание' | 'В норме';
+    explanation?: string;
+  }>;
   recommendations: string[];
 }
 

@@ -30,6 +30,7 @@ import {
 import { calculateHealthProfile } from '../utils/calculateHealthProfile';
 import { StateConnectionsSection } from './dashboard/StateConnectionsSection';
 import { RecommendedNextTestsSection } from './dashboard/RecommendedNextTestsSection';
+import { MaturityStageIndicator } from './dashboard/MaturityStageIndicator';
 
 export interface HomeDashboardProps {
   user: UserProfile;
@@ -84,18 +85,20 @@ export default function HomeDashboard({
     pressureLogs.length > 0
   );
 
+  const isDemoUser = (u: UserProfile) => u.email === 'anna.ivanova@health.ru' || u.id === 'usr-1' || Boolean((u as any).isDemoUser);
+
   // Calculate full dynamic profile and inter-system chains
   const healthProfile = calculateHealthProfile(user, documents, dailyLogs, pressureLogs);
 
   const displayHealthScore = documents.length > 0 || isDemoUser(user)
     ? healthProfile.overallHealthScore
-    : (healthScore !== null ? healthScore : null);
+    : (aiAnalysis?.overallScore ? Math.round(aiAnalysis.overallScore * 10) : healthProfile.overallHealthScore);
 
   const displayStatusLabel = displayHealthScore !== null
     ? (displayHealthScore >= 80 ? 'Отличное' : displayHealthScore >= 60 ? 'В норме' : 'Требует внимания')
     : 'Недостаточно данных';
 
-  const displaySummary = healthProfile.summaryText || aiSummary;
+  const displaySummary = healthProfile.summaryText || aiAnalysis?.summary || 'Состояние стабильное.';
 
   const handleAddTestReminder = (testName: string) => {
     if (!setReminders) return;
@@ -103,7 +106,8 @@ export default function HomeDashboard({
       id: `rem-test-${Date.now()}`,
       title: `Сдать анализ: ${testName}`,
       time: '09:00',
-      category: 'lab',
+      category: 'custom',
+      frequency: 'once',
       isEnabled: true,
       notes: 'Запланировано из рекомендаций по дообследованию',
     };
@@ -288,6 +292,15 @@ export default function HomeDashboard({
           <span className="hidden sm:inline">Обновить анализ</span>
         </button>
       </div>
+
+      {/* MATURITY STAGE INDICATOR (ACCURATE DATA SUFFICIENCY BANNER) */}
+      <MaturityStageIndicator
+        daysSinceRegistration={1}
+        hasSurvey={Boolean(user.isQuestionnaireCompleted)}
+        documentsCount={documents.length}
+        diaryEntriesCount={(diaryEntries?.length || 0) + (dailyLogs?.length || 0)}
+        onOpenProposal={() => onNavigate('settings')}
+      />
 
       {/* 2. ГЛАВНАЯ КАРТОЧКА «ОБЩЕЕ СОСТОЯНИЕ И ШКАЛЫ» */}
       <div

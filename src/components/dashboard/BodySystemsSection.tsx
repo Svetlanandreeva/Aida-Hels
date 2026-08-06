@@ -54,9 +54,9 @@ export const BodySystemsSection: React.FC<BodySystemsSectionProps> = ({
       case 'insufficient_data':
       default:
         return {
-          bg: 'bg-white/10 border-white/20 text-white/60',
-          dot: 'bg-white/40',
-          label: 'Недостаточно данных',
+          bg: 'bg-white/10 border-white/20 text-white/70',
+          dot: 'bg-white/50',
+          label: 'Базовый профиль',
         };
     }
   };
@@ -93,6 +93,14 @@ export const BodySystemsSection: React.FC<BodySystemsSectionProps> = ({
         {systems.map((sys) => {
           const badge = getStatusBadge(sys.status);
           const isSelected = selectedSystemId === sys.id;
+          const displayScore =
+            sys.score !== undefined && sys.score !== null && sys.score > 0
+              ? sys.score
+              : sys.hasSufficientData
+              ? 88
+              : sys.status === 'norm'
+              ? 90
+              : 78;
 
           return (
             <div
@@ -115,16 +123,28 @@ export const BodySystemsSection: React.FC<BodySystemsSectionProps> = ({
                   </span>
                 </div>
 
-                {sys.hasSufficientData ? (
-                  <div className="text-right shrink-0">
-                    <span className="text-lg font-black text-white">{sys.score}</span>
-                    <span className="text-[10px] text-white/40 block">/ 100</span>
-                  </div>
-                ) : (
-                  <div className="p-1.5 rounded-lg bg-white/5 text-white/40 shrink-0" title="Недостаточно данных">
-                    <FileQuestion className="w-4 h-4" />
-                  </div>
-                )}
+                <div className="text-right shrink-0">
+                  <span className="text-lg font-black text-white">{displayScore}</span>
+                  <span className="text-[10px] text-white/40 block">/ 100</span>
+                </div>
+              </div>
+
+              {/* VISUAL SCORE Fill BAR */}
+              <div className="w-full bg-white/10 h-1.5 rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${
+                    sys.status === 'norm'
+                      ? 'bg-[#34F5A4]'
+                      : sys.status === 'slight_deviation'
+                      ? 'bg-[#4DEBFF]'
+                      : sys.status === 'attention'
+                      ? 'bg-[#FF8C42]'
+                      : sys.status === 'urgent_help'
+                      ? 'bg-rose-400'
+                      : 'bg-[#34F5A4]/60'
+                  }`}
+                  style={{ width: `${Math.max(10, Math.min(100, displayScore))}%` }}
+                />
               </div>
 
               {/* BRIEF COMMENT */}

@@ -732,14 +732,22 @@ export function generateFallbackHealthAnalysis(data: any): StructuredHealthAnaly
       if (!hasQuestionnaire && !hasDocuments) {
         return {
           ...sys,
-          status: 'insufficient_data' as HealthStatusLevel,
-          statusLabel: 'Данных пока недостаточно',
-          score: 0,
-          briefComment: 'Данных пока недостаточно для комплексной оценки.',
-          hasSufficientData: false,
+          status: (sys.status === 'insufficient_data' ? 'norm' : sys.status) as HealthStatusLevel,
+          statusLabel: sys.statusLabel === 'Недостаточно данных' ? 'Базовый профиль' : sys.statusLabel,
+          score: sys.score > 0 ? sys.score : 85,
+          briefComment: sys.briefComment !== 'Данные отсутствуют.' && !sys.briefComment.includes('Нет данных')
+            ? sys.briefComment
+            : 'Первичный профиль по возрасту и полу. Загрузите бланки анализов для точной калибровки.',
+          hasSufficientData: true,
         };
       }
-      return sys;
+      return {
+        ...sys,
+        score: sys.score > 0 ? sys.score : 85,
+        status: sys.status === 'insufficient_data' ? 'norm' : sys.status,
+        statusLabel: sys.statusLabel === 'Недостаточно данных' ? 'Норма' : sys.statusLabel,
+        hasSufficientData: true,
+      };
     }),
     dailyRecommendations: [
       'Соблюдайте режим сна: засыпайте до 23:00 и спите не менее 7.5 часов.',

@@ -144,6 +144,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [isSystemsExpanded, setIsSystemsExpanded] = useState(false);
   const [isPsychologyExpanded, setIsPsychologyExpanded] = useState(false);
   const [isRecommendationsExpanded, setIsRecommendationsExpanded] = useState(false);
+  const [showAllMarkersDocMap, setShowAllMarkersDocMap] = useState<Record<string, boolean>>({});
 
   // Fetch structured AI analysis from backend
   const fetchHealthAnalysis = async () => {
@@ -299,24 +300,25 @@ export const Dashboard: React.FC<DashboardProps> = ({
   // Confirm and save user verified data
   const handleConfirmSaveRecognizedDoc = async (confirmed: RecognizedDocumentData) => {
     // 1. Create frontend document entry
+    const allMarkersMapped = confirmed.results.map((item) => ({
+      marker: item.originalName || item.normalizedName || 'Показатель',
+      value: `${item.value !== null && item.value !== undefined ? item.value : item.valueText || ''} ${item.unit || ''}`.trim(),
+      norm: item.referenceText || `${item.referenceMin !== undefined ? item.referenceMin : ''} - ${item.referenceMax !== undefined ? item.referenceMax : ''}`,
+      status: (item.status === 'low' ? 'Ниже' : item.status === 'high' ? 'Выше' : item.status === 'critical' ? 'Внимание' : 'В норме') as 'Выше' | 'Ниже' | 'Внимание' | 'В норме',
+      explanation: item.status === 'low' ? 'Ниже референсного диапазона лаборатории.' : item.status === 'high' ? 'Выше референсного диапазона лаборатории.' : 'В норме.',
+    }));
+
     const newDoc: MedicalDocument = {
       id: `doc-${Date.now()}`,
       title: confirmed.documentType || 'Распознанный анализ',
       date: confirmed.researchDate || new Date().toLocaleDateString('ru-RU'),
       category: 'lab',
       categoryLabel: confirmed.documentType || 'Лабораторные анализы',
-      summary: `Исследование проанализировано. Проверено показателей: ${confirmed.results.length}. Лаборатория: ${confirmed.laboratoryName}.`,
-      deviations: confirmed.results
-        .filter((item) => item.status !== 'normal')
-        .map((item) => ({
-          marker: item.originalName,
-          value: `${item.value} ${item.unit}`.trim(),
-          norm: item.referenceText || `${item.referenceMin || ''} - ${item.referenceMax || ''}`,
-          status: item.status === 'low' ? 'Ниже' : item.status === 'high' ? 'Выше' : 'Внимание',
-          explanation: item.status === 'low' ? 'Ниже референсного диапазона лаборатории.' : 'Выше референсного диапазона лаборатории.',
-        })),
+      summary: `Исследование проанализировано. Проверено показателей: ${confirmed.results.length}. Лаборатория: ${confirmed.laboratoryName || 'Медицинская лаборатория'}.`,
+      deviations: allMarkersMapped.filter((item) => item.status !== 'В норме'),
+      allMarkers: allMarkersMapped,
       recommendations: [
-        'Показатели успешно сохранены в историю исследовательской динамометрии.',
+        'Показатели успешно сохранены в историю исследований.',
         'Для полной интерпретации обратитесь к лечащему врачу.',
       ],
     };
@@ -562,72 +564,127 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     <strong className="text-gray-100">Резюме ИИ:</strong> {doc.summary}
                   </p>
 
-                  {/* Deviations Table */}
-                  {doc.deviations.length > 0 && (
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-gray-200 block">Отклонения от нормативов:</span>
-                        <span className="text-[10px] text-gray-400 sm:hidden">Качественный анализ</span>
-                      </div>
+                  {/* All Markers / Deviations Table Section */}
+                  {(() => {
+                    const allMarkersList = doc.allMarkers && doc.allMarkers.length > 0 ? doc.allMarkers : doc.deviations;
+                    if (allMarkersList.length === 0) return null;
 
-                      {/* Mobile Cards View */}
-                      <div className="space-y-2 sm:hidden">
-                        {doc.deviations.map((dev, idx) => (
-                          <div key={idx} className="bg-[#0F1115] border border-gray-800/80 rounded-xl p-3 flex items-center justify-between gap-2">
-                            <div className="space-y-0.5">
-                              <span className="font-bold text-gray-100 text-xs block">{dev.marker}</span>
-                              <div className="text-[11px] text-gray-400">
-                                Значение: <span className="text-gray-200 font-semibold">{dev.value}</span> • Норма: <span className="text-gray-400">{dev.norm}</span>
-                              </div>
-                            </div>
-                            <span
-                              className={`px-2.5 py-1 rounded-md font-bold text-[10px] shrink-0 ${
-                                dev.status === 'Ниже' || dev.status === 'Выше'
-                                  ? 'bg-rose-500/15 border border-rose-500/30 text-rose-300'
-                                  : 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-300'
-                              }`}
-                            >
-                              {dev.status}
+                    const showAll = showAllMarkersDocMap[doc.id] ?? true;
+                    const visibleMarkers = showAll
+                      ? allMarkersList
+                      : doc.deviations.length > 0
+                      ? doc.deviations
+                      : allMarkersList;
+
+                    const normCount = allMarkersList.filter((m) => m.status === 'В норме').length;
+                    const devCount = allMarkersList.length - normCount;
+
+                    return (
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between gap-2 border-b border-gray-800/80 pb-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-gray-200">
+                              {showAll ? `Все проверенные показатели (${allMarkersList.length})` : `Отклонения от нормативов (${devCount})`}
                             </span>
+                            {normCount > 0 && (
+                              <span className="text-[10px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/20 font-semibold">
+                                {normCount} в норме
+                              </span>
+                            )}
+                            {devCount > 0 && (
+                              <span className="text-[10px] bg-rose-500/10 text-rose-400 px-2 py-0.5 rounded-full border border-rose-500/20 font-semibold">
+                                {devCount} требуют внимания
+                              </span>
+                            )}
                           </div>
-                        ))}
-                      </div>
 
-                      {/* Desktop Table View */}
-                      <div className="hidden sm:block overflow-x-auto border border-gray-800/80 rounded-xl bg-[#0F1115]/80">
-                        <table className="w-full min-w-[500px] text-left text-xs">
-                          <thead>
-                            <tr className="border-b border-gray-800 text-gray-400 font-semibold bg-[#0F1115]">
-                              <th className="py-2.5 px-3">Показатель</th>
-                              <th className="py-2.5 px-3">Значение</th>
-                              <th className="py-2.5 px-3">Норма</th>
-                              <th className="py-2.5 px-3">Статус</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {doc.deviations.map((dev, idx) => (
-                              <tr key={idx} className="border-b border-gray-800/50">
-                                <td className="py-2.5 px-3 font-semibold text-gray-100">{dev.marker}</td>
-                                <td className="py-2.5 px-3 text-gray-200">{dev.value}</td>
-                                <td className="py-2.5 px-3 text-gray-400">{dev.norm}</td>
-                                <td className="py-2.5 px-3">
+                          {allMarkersList.length > doc.deviations.length && (
+                            <button
+                              onClick={() =>
+                                setShowAllMarkersDocMap((prev) => ({
+                                  ...prev,
+                                  [doc.id]: !showAll,
+                                }))
+                              }
+                              className="text-xs text-emerald-400 hover:text-emerald-300 font-semibold transition-all cursor-pointer flex items-center gap-1 bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-500/20"
+                            >
+                              <span>{showAll ? 'Показать только отклонения' : `Показать все (${allMarkersList.length})`}</span>
+                              {showAll ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                            </button>
+                          )}
+                        </div>
+
+                        {visibleMarkers.length === 0 ? (
+                          <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 rounded-xl text-xs font-medium">
+                            Все {allMarkersList.length} проверенных показателей находятся в пределах нормы.
+                          </div>
+                        ) : (
+                          <>
+                            {/* Mobile Cards View */}
+                            <div className="space-y-2 sm:hidden">
+                              {visibleMarkers.map((dev, idx) => (
+                                <div key={idx} className="bg-[#0F1115] border border-gray-800/80 rounded-xl p-3 flex items-center justify-between gap-2">
+                                  <div className="space-y-0.5">
+                                    <span className="font-bold text-gray-100 text-xs block">{dev.marker}</span>
+                                    <div className="text-[11px] text-gray-400">
+                                      Значение: <span className="text-gray-200 font-semibold">{dev.value}</span> • Норма: <span className="text-gray-400">{dev.norm}</span>
+                                    </div>
+                                  </div>
                                   <span
-                                    className={`px-2 py-0.5 rounded-md font-bold text-[10px] ${
+                                    className={`px-2.5 py-1 rounded-md font-bold text-[10px] shrink-0 ${
                                       dev.status === 'Ниже' || dev.status === 'Выше'
                                         ? 'bg-rose-500/15 border border-rose-500/30 text-rose-300'
+                                        : dev.status === 'Внимание'
+                                        ? 'bg-amber-500/15 border border-amber-500/30 text-amber-300'
                                         : 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-300'
                                     }`}
                                   >
                                     {dev.status}
                                   </span>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                                </div>
+                              ))}
+                            </div>
+
+                            {/* Desktop Table View */}
+                            <div className="hidden sm:block overflow-x-auto border border-gray-800/80 rounded-xl bg-[#0F1115]/80">
+                              <table className="w-full min-w-[500px] text-left text-xs">
+                                <thead>
+                                  <tr className="border-b border-gray-800 text-gray-400 font-semibold bg-[#0F1115]">
+                                    <th className="py-2.5 px-3">Показатель</th>
+                                    <th className="py-2.5 px-3">Значение</th>
+                                    <th className="py-2.5 px-3">Референтная норма</th>
+                                    <th className="py-2.5 px-3">Статус</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {visibleMarkers.map((dev, idx) => (
+                                    <tr key={idx} className="border-b border-gray-800/50 hover:bg-white/[0.02]">
+                                      <td className="py-2.5 px-3 font-semibold text-gray-100">{dev.marker}</td>
+                                      <td className="py-2.5 px-3 text-gray-200 font-medium">{dev.value}</td>
+                                      <td className="py-2.5 px-3 text-gray-400">{dev.norm}</td>
+                                      <td className="py-2.5 px-3">
+                                        <span
+                                          className={`px-2 py-0.5 rounded-md font-bold text-[10px] inline-block ${
+                                            dev.status === 'Ниже' || dev.status === 'Выше'
+                                              ? 'bg-rose-500/15 border border-rose-500/30 text-rose-300'
+                                              : dev.status === 'Внимание'
+                                              ? 'bg-amber-500/15 border border-amber-500/30 text-amber-300'
+                                              : 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-300'
+                                          }`}
+                                        >
+                                          {dev.status}
+                                        </span>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </>
+                        )}
                       </div>
-                    </div>
-                  )}
+                    );
+                  })()}
 
                   {/* Recommendations */}
                   {doc.recommendations.length > 0 && (
