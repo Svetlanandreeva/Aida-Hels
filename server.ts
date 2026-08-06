@@ -1093,7 +1093,7 @@ app.post('/api/research/recognize', requireAuth, async (req: AuthenticatedReques
     }
 
     // 1. Check if Google Apps Script URL is configured for proxying
-    const appsScriptUrl = process.env.GOOGLE_SHEETS_WEB_APP_URL;
+    const appsScriptUrl = process.env.GOOGLE_SHEETS_WEB_APP_URL || 'https://script.google.com/macros/s/AKfycbz2DHIRN60EgYlLwBiUu3sk91V8JgKSXmvLFPJpMTyQafbpZkfOmidDYhg5pJTbkZ-4Kw/exec';
     if (appsScriptUrl && appsScriptUrl.startsWith('https://script.google.com/')) {
       try {
         const gasRes = await fetch(appsScriptUrl, {
