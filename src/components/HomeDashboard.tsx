@@ -27,6 +27,9 @@ import {
   UserMentalPatterns,
   StructuredHealthAnalysis,
 } from '../types';
+import { calculateHealthProfile } from '../utils/calculateHealthProfile';
+import { StateConnectionsSection } from './dashboard/StateConnectionsSection';
+import { RecommendedNextTestsSection } from './dashboard/RecommendedNextTestsSection';
 
 export interface HomeDashboardProps {
   user: UserProfile;
@@ -81,21 +84,31 @@ export default function HomeDashboard({
     pressureLogs.length > 0
   );
 
-  // Calculate overall health score (0 - 100) or null if no data
-  const healthScore = aiAnalysis?.overallScore
-    ? Math.round(aiAnalysis.overallScore * 10)
-    : null;
+  // Calculate full dynamic profile and inter-system chains
+  const healthProfile = calculateHealthProfile(user, documents, dailyLogs, pressureLogs);
 
-  const healthStatusLabel = healthScore !== null
-    ? (healthScore >= 80 ? 'Отличное' : healthScore >= 60 ? 'В норме' : 'Требует внимания')
+  const displayHealthScore = documents.length > 0 || isDemoUser(user)
+    ? healthProfile.overallHealthScore
+    : (healthScore !== null ? healthScore : null);
+
+  const displayStatusLabel = displayHealthScore !== null
+    ? (displayHealthScore >= 80 ? 'Отличное' : displayHealthScore >= 60 ? 'В норме' : 'Требует внимания')
     : 'Недостаточно данных';
 
-  // AI Summary string
-  const aiSummary =
-    aiAnalysis?.summary ||
-    (hasUserData
-      ? 'Анализ состояния обновляется на основе загруженных данных.'
-      : 'Недостаточно данных для расчёта. Загрузите результаты анализов или заполните дневник самочувствия, чтобы Аида сформировала ваш персональный обзор.');
+  const displaySummary = healthProfile.summaryText || aiSummary;
+
+  const handleAddTestReminder = (testName: string) => {
+    if (!setReminders) return;
+    const newRem: Reminder = {
+      id: `rem-test-${Date.now()}`,
+      title: `Сдать анализ: ${testName}`,
+      time: '09:00',
+      category: 'lab',
+      isEnabled: true,
+      notes: 'Запланировано из рекомендаций по дообследованию',
+    };
+    setReminders((prev) => [newRem, ...prev]);
+  };
 
   // 1. "Что требует внимания" (max 3 items)
   const allDeviations = documents.flatMap((d) => d.deviations || []);
@@ -276,7 +289,7 @@ export default function HomeDashboard({
         </button>
       </div>
 
-      {/* 2. ГЛАВНАЯ КАРТОЧКА «ОБЩЕЕ СОСТОЯНИЕ» */}
+      {/* 2. ГЛАВНАЯ КАРТОЧКА «ОБЩЕЕ СОСТОЯНИЕ И ШКАЛЫ» */}
       <div
         onClick={() => onNavigate('body_map')}
         className="w-full text-left bg-[#0B1320] hover:bg-[#0E182A] border border-[#8E74FF]/30 hover:border-[#8E74FF]/60 rounded-2xl sm:rounded-3xl p-4 sm:p-6 transition-all duration-200 cursor-pointer shadow-xl relative overflow-hidden group space-y-4"
@@ -288,13 +301,21 @@ export default function HomeDashboard({
             <span className="text-[10px] font-bold uppercase tracking-wider text-[#8E74FF] bg-[#8E74FF]/10 border border-[#8E74FF]/20 px-2.5 py-1 rounded-lg">
               Общее состояние
             </span>
-            <span className="text-[11px] font-bold text-[#34F5A4] bg-[#34F5A4]/10 border border-[#34F5A4]/20 px-2.5 py-1 rounded-lg">
-              {healthStatusLabel}
+            <span
+              className={`text-[11px] font-bold px-2.5 py-1 rounded-lg border ${
+                displayHealthScore !== null && displayHealthScore >= 80
+                  ? 'text-[#34F5A4] bg-[#34F5A4]/10 border-[#34F5A4]/20'
+                  : displayHealthScore !== null && displayHealthScore >= 60
+                  ? 'text-amber-300 bg-amber-500/10 border-amber-500/20'
+                  : 'text-red-300 bg-red-500/10 border-red-500/20'
+              }`}
+            >
+              {displayStatusLabel}
             </span>
           </div>
 
           <div className="flex items-center gap-1 text-xs font-bold text-[#8E74FF] group-hover:translate-x-1 transition-transform">
-            <span>Организм</span>
+            <span>Карта организма</span>
             <ChevronRight className="w-4 h-4" />
           </div>
         </div>
@@ -302,23 +323,54 @@ export default function HomeDashboard({
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex items-baseline gap-3">
             <span className="text-4xl sm:text-5xl font-black text-white tracking-tight">
-              {healthScore !== null ? healthScore : '—'}
+              {displayHealthScore !== null ? displayHealthScore : '—'}
             </span>
             <div className="flex flex-col">
               <span className="text-xs text-white/50 font-semibold">
-                {healthScore !== null ? 'из 100 баллов' : 'нет данных'}
+                {displayHealthScore !== null ? 'из 100 баллов' : 'нет данных'}
               </span>
-              {healthScore !== null && (
+              {displayHealthScore !== null && (
                 <span className="text-xs font-extrabold text-[#34F5A4] flex items-center gap-1 mt-0.5">
-                  <span>Стабильный статус</span>
+                  <span>
+                    {displayHealthScore >= 80 ? 'Высокий показатель' : displayHealthScore >= 60 ? 'Стабильный статус' : 'Требует внимания'}
+                  </span>
                 </span>
               )}
             </div>
           </div>
 
           <p className="text-xs sm:text-sm text-white/80 leading-relaxed max-w-xl font-normal">
-            {aiSummary}
+            {displaySummary}
           </p>
+        </div>
+
+        {/* Dynamic Progress Scales Bar */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3 border-t border-white/[0.06]">
+          <div className="space-y-1">
+            <div className="flex justify-between text-[11px] font-bold">
+              <span className="text-white/60">Шкала индекса здоровья</span>
+              <span className="text-[#8E74FF]">{displayHealthScore !== null ? `${displayHealthScore}%` : '0%'}</span>
+            </div>
+            <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-[#8E74FF] to-[#34F5A4] transition-all duration-500"
+                style={{ width: `${displayHealthScore !== null ? displayHealthScore : 0}%` }}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <div className="flex justify-between text-[11px] font-bold">
+              <span className="text-white/60">Заполненность карты обследований</span>
+              <span className="text-emerald-400">{healthProfile.completenessScore}%</span>
+            </div>
+            <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-emerald-500 to-[#4DEBFF] transition-all duration-500"
+                style={{ width: `${healthProfile.completenessScore}%` }}
+              />
+            </div>
+          </div>
         </div>
       </div>
 
@@ -384,6 +436,94 @@ export default function HomeDashboard({
             ))}
           </div>
         )}
+      </div>
+
+      {/* 4. СВЯЗИ СОСТОЯНИЙ И МЕЖСИСТЕМНЫЙ АНАЛИЗ */}
+      <StateConnectionsSection
+        connections={healthProfile.stateConnections}
+        onOpenDoctorReport={() => onNavigate('body_map')}
+      />
+
+      {/* 5. ЧТО ЕЩЁ НАДО СДАТЬ ДЛЯ ПОЛНОГО АНАЛИЗА */}
+      <RecommendedNextTestsSection
+        recommendedTests={healthProfile.recommendedNextTests}
+        onAddReminder={handleAddTestReminder}
+        onNavigateToLab={() => setActiveTab('lab')}
+      />
+
+      {/* 6. ШКАЛЫ 10 СИСТЕМ ОРГАНИЗМА */}
+      <div
+        onClick={() => onNavigate('body_map')}
+        className="bg-[#0B1320] hover:bg-[#0E182A] border border-white/[0.08] hover:border-[#8E74FF]/40 rounded-2xl sm:rounded-3xl p-4 sm:p-5 shadow-xl transition-all cursor-pointer space-y-3.5 group"
+      >
+        <div className="flex items-center justify-between border-b border-white/[0.06] pb-2.5">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-[#8E74FF]/15 border border-[#8E74FF]/30 text-[#8E74FF] flex items-center justify-center shrink-0">
+              <Activity className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="font-extrabold text-white text-sm sm:text-base">
+                Шкалы 10 систем организма
+              </h3>
+              <p className="text-[10px] text-white/50">
+                Автоматически заполняются по бланкам анализов и замерам
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1 text-xs font-bold text-[#8E74FF] group-hover:translate-x-1 transition-transform">
+            <span>Открыть карту тела →</span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
+          {healthProfile.bodySystems.slice(0, 10).map((sys) => {
+            const isNorm = sys.status === 'norm';
+            const isWarning = sys.status === 'warning';
+            const isCritical = sys.status === 'critical';
+
+            return (
+              <div
+                key={sys.id}
+                className="bg-[#101A28] border border-white/[0.06] rounded-xl p-2.5 space-y-1.5"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-white/90 truncate max-w-[110px]" title={sys.name}>
+                    {sys.name}
+                  </span>
+                  <span
+                    className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded ${
+                      isNorm
+                        ? 'bg-emerald-500/20 text-emerald-300'
+                        : isWarning
+                        ? 'bg-amber-500/20 text-amber-300'
+                        : isCritical
+                        ? 'bg-red-500/20 text-red-300'
+                        : 'bg-white/5 text-white/40'
+                    }`}
+                  >
+                    {sys.score > 0 ? `${sys.score}%` : 'Нет данных'}
+                  </span>
+                </div>
+
+                <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full transition-all duration-300 ${
+                      isNorm
+                        ? 'bg-emerald-400'
+                        : isWarning
+                        ? 'bg-amber-400'
+                        : isCritical
+                        ? 'bg-red-400'
+                        : 'bg-white/20'
+                    }`}
+                    style={{ width: `${sys.score > 0 ? sys.score : 0}%` }}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* GRID FOR MEDICATION & WOMEN's HEALTH */}

@@ -13,6 +13,7 @@ import {
   WeeklyMentalReport,
   PressureLogEntry,
 } from './types';
+import { calculateHealthProfile } from './utils/calculateHealthProfile';
 import {
   initialUserProfile,
   emptyUserProfile,
@@ -193,6 +194,14 @@ export default function App() {
     return localStorage.getItem('app_pin_code') || '';
   });
   const [isAppLocked, setIsAppLocked] = useState<boolean>(false);
+
+  // Recalculate body systems dynamically whenever documents, user profile, or logs change
+  useEffect(() => {
+    if (documents.length > 0 || isDemoUser(user)) {
+      const { bodySystems: updatedSystems } = calculateHealthProfile(user, documents, dailyLogs, pressureLogs);
+      setBodySystems(updatedSystems);
+    }
+  }, [user, documents, dailyLogs, pressureLogs]);
 
   // Save non-demo user data changes to localStorage
   useEffect(() => {

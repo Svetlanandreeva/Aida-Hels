@@ -213,6 +213,26 @@ export interface BodySystem {
   recommendedTests: Array<{ name: string; reason: string; urgency: 'Срочно' | 'Рекомендуется' }>;
 }
 
+export interface StateConnection {
+  id: string;
+  title: string;
+  sourceMarker: string;
+  affectedSystems: string[];
+  severity: 'warning' | 'critical' | 'info';
+  mechanism: string; // Объяснение биохимической/физиологической связи
+  recommendation: string;
+}
+
+export interface RecommendedTest {
+  id: string;
+  name: string;
+  category: 'Лабораторный анализ' | 'УЗИ / МРТ' | 'Консультация' | 'Функциональный тест';
+  reason: string;
+  urgency: 'Срочно' | 'Рекомендуется' | 'Планово';
+  targetSystem: string;
+  isCompleted?: boolean;
+}
+
 // Structured Medical & Health Analysis Types (Strict Requirements)
 export type HealthStatusLevel =
   | 'norm'
