@@ -236,18 +236,18 @@ export async function getUserByEmail(email: string): Promise<UserRecord | null> 
   const r = rows[0];
   let parsedProfile = {};
   try {
-    parsedProfile = typeof r.profile_json === 'string' ? JSON.parse(r.profile_json) : (r.profile_json || {});
+    parsedProfile = typeof r.profileJson === 'string' ? JSON.parse(r.profileJson) : (r.profileJson || {});
   } catch {}
 
   return {
     id: r.id,
     email: r.email,
-    fullName: r.full_name,
-    passwordHash: r.password_hash,
-    isVerified: Boolean(r.is_verified),
-    verificationCode: r.verification_code_hash,
-    verificationExpiresAt: r.verification_expires_at ? Number(r.verification_expires_at) : null,
-    createdAt: r.created_at,
+    fullName: r.fullName,
+    passwordHash: r.passwordHash,
+    isVerified: Boolean(r.isVerified),
+    verificationCode: r.verificationCodeHash,
+    verificationExpiresAt: r.verificationExpiresAt ? Number(r.verificationExpiresAt) : null,
+    createdAt: r.createdAt,
     profile: parsedProfile,
   };
 }
@@ -260,18 +260,18 @@ export async function getUserById(id: string): Promise<UserRecord | null> {
   const r = rows[0];
   let parsedProfile = {};
   try {
-    parsedProfile = typeof r.profile_json === 'string' ? JSON.parse(r.profile_json) : (r.profile_json || {});
+    parsedProfile = typeof r.profileJson === 'string' ? JSON.parse(r.profileJson) : (r.profileJson || {});
   } catch {}
 
   return {
     id: r.id,
     email: r.email,
-    fullName: r.full_name,
-    passwordHash: r.password_hash,
-    isVerified: Boolean(r.is_verified),
-    verificationCode: r.verification_code_hash,
-    verificationExpiresAt: r.verification_expires_at ? Number(r.verification_expires_at) : null,
-    createdAt: r.created_at,
+    fullName: r.fullName,
+    passwordHash: r.passwordHash,
+    isVerified: Boolean(r.isVerified),
+    verificationCode: r.verificationCodeHash,
+    verificationExpiresAt: r.verificationExpiresAt ? Number(r.verificationExpiresAt) : null,
+    createdAt: r.createdAt,
     profile: parsedProfile,
   };
 }
@@ -331,9 +331,9 @@ export async function getUserData(userId: string): Promise<any> {
     try { deviations = typeof r.deviations === 'string' ? JSON.parse(r.deviations) : (r.deviations || []); } catch {}
     return {
       id: r.id,
-      docType: r.doc_type,
-      fileName: r.file_name,
-      title: r.title || r.file_name,
+      docType: r.docType,
+      fileName: r.fileName,
+      title: r.title || r.fileName,
       date: r.date,
       results,
       deviations,
@@ -343,7 +343,7 @@ export async function getUserData(userId: string): Promise<any> {
   const apptsRows = await runYql(`SELECT * FROM appointments WHERE user_id = ${esc(userId)};`);
   const appointments = apptsRows.map((r) => ({
     id: r.id,
-    doctorName: r.doctor_name,
+    doctorName: r.doctorName,
     specialty: r.specialty,
     date: r.date,
     time: r.time,
@@ -354,7 +354,7 @@ export async function getUserData(userId: string): Promise<any> {
   const dailyRows = await runYql(`SELECT * FROM daily_logs WHERE user_id = ${esc(userId)};`);
   const dailyLogs = dailyRows.map((r) => {
     let dataJson = {};
-    try { dataJson = typeof r.data_json === 'string' ? JSON.parse(r.data_json) : (r.data_json || {}); } catch {}
+    try { dataJson = typeof r.dataJson === 'string' ? JSON.parse(r.dataJson) : (r.dataJson || {}); } catch {}
     return {
       id: r.id,
       date: r.date,
@@ -362,7 +362,7 @@ export async function getUserData(userId: string): Promise<any> {
       sleep: r.sleep,
       stress: r.stress,
       mood: r.mood,
-      has_pain: Boolean(r.has_pain),
+      has_pain: Boolean(r.hasPain),
       ...dataJson,
     };
   });
@@ -372,15 +372,15 @@ export async function getUserData(userId: string): Promise<any> {
     let moods = [];
     let fullJson = {};
     try { moods = typeof r.moods === 'string' ? JSON.parse(r.moods) : (r.moods || []); } catch {}
-    try { fullJson = typeof r.full_json === 'string' ? JSON.parse(r.full_json) : (r.full_json || {}); } catch {}
+    try { fullJson = typeof r.fullJson === 'string' ? JSON.parse(r.fullJson) : (r.fullJson || {}); } catch {}
     return {
       id: r.id,
       date: r.date,
-      state_score: r.state_score,
+      state_score: r.stateScore,
       moods,
-      event_description: r.event_description,
+      event_description: r.eventDescription,
       thoughts: r.thoughts,
-      additional_note: r.additional_note,
+      additional_note: r.additionalNote,
       ...fullJson,
     };
   });
@@ -403,17 +403,17 @@ export async function getUserData(userId: string): Promise<any> {
     category: r.category,
     dosage: r.dosage,
     time: r.time,
-    isEnabled: Boolean(r.is_enabled),
-    lastCompletedDate: r.last_completed_date,
+    isEnabled: Boolean(r.isEnabled),
+    lastCompletedDate: r.lastCompletedDate,
   }));
 
   const aiRows = await runYql(`SELECT * FROM ai_analyses WHERE user_id = ${esc(userId)};`);
   let aiAnalysis = null;
   if (aiRows.length > 0) {
     try {
-      aiAnalysis = typeof aiRows[0].analysis_json === 'string'
-        ? JSON.parse(aiRows[0].analysis_json)
-        : (aiRows[0].analysis_json || null);
+      aiAnalysis = typeof aiRows[0].analysisJson === 'string'
+        ? JSON.parse(aiRows[0].analysisJson)
+        : (aiRows[0].analysisJson || null);
     } catch {}
   }
 
