@@ -151,7 +151,17 @@ export default function HomeDashboard({
     });
   }
 
-  const activeAttentionItems = attentionItems.slice(0, 3);
+  // Deduplicate attention items by title to guarantee no duplicate cards
+  const seenTitles = new Set<string>();
+  const uniqueAttentionItems: typeof attentionItems = [];
+  for (const item of attentionItems) {
+    if (!seenTitles.has(item.title)) {
+      seenTitles.add(item.title);
+      uniqueAttentionItems.push(item);
+    }
+  }
+
+  const activeAttentionItems = uniqueAttentionItems.slice(0, 3);
 
   // 2. "Лекарства сегодня"
   const medReminders = reminders.filter((r) => r.category === 'medication' && r.isEnabled);

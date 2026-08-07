@@ -7,44 +7,52 @@ export function normalizeMarkerName(name: string): string {
   if (!name) return '';
   const lower = name.toLowerCase().trim();
 
-  // Normalize Cyrillic/Latin equivalents
-  const normalized = lower
-    .replace(/д/g, 'd')
-    .replace(/в/g, 'b')
-    .replace(/с/g, 'c')
-    .replace(/а/g, 'a')
-    .replace(/о/g, 'o')
-    .replace(/е/g, 'e')
-    .replace(/р/g, 'p')
-    .replace(/х/g, 'x');
-
-  const clean = normalized.replace(/[^a-z0-9]/g, '');
-
-  // Check for known canonical medical markers
-  if (clean.includes('vitamind') || clean.includes('25oh') || clean.includes('кальциферол') || clean.includes('витамиnd')) {
+  // Direct keyword matching for common medical markers
+  if (
+    lower.includes('витамин d') ||
+    lower.includes('витамин д') ||
+    lower.includes('25-oh') ||
+    lower.includes('кальциферол') ||
+    lower.includes('vitamin d') ||
+    lower.includes('25-гидрокси')
+  ) {
     return 'marker_vitamin_d';
   }
-  if (clean.includes('ferritin') || clean.includes('ферритин')) {
+
+  if (lower.includes('ферритин') || lower.includes('ferritin')) {
     return 'marker_ferritin';
   }
-  if (clean.includes('tsh') || clean.includes('ттг') || clean.includes('тиреотроп')) {
+
+  if (lower.includes('ттг') || lower.includes('tsh') || lower.includes('тиреотроп')) {
     return 'marker_tsh';
   }
-  if (clean.includes('vitaminb12') || clean.includes('витамиnb12') || clean.includes('цианокобаламин')) {
+
+  if (
+    lower.includes('витамин b12') ||
+    lower.includes('витамин в12') ||
+    lower.includes('b12') ||
+    lower.includes('в12') ||
+    lower.includes('цианокобаламин') ||
+    lower.includes('vitamin b12')
+  ) {
     return 'marker_b12';
   }
-  if (clean.includes('hemoglobin') || clean.includes('гемоглобин')) {
+
+  if (lower.includes('гемоглобин') || lower.includes('hemoglobin') || lower.includes('hgb')) {
     return 'marker_hemoglobin';
   }
-  if (clean.includes('glucose') || clean.includes('глюкоза')) {
+
+  if (lower.includes('глюкоза') || lower.includes('glucose') || lower.includes('гликированный') || lower.includes('hba1c')) {
     return 'marker_glucose';
   }
-  if (clean.includes('cholesterol') || clean.includes('холестерин')) {
+
+  if (lower.includes('холестерин') || lower.includes('cholesterol')) {
     return 'marker_cholesterol';
   }
 
-  // Fallback to the cleaned string or a prefix
-  return clean.slice(0, 20) || lower;
+  // Fallback: clean all non-alphanumeric chars keeping cyrillic and latin
+  const clean = lower.replace(/[^a-zа-я0-9]/gi, '');
+  return clean.slice(0, 25) || lower;
 }
 
 /**

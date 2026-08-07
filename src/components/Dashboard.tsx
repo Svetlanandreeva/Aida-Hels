@@ -75,6 +75,7 @@ import { DataCollectionExplainedModal } from './modals/DataCollectionExplainedMo
 import { SurveyHistoryModal } from './modals/SurveyHistoryModal';
 import { MedicationTodaySection } from './dashboard/MedicationTodaySection';
 import HomeDashboard from './HomeDashboard';
+import { deduplicateMarkers } from '../utils/markerUtils';
 
 interface DashboardProps {
   activeTab: DashboardTab;
@@ -566,15 +567,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
                   {/* All Markers / Deviations Table Section */}
                   {(() => {
-                    const allMarkersList = doc.allMarkers && doc.allMarkers.length > 0 ? doc.allMarkers : doc.deviations;
+                    const rawList = doc.allMarkers && doc.allMarkers.length > 0 ? doc.allMarkers : doc.deviations;
+                    const allMarkersList = deduplicateMarkers(rawList) as Array<{ marker: string; value?: string; norm?: string; status?: string; explanation?: string }>;
                     if (allMarkersList.length === 0) return null;
 
                     const showAll = showAllMarkersDocMap[doc.id] ?? true;
-                    const visibleMarkers = showAll
+                    const rawVisible = showAll
                       ? allMarkersList
-                      : doc.deviations.length > 0
+                      : doc.deviations && doc.deviations.length > 0
                       ? doc.deviations
                       : allMarkersList;
+                    const visibleMarkers = deduplicateMarkers(rawVisible) as Array<{ marker: string; value?: string; norm?: string; status?: string; explanation?: string }>;
 
                     const normCount = allMarkersList.filter((m) => m.status === 'В норме').length;
                     const devCount = allMarkersList.length - normCount;
