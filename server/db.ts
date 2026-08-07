@@ -1,5 +1,8 @@
 import * as ydbModule from 'ydb-sdk';
 import dotenv from 'dotenv';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 
 dotenv.config();
 
@@ -8,6 +11,22 @@ const ydb: any = (ydbModule as any).default || ydbModule;
 const Driver = ydb.Driver;
 const getCredentialsFromEnv = ydb.getCredentialsFromEnv;
 const TypedData = ydb.TypedData;
+
+// ydb-sdk's getCredentialsFromEnv() only recognizes
+// YDB_SERVICE_ACCOUNT_KEY_FILE_CREDENTIALS (a *file path*), not a raw JSON
+// string. Our deploy passes the key content directly via YDB_SA_JSON_CREDENTIALS,
+// so without this it silently falls through to MetadataAuthService, which
+// requires the optional @yandex-cloud/nodejs-sdk package we don't install and
+// crashes the whole process on startup. Write the JSON to a temp file once and
+// point ydb-sdk at it so it picks IamAuthService (service-account key auth) instead.
+function resolveYdbAuthService() {
+  if (!process.env.YDB_SERVICE_ACCOUNT_KEY_FILE_CREDENTIALS && process.env.YDB_SA_JSON_CREDENTIALS) {
+    const keyPath = path.join(os.tmpdir(), 'ydb-sa-key.json');
+    fs.writeFileSync(keyPath, process.env.YDB_SA_JSON_CREDENTIALS);
+    process.env.YDB_SERVICE_ACCOUNT_KEY_FILE_CREDENTIALS = keyPath;
+  }
+  return getCredentialsFromEnv();
+}
 
 type YdbDriver = typeof Driver.prototype;
 
@@ -46,7 +65,7 @@ export async function getYdbDriver(): Promise<YdbDriver | null> {
       driverInstance = new Driver({
         endpoint,
         database,
-        authService: getCredentialsFromEnv(),
+        authService: resolveYdbAuthService(),
       });
 
       const timeoutMs = 3000;
