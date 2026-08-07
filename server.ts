@@ -35,6 +35,15 @@ import {
 
 dotenv.config();
 
+// ydb-sdk retries its background connection/token refresh outside any promise
+// we await (see getYdbDriver in server/db.ts), so a transient YDB auth or
+// network failure surfaces here as an unhandled rejection well after startup.
+// Node's default behavior is to crash the process on that - log it instead so
+// a temporary DB hiccup can't take the whole site down.
+process.on('unhandledRejection', (reason) => {
+  console.error('[Server] Unhandled promise rejection (ignored to keep serving):', reason);
+});
+
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 const JWT_SECRET = process.env.SESSION_SECRET || process.env.JWT_SECRET || 'helt_aida_secure_session_secret_2026';
