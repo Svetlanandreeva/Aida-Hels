@@ -7,6 +7,7 @@ import {
   StateConnection,
   RecommendedTest,
 } from '../types';
+import { deduplicateMarkers, normalizeMarkerName } from './markerUtils';
 
 export interface HealthProfileResult {
   bodySystems: BodySystem[];
@@ -142,23 +143,12 @@ export function calculateHealthProfile(
   pressureLogs: PressureLogEntry[] = []
 ): HealthProfileResult {
 
-  // Flatten all document deviations
-  const allDeviations = documents.flatMap((d) => d.deviations || []);
+  // Flatten and deduplicate all document deviations
+  const rawDeviations = documents.flatMap((d) => d.deviations || []);
+  const allDeviations = deduplicateMarkers(rawDeviations);
 
   // Collect all markers extracted
-  const allMarkersList: Array<{
-    marker: string;
-    value: string;
-    norm: string;
-    status: string;
-    explanation: string;
-  }> = [];
-
-  documents.forEach((doc) => {
-    (doc.deviations || []).forEach((dev) => {
-      allMarkersList.push(dev);
-    });
-  });
+  const allMarkersList = deduplicateMarkers(rawDeviations);
 
   // Base list of 10 organ systems
   const systemsMap: Record<string, {
@@ -511,9 +501,9 @@ export function calculateHealthProfile(
   });
 
   // Basic essential baseline checkups if missing
-  const uploadedMarkerNames = allMarkersList.map((m) => m.marker.toLowerCase());
+  const uploadedMarkerNames = allMarkersList.map((m) => m.marker);
 
-  if (!uploadedMarkerNames.some((m) => m.includes('витамин d'))) {
+  if (!uploadedMarkerNames.some((m) => normalizeMarkerName(m) === 'marker_vitamin_d')) {
     recommendedNextTests.push({
       id: 'rec-vit-d',
       name: '25-OH Витамин D (суммарный)',

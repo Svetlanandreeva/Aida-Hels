@@ -1,8 +1,5 @@
 import * as ydbModule from 'ydb-sdk';
 import dotenv from 'dotenv';
-import fs from 'fs';
-import os from 'os';
-import path from 'path';
 
 dotenv.config();
 
@@ -11,22 +8,6 @@ const ydb: any = (ydbModule as any).default || ydbModule;
 const Driver = ydb.Driver;
 const getCredentialsFromEnv = ydb.getCredentialsFromEnv;
 const TypedData = ydb.TypedData;
-
-// ydb-sdk's getCredentialsFromEnv() only recognizes
-// YDB_SERVICE_ACCOUNT_KEY_FILE_CREDENTIALS (a *file path*), not a raw JSON
-// string. Our deploy passes the key content directly via YDB_SA_JSON_CREDENTIALS,
-// so without this it silently falls through to MetadataAuthService, which
-// requires the optional @yandex-cloud/nodejs-sdk package we don't install and
-// crashes the whole process on startup. Write the JSON to a temp file once and
-// point ydb-sdk at it so it picks IamAuthService (service-account key auth) instead.
-function resolveYdbAuthService() {
-  if (!process.env.YDB_SERVICE_ACCOUNT_KEY_FILE_CREDENTIALS && process.env.YDB_SA_JSON_CREDENTIALS) {
-    const keyPath = path.join(os.tmpdir(), 'ydb-sa-key.json');
-    fs.writeFileSync(keyPath, process.env.YDB_SA_JSON_CREDENTIALS);
-    process.env.YDB_SERVICE_ACCOUNT_KEY_FILE_CREDENTIALS = keyPath;
-  }
-  return getCredentialsFromEnv();
-}
 
 type YdbDriver = typeof Driver.prototype;
 
@@ -65,7 +46,7 @@ export async function getYdbDriver(): Promise<YdbDriver | null> {
       driverInstance = new Driver({
         endpoint,
         database,
-        authService: resolveYdbAuthService(),
+        authService: getCredentialsFromEnv(),
       });
 
       const timeoutMs = 3000;
@@ -255,18 +236,18 @@ export async function getUserByEmail(email: string): Promise<UserRecord | null> 
   const r = rows[0];
   let parsedProfile = {};
   try {
-    parsedProfile = typeof r.profileJson === 'string' ? JSON.parse(r.profileJson) : (r.profileJson || {});
+    parsedProfile = typeof r.profile_json === 'string' ? JSON.parse(r.profile_json) : (r.profile_json || {});
   } catch {}
 
   return {
     id: r.id,
     email: r.email,
-    fullName: r.fullName,
-    passwordHash: r.passwordHash,
-    isVerified: Boolean(r.isVerified),
-    verificationCode: r.verificationCodeHash,
-    verificationExpiresAt: r.verificationExpiresAt ? Number(r.verificationExpiresAt) : null,
-    createdAt: r.createdAt,
+    fullName: r.full_name,
+    passwordHash: r.password_hash,
+    isVerified: Boolean(r.is_verified),
+    verificationCode: r.verification_code_hash,
+    verificationExpiresAt: r.verification_expires_at ? Number(r.verification_expires_at) : null,
+    createdAt: r.created_at,
     profile: parsedProfile,
   };
 }
@@ -279,18 +260,18 @@ export async function getUserById(id: string): Promise<UserRecord | null> {
   const r = rows[0];
   let parsedProfile = {};
   try {
-    parsedProfile = typeof r.profileJson === 'string' ? JSON.parse(r.profileJson) : (r.profileJson || {});
+    parsedProfile = typeof r.profile_json === 'string' ? JSON.parse(r.profile_json) : (r.profile_json || {});
   } catch {}
 
   return {
     id: r.id,
     email: r.email,
-    fullName: r.fullName,
-    passwordHash: r.passwordHash,
-    isVerified: Boolean(r.isVerified),
-    verificationCode: r.verificationCodeHash,
-    verificationExpiresAt: r.verificationExpiresAt ? Number(r.verificationExpiresAt) : null,
-    createdAt: r.createdAt,
+    fullName: r.full_name,
+    passwordHash: r.password_hash,
+    isVerified: Boolean(r.is_verified),
+    verificationCode: r.verification_code_hash,
+    verificationExpiresAt: r.verification_expires_at ? Number(r.verification_expires_at) : null,
+    createdAt: r.created_at,
     profile: parsedProfile,
   };
 }
@@ -350,9 +331,9 @@ export async function getUserData(userId: string): Promise<any> {
     try { deviations = typeof r.deviations === 'string' ? JSON.parse(r.deviations) : (r.deviations || []); } catch {}
     return {
       id: r.id,
-      docType: r.docType,
-      fileName: r.fileName,
-      title: r.title || r.fileName,
+      docType: r.doc_type,
+      fileName: r.file_name,
+      title: r.title || r.file_name,
       date: r.date,
       results,
       deviations,
@@ -362,7 +343,7 @@ export async function getUserData(userId: string): Promise<any> {
   const apptsRows = await runYql(`SELECT * FROM appointments WHERE user_id = ${esc(userId)};`);
   const appointments = apptsRows.map((r) => ({
     id: r.id,
-    doctorName: r.doctorName,
+    doctorName: r.doctor_name,
     specialty: r.specialty,
     date: r.date,
     time: r.time,
@@ -373,7 +354,7 @@ export async function getUserData(userId: string): Promise<any> {
   const dailyRows = await runYql(`SELECT * FROM daily_logs WHERE user_id = ${esc(userId)};`);
   const dailyLogs = dailyRows.map((r) => {
     let dataJson = {};
-    try { dataJson = typeof r.dataJson === 'string' ? JSON.parse(r.dataJson) : (r.dataJson || {}); } catch {}
+    try { dataJson = typeof r.data_json === 'string' ? JSON.parse(r.data_json) : (r.data_json || {}); } catch {}
     return {
       id: r.id,
       date: r.date,
@@ -381,7 +362,7 @@ export async function getUserData(userId: string): Promise<any> {
       sleep: r.sleep,
       stress: r.stress,
       mood: r.mood,
-      has_pain: Boolean(r.hasPain),
+      has_pain: Boolean(r.has_pain),
       ...dataJson,
     };
   });
@@ -391,15 +372,15 @@ export async function getUserData(userId: string): Promise<any> {
     let moods = [];
     let fullJson = {};
     try { moods = typeof r.moods === 'string' ? JSON.parse(r.moods) : (r.moods || []); } catch {}
-    try { fullJson = typeof r.fullJson === 'string' ? JSON.parse(r.fullJson) : (r.fullJson || {}); } catch {}
+    try { fullJson = typeof r.full_json === 'string' ? JSON.parse(r.full_json) : (r.full_json || {}); } catch {}
     return {
       id: r.id,
       date: r.date,
-      state_score: r.stateScore,
+      state_score: r.state_score,
       moods,
-      event_description: r.eventDescription,
+      event_description: r.event_description,
       thoughts: r.thoughts,
-      additional_note: r.additionalNote,
+      additional_note: r.additional_note,
       ...fullJson,
     };
   });
@@ -422,17 +403,17 @@ export async function getUserData(userId: string): Promise<any> {
     category: r.category,
     dosage: r.dosage,
     time: r.time,
-    isEnabled: Boolean(r.isEnabled),
-    lastCompletedDate: r.lastCompletedDate,
+    isEnabled: Boolean(r.is_enabled),
+    lastCompletedDate: r.last_completed_date,
   }));
 
   const aiRows = await runYql(`SELECT * FROM ai_analyses WHERE user_id = ${esc(userId)};`);
   let aiAnalysis = null;
   if (aiRows.length > 0) {
     try {
-      aiAnalysis = typeof aiRows[0].analysisJson === 'string'
-        ? JSON.parse(aiRows[0].analysisJson)
-        : (aiRows[0].analysisJson || null);
+      aiAnalysis = typeof aiRows[0].analysis_json === 'string'
+        ? JSON.parse(aiRows[0].analysis_json)
+        : (aiRows[0].analysis_json || null);
     } catch {}
   }
 

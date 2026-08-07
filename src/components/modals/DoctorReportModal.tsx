@@ -1,6 +1,7 @@
 import React from 'react';
 import { UserProfile, MedicalDocument, BodySystem } from '../../types';
 import { Printer, X, Download, Share2, ShieldCheck, Heart, FileText, CheckCircle2 } from 'lucide-react';
+import { deduplicateMarkers } from '../../utils/markerUtils';
 
 interface DoctorReportModalProps {
   isOpen: boolean;
@@ -195,7 +196,7 @@ export const DoctorReportModal: React.FC<DoctorReportModalProps> = ({
                 </tr>
               </thead>
               <tbody>
-                {documents.flatMap((d) => d.deviations).map((dev, idx) => (
+                {deduplicateMarkers(documents.flatMap((d) => d.deviations || [])).map((dev: any, idx: number) => (
                   <tr key={idx} className="border-b border-gray-800 print:border-slate-100">
                     <td className="py-1.5 px-2 font-bold text-gray-100 print:text-slate-900">{dev.marker}</td>
                     <td className="py-1.5 px-2 text-rose-400 print:text-rose-700 font-semibold">{dev.value}</td>

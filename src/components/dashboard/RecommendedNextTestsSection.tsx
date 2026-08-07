@@ -52,11 +52,11 @@ export const RecommendedNextTestsSection: React.FC<RecommendedNextTestsSectionPr
             <Microscope className="w-4.5 h-4.5" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <h2 className="font-black text-white text-sm sm:text-base tracking-tight">
                 Что ещё сдать для полного анализа ({recommendedTests.length})
               </h2>
-              <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold border border-emerald-500/30">
+              <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold border border-emerald-500/30 shrink-0">
                 100% полнота карты
               </span>
             </div>

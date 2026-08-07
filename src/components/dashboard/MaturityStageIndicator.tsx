@@ -46,11 +46,13 @@ export const MaturityStageIndicator: React.FC<MaturityStageIndicatorProps> = ({
 
   return (
     <div className="bg-[#101A28] border border-white/[0.08] rounded-2xl p-4 space-y-3 my-3 shadow-xl">
-      <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-        <div className="flex items-center gap-2">
-          <Calendar className="w-4 h-4 text-[#8E74FF] shrink-0" />
-          <span className="text-white/70 font-medium">Данных для персональной картины:</span>
-          <span className={`font-bold px-2.5 py-0.5 rounded-lg border ${badgeStyle}`}>
+      <div className="flex flex-col xs:flex-row xs:items-center justify-between gap-2 text-xs">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-1.5 shrink-0">
+            <Calendar className="w-4 h-4 text-[#8E74FF] shrink-0" />
+            <span className="text-white/70 font-medium">Данных для персональной картины:</span>
+          </div>
+          <span className={`font-bold px-2.5 py-0.5 rounded-lg border text-[11px] sm:text-xs shrink-0 ${badgeStyle}`}>
             {levelText}
           </span>
         </div>
@@ -59,7 +61,7 @@ export const MaturityStageIndicator: React.FC<MaturityStageIndicatorProps> = ({
           <button
             type="button"
             onClick={onOpenProposal}
-            className="text-[11px] text-[#4DEBFF] hover:text-[#4DEBFF]/80 font-semibold hover:underline flex items-center gap-1 cursor-pointer"
+            className="text-[11px] text-[#4DEBFF] hover:text-[#4DEBFF]/80 font-semibold hover:underline flex items-center gap-1 cursor-pointer self-start xs:self-auto shrink-0"
           >
             <span>Ускорить через опрос</span>
           </button>

@@ -290,7 +290,7 @@ export const Navigation: React.FC<NavigationProps> = ({
       {isAppView && (
         <nav
           aria-label="Мобильная навигация"
-          className="fixed bottom-2 sm:bottom-6 left-1/2 -translate-x-1/2 z-50 bg-[#0A0E1D]/90 backdrop-blur-2xl border border-[#98AEEB]/20 shadow-[0_24px_80px_rgba(0,0,0,0.7)] rounded-[28px] px-1.5 py-2 flex items-center justify-between gap-1 w-[96vw] max-w-[680px] select-none"
+          className="fixed bottom-1.5 sm:bottom-6 left-1/2 -translate-x-1/2 z-50 bg-[#0A0E1D]/95 backdrop-blur-2xl border border-[#98AEEB]/20 shadow-[0_24px_80px_rgba(0,0,0,0.85)] rounded-2xl sm:rounded-[28px] p-1 sm:p-1.5 flex items-center justify-around gap-0.5 sm:gap-1 w-[98vw] max-w-[680px] overflow-x-auto no-scrollbar select-none"
         >
           <button
             onClick={() => {
@@ -299,56 +299,56 @@ export const Navigation: React.FC<NavigationProps> = ({
             }}
             title="Главная"
             type="button"
-            className={`flex-1 flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 px-1 sm:px-2 py-1.5 rounded-2xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap min-h-[44px] ${
+            className={`flex-1 min-w-[42px] flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 px-0.5 sm:px-2 py-1 sm:py-1.5 rounded-xl sm:rounded-2xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap min-h-[44px] ${
               isTabActive('main')
                 ? 'bg-gradient-to-r from-[#8968FF] to-[#47D8FF] text-[#050711] font-extrabold shadow-lg shadow-[#8968FF]/30'
                 : 'text-gray-400 hover:text-white hover:bg-white/[0.06]'
             }`}
           >
             <LayoutDashboard className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
-            <span className="text-[9px] sm:text-xs">Главная</span>
+            <span className="text-[9px] sm:text-xs leading-none tracking-tight">Главная</span>
           </button>
 
           <button
             onClick={() => setCurrentScreen('mental_diary')}
             title="Психика"
             type="button"
-            className={`flex-1 flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 px-1 sm:px-2 py-1.5 rounded-2xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap min-h-[44px] ${
+            className={`flex-1 min-w-[42px] flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 px-0.5 sm:px-2 py-1 sm:py-1.5 rounded-xl sm:rounded-2xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap min-h-[44px] ${
               isTabActive('diary')
                 ? 'bg-gradient-to-r from-[#8968FF] to-[#47D8FF] text-[#050711] font-extrabold shadow-lg shadow-[#8968FF]/30'
                 : 'text-gray-400 hover:text-white hover:bg-white/[0.06]'
             }`}
           >
             <Brain className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
-            <span className="text-[9px] sm:text-xs">Психика</span>
+            <span className="text-[9px] sm:text-xs leading-none tracking-tight">Психика</span>
           </button>
 
           <button
             onClick={() => setCurrentScreen('pressure_diary')}
             title="Давление"
             type="button"
-            className={`flex-1 flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 px-1 sm:px-2 py-1.5 rounded-2xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap min-h-[44px] ${
+            className={`flex-1 min-w-[42px] flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 px-0.5 sm:px-2 py-1 sm:py-1.5 rounded-xl sm:rounded-2xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap min-h-[44px] ${
               isTabActive('pressure_diary')
                 ? 'bg-gradient-to-r from-[#8968FF] to-[#47D8FF] text-[#050711] font-extrabold shadow-lg shadow-[#8968FF]/30'
                 : 'text-gray-400 hover:text-white hover:bg-white/[0.06]'
             }`}
           >
             <Activity className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
-            <span className="text-[9px] sm:text-xs">Давление</span>
+            <span className="text-[9px] sm:text-xs leading-none tracking-tight">Давление</span>
           </button>
 
           <button
             onClick={() => setCurrentScreen('body_map')}
             title="Организм"
             type="button"
-            className={`flex-1 flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 px-1 sm:px-2 py-1.5 rounded-2xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap min-h-[44px] ${
+            className={`flex-1 min-w-[42px] flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 px-0.5 sm:px-2 py-1 sm:py-1.5 rounded-xl sm:rounded-2xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap min-h-[44px] ${
               isTabActive('body_map')
                 ? 'bg-gradient-to-r from-[#8968FF] to-[#47D8FF] text-[#050711] font-extrabold shadow-lg shadow-[#8968FF]/30'
                 : 'text-gray-400 hover:text-white hover:bg-white/[0.06]'
             }`}
           >
             <User className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
-            <span className="text-[9px] sm:text-xs">Организм</span>
+            <span className="text-[9px] sm:text-xs leading-none tracking-tight">Организм</span>
           </button>
 
           <button
@@ -358,42 +358,42 @@ export const Navigation: React.FC<NavigationProps> = ({
             }}
             title="Анализы"
             type="button"
-            className={`flex-1 flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 px-1 sm:px-2 py-1.5 rounded-2xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap min-h-[44px] ${
+            className={`flex-1 min-w-[42px] flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 px-0.5 sm:px-2 py-1 sm:py-1.5 rounded-xl sm:rounded-2xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap min-h-[44px] ${
               isTabActive('analytics')
                 ? 'bg-gradient-to-r from-[#8968FF] to-[#47D8FF] text-[#050711] font-extrabold shadow-lg shadow-[#8968FF]/30'
                 : 'text-gray-400 hover:text-white hover:bg-white/[0.06]'
             }`}
           >
             <FileText className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
-            <span className="text-[9px] sm:text-xs">Анализы</span>
+            <span className="text-[9px] sm:text-xs leading-none tracking-tight">Анализы</span>
           </button>
 
           <button
             onClick={() => setCurrentScreen('ai_chat')}
             title="Аида"
             type="button"
-            className={`flex-1 flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 px-1 sm:px-2 py-1.5 rounded-2xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap min-h-[44px] ${
+            className={`flex-1 min-w-[42px] flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 px-0.5 sm:px-2 py-1 sm:py-1.5 rounded-xl sm:rounded-2xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap min-h-[44px] ${
               isTabActive('ai_chat')
                 ? 'bg-gradient-to-r from-[#8968FF] to-[#47D8FF] text-[#050711] font-extrabold shadow-lg shadow-[#8968FF]/30'
                 : 'text-gray-400 hover:text-white hover:bg-white/[0.06]'
             }`}
           >
             <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
-            <span className="text-[9px] sm:text-xs">Аида</span>
+            <span className="text-[9px] sm:text-xs leading-none tracking-tight">Аида</span>
           </button>
 
           <button
             onClick={() => setCurrentScreen('reminders')}
             title="Задачи"
             type="button"
-            className={`flex-1 flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 px-1 sm:px-2 py-1.5 rounded-2xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap min-h-[44px] ${
+            className={`flex-1 min-w-[42px] flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 px-0.5 sm:px-2 py-1 sm:py-1.5 rounded-xl sm:rounded-2xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap min-h-[44px] ${
               currentScreen === 'reminders'
                 ? 'bg-gradient-to-r from-[#8968FF] to-[#47D8FF] text-[#050711] font-extrabold shadow-lg shadow-[#8968FF]/30'
                 : 'text-gray-400 hover:text-white hover:bg-white/[0.06]'
             }`}
           >
             <CheckSquare className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
-            <span className="text-[9px] sm:text-xs">Задачи</span>
+            <span className="text-[9px] sm:text-xs leading-none tracking-tight">Задачи</span>
           </button>
         </nav>
       )}

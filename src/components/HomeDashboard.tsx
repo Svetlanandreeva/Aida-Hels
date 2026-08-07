@@ -28,6 +28,7 @@ import {
   StructuredHealthAnalysis,
 } from '../types';
 import { calculateHealthProfile } from '../utils/calculateHealthProfile';
+import { deduplicateMarkers } from '../utils/markerUtils';
 import { StateConnectionsSection } from './dashboard/StateConnectionsSection';
 import { RecommendedNextTestsSection } from './dashboard/RecommendedNextTestsSection';
 import { MaturityStageIndicator } from './dashboard/MaturityStageIndicator';
@@ -117,7 +118,8 @@ export default function HomeDashboard({
   };
 
   // 1. "Что требует внимания" (max 3 items)
-  const allDeviations = documents.flatMap((d) => d.deviations || []);
+  const rawDeviations = documents.flatMap((d) => d.deviations || []);
+  const allDeviations = deduplicateMarkers(rawDeviations);
   const attentionItems: Array<{
     id: string;
     title: string;

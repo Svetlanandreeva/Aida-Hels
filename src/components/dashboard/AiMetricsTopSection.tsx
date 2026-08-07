@@ -4,6 +4,7 @@ import {
   ShieldCheck,
   ChevronDown,
   ChevronUp,
+  ChevronRight,
   Info,
   Heart,
   Zap,
@@ -192,13 +193,14 @@ export const AiMetricsTopSection: React.FC<AiMetricsTopSectionProps> = ({
         {/* CARD 1: ОБЩЕЕ СОСТОЯНИЕ */}
         <div
           onClick={() => onNavigate && onNavigate('body_map')}
-          className="bg-[#0B1320] hover:bg-[#0E182A] border border-white/[0.08] hover:border-[#34F5A4]/40 rounded-2xl sm:rounded-3xl p-4 sm:p-5 transition-all duration-200 cursor-pointer shadow-xl flex flex-col justify-between group relative overflow-hidden"
+          className="bg-[#0B1320] hover:bg-[#0E182A] border border-white/[0.08] hover:border-[#34F5A4]/60 rounded-2xl sm:rounded-3xl p-4 sm:p-5 transition-all duration-200 cursor-pointer shadow-xl hover:shadow-[0_0_25px_rgba(52,245,164,0.15)] flex flex-col justify-between group relative overflow-hidden"
+          title="Открыть раздел Организм"
         >
           <div className="flex items-center justify-between">
             <span className="text-xs sm:text-sm font-extrabold text-white tracking-tight">
               Общее состояние
             </span>
-            <div className="w-9 h-9 rounded-xl bg-[#34F5A4]/15 border border-[#34F5A4]/30 text-[#34F5A4] flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-[#34F5A4]/15 border border-[#34F5A4]/30 text-[#34F5A4] flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
               <Heart className="w-4 h-4 fill-[#34F5A4]/20" />
             </div>
           </div>
@@ -207,9 +209,14 @@ export const AiMetricsTopSection: React.FC<AiMetricsTopSectionProps> = ({
             <span className="text-3xl sm:text-4xl font-black text-white tracking-tight block">
               {overallScoreVal}
             </span>
-            <span className="text-xs font-semibold text-[#34F5A4] flex items-center gap-1 mt-1">
-              {overallScoreSource}
-            </span>
+            <div className="flex items-center justify-between gap-1 mt-1">
+              <span className="text-xs font-semibold text-[#34F5A4] flex items-center gap-1">
+                {overallScoreSource}
+              </span>
+              <span className="text-[11px] font-bold text-[#34F5A4] bg-[#34F5A4]/10 hover:bg-[#34F5A4]/20 border border-[#34F5A4]/20 px-2 py-0.5 rounded-full flex items-center gap-0.5 transition-all">
+                Организм <ChevronRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+              </span>
+            </div>
           </div>
         </div>
 
