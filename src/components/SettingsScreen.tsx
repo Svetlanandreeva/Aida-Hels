@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { UserProfile, Reminder, MedicalDocument, ScreenId, MedicationSchedule, WaterTrackerState } from '../types';
 import { SecurityLockModal } from './SecurityLockModal';
 import { MedicationSchedulePicker } from './MedicationSchedulePicker';
@@ -180,6 +180,62 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     }
   });
 
+  // Auto-sync questionnaire medications to reminders
+  useEffect(() => {
+    if (!setReminders || !user) return;
+    const userMeds: Array<{ title: string; time: string; notes?: string }> = [];
+
+    if (Array.isArray(user.chronicDiagnoses)) {
+      user.chronicDiagnoses.forEach((d) => {
+        if (d.medication && d.medication !== 'Без медикаментов' && d.medication.trim()) {
+          userMeds.push({
+            title: d.medication.trim(),
+            time: d.schedule?.morning?.time || '08:00',
+            notes: `Назначено по диагнозу: ${d.name}`,
+          });
+        }
+      });
+    }
+
+    if (Array.isArray(user.psychology?.psychiatricData?.medications)) {
+      user.psychology.psychiatricData.medications.forEach((medName) => {
+        if (medName && medName !== 'Без медикаментов' && medName.trim()) {
+          userMeds.push({
+            title: medName.trim(),
+            time: '20:00',
+            notes: 'Назначено специалистом (психологический профиль)',
+          });
+        }
+      });
+    }
+
+    if (userMeds.length > 0) {
+      setReminders((prev) => {
+        let changed = false;
+        const updated = [...prev];
+        userMeds.forEach((m) => {
+          const exists = updated.some(
+            (r) => r.category === 'medication' && r.title.toLowerCase().trim() === m.title.toLowerCase().trim()
+          );
+          if (!exists) {
+            changed = true;
+            updated.push({
+              id: `med-sync-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+              title: m.title,
+              category: 'medication',
+              time: m.time,
+              frequency: 'daily',
+              dosage: 'По назначению',
+              notes: m.notes,
+              isEnabled: true,
+            });
+          }
+        });
+        return changed ? updated : prev;
+      });
+    }
+  }, [user, setReminders]);
+
   // Water Tracker State
   const [waterState, setWaterState] = useState<WaterTrackerState>(() => {
     try {
@@ -243,10 +299,11 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
 
   const handleCopyCode = () => {
     const code =
-      user.womenHealth?.partnerSyncCode ||
-      (user.id && user.id !== 'usr-new'
-        ? `PARTNER-${user.id.replace(/[^A-Za-z0-9]/g, '').slice(-4).toUpperCase()}-RU`
-        : 'PARTNER-DEMO-RU');
+      user.womenHealth?.partnerSyncCode && user.womenHealth.partnerSyncCode !== 'PARTNER-DEMO-RU'
+        ? user.womenHealth.partnerSyncCode
+        : (user.id && user.id !== 'usr-new'
+          ? `PARTNER-${user.id.replace(/[^A-Za-z0-9]/g, '').slice(-4).toUpperCase()}-RU`
+          : `PARTNER-${(user.fullName || 'USER').replace(/[^A-Za-z0-9]/g, '').slice(0, 4).toUpperCase() || 'A1B2'}-RU`);
     navigator.clipboard.writeText(code);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -1044,60 +1101,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
         </div>
       )}
 
-      {/* SECTION 4: ПАРТНЁРСКАЯ СИНХРОНИЗАЦИЯ, ОБЛАЧНОЕ ХРАНИЛИЩЕ И БЕЗОПАСНОСТЬ */}
+      {/* SECTION 4: ПАРТНЁРСКАЯ СИНХРОНИЗАЦИЯ И БЕЗОПАСНОСТЬ */}
       {(activeTab === 'all' || activeTab === 'security') && (
         <div className="space-y-6">
-          {/* CLOUD STORAGE & BACKUP PANEL */}
-          <div className="bg-[#0B1320] border border-white/[0.06] rounded-[24px] p-6 sm:p-8 space-y-4 shadow-xl">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/[0.06] pb-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-[#34F5A4]/10 border border-[#34F5A4]/20 flex items-center justify-center text-[#34F5A4]">
-                  <FileCheck className="w-5 h-5" />
-                </div>
-                <div>
-                  <h2 className="font-extrabold text-lg text-white">Резервное копирование и экспорт</h2>
-                  <p className="text-xs text-white/60">
-                    Сохранение и восстановление медицинской карты, дневников и исследований
-                  </p>
-                </div>
-              </div>
-              <span className="text-[11px] font-bold text-[#34F5A4] bg-[#34F5A4]/10 border border-[#34F5A4]/20 px-3 py-1 rounded-full w-fit">
-                Локальный архив готов
-              </span>
-            </div>
-
-            <div className="bg-[#111C2C]/60 p-4 rounded-2xl border border-white/[0.06] space-y-3">
-              <div className="flex items-center gap-2 text-white/90 font-medium text-xs">
-                <Lock className="w-4 h-4 text-[#34F5A4]" />
-                <span>Безопасный локальный экспорт (JSON)</span>
-              </div>
-              <p className="text-xs text-white/60 leading-relaxed">
-                Все ваши медицинские показатели хранятся зашифрованными в вашем браузере. Вы можете экспортировать полный бэкап карты на ваше устройство или импортировать ранее сохраненный файл.
-              </p>
-
-              <div className="flex flex-wrap items-center gap-3 pt-2">
-                <button
-                  onClick={handleExportBackup}
-                  className="px-4 py-2 bg-[#34F5A4] hover:bg-[#2ce093] text-[#050A12] font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-2 cursor-pointer"
-                >
-                  <Download className="w-4 h-4" />
-                  <span>Скачать полный бэкап (.json)</span>
-                </button>
-
-                <label className="px-4 py-2 bg-white/5 hover:bg-white/10 text-white border border-white/10 font-bold text-xs rounded-xl transition-all flex items-center gap-2 cursor-pointer">
-                  <Upload className="w-4 h-4 text-[#4DEBFF]" />
-                  <span>Восстановить из файла</span>
-                  <input
-                    type="file"
-                    accept=".json"
-                    onChange={handleImportBackup}
-                    className="hidden"
-                  />
-                </label>
-              </div>
-            </div>
-          </div>
-
           {/* PARTNER CYCLE SYNC BLOCK (For female users) */}
           {user.gender === 'female' && user.womenHealth && (
             <div className="bg-gradient-to-br from-pink-500/20 to-rose-600/20 border border-pink-500/30 text-white p-6 sm:p-8 rounded-[24px] space-y-5 shadow-xl backdrop-blur-xl">
@@ -1116,9 +1122,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 <span className={`text-[11px] font-bold px-3 py-1 rounded-full w-fit border ${
                   linkedPartnerCode
                     ? 'text-emerald-300 bg-emerald-500/20 border-emerald-400/30'
-                    : 'text-pink-300 bg-pink-500/20 border-pink-400/30'
+                    : 'text-slate-300 bg-slate-800/60 border-slate-700/50'
                 }`}>
-                  {linkedPartnerCode ? 'Партнёр подключён' : 'Активно'}
+                  {linkedPartnerCode ? 'Партнёр подключён' : 'Ожидает подключения'}
                 </span>
               </div>
 
@@ -1128,10 +1134,11 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   <span className="text-xs text-pink-200 font-semibold block">Ваш персональный код синхронизации:</span>
                   <div className="flex items-center justify-between gap-3 bg-black/40 p-2.5 rounded-xl border border-white/10">
                     <code className="text-sm font-mono font-bold tracking-widest text-pink-300">
-                      {user.womenHealth.partnerSyncCode ||
-                        (user.id && user.id !== 'usr-new'
+                      {user.womenHealth?.partnerSyncCode && user.womenHealth.partnerSyncCode !== 'PARTNER-DEMO-RU'
+                        ? user.womenHealth.partnerSyncCode
+                        : (user.id && user.id !== 'usr-new'
                           ? `PARTNER-${user.id.replace(/[^A-Za-z0-9]/g, '').slice(-4).toUpperCase()}-RU`
-                          : 'PARTNER-DEMO-RU')}
+                          : `PARTNER-${(user.fullName || 'USER').replace(/[^A-Za-z0-9]/g, '').slice(0, 4).toUpperCase() || 'A1B2'}-RU`)}
                     </code>
                     <button
                       onClick={handleCopyCode}

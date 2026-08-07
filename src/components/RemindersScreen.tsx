@@ -360,7 +360,7 @@ export const RemindersScreen: React.FC<RemindersScreenProps> = ({
     <div className="max-w-4xl mx-auto space-y-6 pb-32 sm:pb-36">
       {/* Toast Alert Banner */}
       {toastMessage && (
-        <div className="fixed top-20 right-4 z-50 bg-emerald-500 text-slate-950 font-bold px-4 py-3 rounded-2xl shadow-2xl border border-emerald-300 flex items-center gap-2 animate-bounce">
+        <div className="fixed top-24 right-4 z-[120] bg-emerald-500 text-slate-950 font-bold px-4 py-3 rounded-2xl shadow-2xl border border-emerald-300 flex items-center gap-2 animate-bounce">
           <Sparkles className="w-5 h-5 shrink-0" />
           <span className="text-xs sm:text-sm">{toastMessage}</span>
         </div>

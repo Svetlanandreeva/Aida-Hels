@@ -219,6 +219,66 @@ export default function App() {
     }
   }, [user, documents, dailyLogs, pressureLogs]);
 
+  // Auto-synchronize medications from user profile (chronicDiagnoses & psychiatricData) to reminders
+  useEffect(() => {
+    if (!user) return;
+
+    const userMeds: Array<{ title: string; time: string; notes?: string }> = [];
+
+    if (Array.isArray(user.chronicDiagnoses)) {
+      user.chronicDiagnoses.forEach((d) => {
+        if (d.medication && d.medication !== 'Без медикаментов' && d.medication.trim()) {
+          const time = d.schedule?.morning?.time || '08:00';
+          userMeds.push({
+            title: d.medication.trim(),
+            time,
+            notes: `Назначено по диагнозу: ${d.name}`,
+          });
+        }
+      });
+    }
+
+    if (Array.isArray(user.psychology?.psychiatricData?.medications)) {
+      user.psychology.psychiatricData.medications.forEach((medName) => {
+        if (medName && medName !== 'Без медикаментов' && medName.trim()) {
+          userMeds.push({
+            title: medName.trim(),
+            time: '20:00',
+            notes: 'Назначено специалистом (психологический профиль)',
+          });
+        }
+      });
+    }
+
+    if (userMeds.length > 0) {
+      setReminders((prevReminders) => {
+        let changed = false;
+        const updated = [...prevReminders];
+
+        userMeds.forEach((m) => {
+          const exists = updated.some(
+            (r) => r.category === 'medication' && r.title.toLowerCase().trim() === m.title.toLowerCase().trim()
+          );
+          if (!exists) {
+            changed = true;
+            updated.push({
+              id: `med-quest-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+              title: m.title,
+              category: 'medication',
+              time: m.time,
+              frequency: 'daily',
+              dosage: 'По назначению',
+              notes: m.notes,
+              isEnabled: true,
+            });
+          }
+        });
+
+        return changed ? updated : prevReminders;
+      });
+    }
+  }, [user]);
+
   // Save non-demo user data changes to localStorage
   useEffect(() => {
     if (!isDemoUser(user)) {

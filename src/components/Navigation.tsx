@@ -128,7 +128,7 @@ export const Navigation: React.FC<NavigationProps> = ({
   return (
     <>
       {/* TOP NAVIGATION (ВЕРХНЯЯ НАВИГАЦИЯ) */}
-      <header className="sticky top-0 z-40 bg-[#050711]/80 backdrop-blur-2xl border-b border-[#99AEFF]/15 h-16 sm:h-20 px-3 sm:px-12 overflow-hidden">
+      <header className="sticky top-0 z-[100] bg-[#050711]/80 backdrop-blur-2xl border-b border-[#99AEFF]/15 h-16 sm:h-20 px-3 sm:px-12">
         <div className="max-w-[1320px] mx-auto h-full flex items-center justify-between gap-2">
           {/* LEFT: LOGO + TITLE + EYEBROW */}
           <button
@@ -173,16 +173,21 @@ export const Navigation: React.FC<NavigationProps> = ({
               </button>
 
               {showBellDropdown && (
-                <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-[#0B1320] border border-white/10 rounded-2xl shadow-2xl p-4 z-50 space-y-3 text-xs">
-                  <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
-                    <div className="flex items-center gap-2 font-bold text-white text-sm">
-                      <Bell className="w-4 h-4 text-[#34F5A4]" />
-                      <span>Центр уведомлений</span>
+                <>
+                  <div
+                    className="fixed inset-0 z-[105]"
+                    onClick={() => setShowBellDropdown(false)}
+                  />
+                  <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-[#0B1320] border border-white/15 rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.9)] p-4 z-[110] space-y-3 text-xs">
+                    <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
+                      <div className="flex items-center gap-2 font-bold text-white text-sm">
+                        <Bell className="w-4 h-4 text-[#34F5A4]" />
+                        <span>Центр уведомлений</span>
+                      </div>
+                      <span className="px-2 py-0.5 rounded-full bg-[#34F5A4]/10 text-[#34F5A4] font-bold text-[10px]">
+                        {unreadCount > 0 ? `Новых: ${unreadCount}` : 'Нет новых'}
+                      </span>
                     </div>
-                    <span className="px-2 py-0.5 rounded-full bg-[#34F5A4]/10 text-[#34F5A4] font-bold text-[10px]">
-                      {unreadCount > 0 ? `Новых: ${unreadCount}` : 'Нет новых'}
-                    </span>
-                  </div>
 
                   <div className="space-y-2 max-h-60 overflow-y-auto">
                     {dynamicNotifs.length === 0 ? (
@@ -240,6 +245,7 @@ export const Navigation: React.FC<NavigationProps> = ({
                     <span>Управление уведомлениями в Настройках</span>
                   </button>
                 </div>
+              </>
               )}
             </div>
 
