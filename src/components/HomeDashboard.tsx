@@ -295,6 +295,17 @@ export default function HomeDashboard({
         </button>
       </div>
 
+      {/* AI STATUS TOP BAR & 4 METRIC CARDS GRID (ОБЩЕЕ СОСТОЯНИЕ, ЭНЕРГИЯ, СОН, ПРОГНОЗ) */}
+      <AiMetricsTopSection
+        user={user}
+        aiAnalysis={aiAnalysis}
+        documents={documents}
+        dailyLogs={dailyLogs}
+        diaryEntries={diaryEntries}
+        onNavigate={onNavigate}
+        displayHealthScore={displayHealthScore}
+      />
+
       {/* MEDICATION SCHEDULE SECTION */}
       <MedicationTodaySection
         user={user}
