@@ -32,6 +32,7 @@ import { StateConnectionsSection } from './dashboard/StateConnectionsSection';
 import { RecommendedNextTestsSection } from './dashboard/RecommendedNextTestsSection';
 import { MaturityStageIndicator } from './dashboard/MaturityStageIndicator';
 import { AiMetricsTopSection } from './dashboard/AiMetricsTopSection';
+import { MedicationTodaySection } from './dashboard/MedicationTodaySection';
 
 export interface HomeDashboardProps {
   user: UserProfile;
@@ -294,15 +295,12 @@ export default function HomeDashboard({
         </button>
       </div>
 
-      {/* 2. AI STATUS TOP BAR & 4 METRIC CARDS GRID (UNDER GREETING) */}
-      <AiMetricsTopSection
+      {/* MEDICATION SCHEDULE SECTION */}
+      <MedicationTodaySection
         user={user}
-        aiAnalysis={aiAnalysis}
-        documents={documents}
-        dailyLogs={dailyLogs}
-        diaryEntries={diaryEntries}
+        reminders={reminders}
         onNavigate={onNavigate}
-        displayHealthScore={displayHealthScore}
+        onOpenAddMedication={() => onNavigate('reminders')}
       />
 
       {/* MATURITY STAGE INDICATOR (ACCURATE DATA SUFFICIENCY BANNER) */}

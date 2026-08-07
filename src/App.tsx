@@ -590,6 +590,11 @@ export default function App() {
             systems={bodySystems}
             onSelectSystem={(system) => setSelectedSystemDetail(system)}
             onOpenOverviewModal={() => setIsOverviewModalOpen(true)}
+            user={user}
+            documents={documents}
+            dailyLogs={dailyLogs}
+            diaryEntries={diaryEntries}
+            onNavigate={(screen) => setCurrentScreen(screen)}
           />
         )}
 

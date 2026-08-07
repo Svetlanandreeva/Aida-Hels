@@ -1,5 +1,14 @@
 import React, { useState } from 'react';
-import { BodySystem } from '../types';
+import {
+  BodySystem,
+  UserProfile,
+  StructuredHealthAnalysis,
+  MedicalDocument,
+  DailyLogEntry,
+  DiaryEntry,
+  ScreenId,
+} from '../types';
+import { AiMetricsTopSection } from './dashboard/AiMetricsTopSection';
 import {
   Activity,
   Heart,
@@ -22,12 +31,26 @@ interface BodyMapProps {
   systems: BodySystem[];
   onSelectSystem: (system: BodySystem) => void;
   onOpenOverviewModal?: () => void;
+  user?: UserProfile;
+  aiAnalysis?: StructuredHealthAnalysis | null;
+  documents?: MedicalDocument[];
+  dailyLogs?: DailyLogEntry[];
+  diaryEntries?: DiaryEntry[];
+  onNavigate?: (screen: ScreenId) => void;
+  displayHealthScore?: number | null;
 }
 
 export const BodyMap: React.FC<BodyMapProps> = ({
   systems,
   onSelectSystem,
   onOpenOverviewModal,
+  user,
+  aiAnalysis,
+  documents = [],
+  dailyLogs = [],
+  diaryEntries = [],
+  onNavigate,
+  displayHealthScore,
 }) => {
   const [filter, setFilter] = useState<'all' | 'attention' | 'norm'>('all');
 
@@ -74,6 +97,17 @@ export const BodyMap: React.FC<BodyMapProps> = ({
 
   return (
     <div className="w-full max-w-[1000px] mx-auto space-y-5 px-2 sm:px-0">
+      {/* AI STATUS TOP BAR & 4 METRIC CARDS GRID (ШКАЛЫ ОРГАНИЗМА) */}
+      <AiMetricsTopSection
+        user={user}
+        aiAnalysis={aiAnalysis}
+        documents={documents}
+        dailyLogs={dailyLogs}
+        diaryEntries={diaryEntries}
+        onNavigate={onNavigate}
+        displayHealthScore={displayHealthScore}
+      />
+
       {/* Header Banner */}
       <div className="bg-[#0B1320] border border-white/[0.08] rounded-2xl sm:rounded-3xl p-5 sm:p-6 shadow-xl relative overflow-hidden flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div className="space-y-1.5 z-10">
