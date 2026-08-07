@@ -107,19 +107,66 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
     },
   ];
 
-  const [activeBotId, setActiveBotId] = useState<string>('aida');
+  const STORAGE_KEY_MESSAGES = 'aida_chat_messages_v1';
+  const STORAGE_KEY_BOT_ID = 'aida_active_bot_id';
+
+  const [activeBotId, setActiveBotId] = useState<string>(() => {
+    try {
+      const savedBot = localStorage.getItem(STORAGE_KEY_BOT_ID);
+      if (savedBot && botRoles.some((b) => b.id === savedBot)) {
+        return savedBot;
+      }
+    } catch {
+      // ignore
+    }
+    return 'aida';
+  });
+
   const activeBot = botRoles.find((b) => b.id === activeBotId) || botRoles[0];
 
-  const [messages, setMessages] = useState<Message[]>(() => [
-    {
-      id: '1',
-      sender: 'ai',
-      text: botRoles[0].greeting,
-      timestamp: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
-      botRoleId: botRoles[0].id,
-      botName: botRoles[0].name,
-    },
-  ]);
+  const [messages, setMessages] = useState<Message[]>(() => {
+    try {
+      const savedMsgs = localStorage.getItem(STORAGE_KEY_MESSAGES);
+      if (savedMsgs) {
+        const parsed = JSON.parse(savedMsgs);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return [
+      {
+        id: '1',
+        sender: 'ai',
+        text: botRoles[0].greeting,
+        timestamp: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+        botRoleId: botRoles[0].id,
+        botName: botRoles[0].name,
+      },
+    ];
+  });
+
+  // Save messages to localStorage on change
+  useEffect(() => {
+    try {
+      if (messages.length > 0) {
+        localStorage.setItem(STORAGE_KEY_MESSAGES, JSON.stringify(messages));
+      }
+    } catch {
+      // ignore
+    }
+  }, [messages]);
+
+  // Save activeBotId to localStorage on change
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY_BOT_ID, activeBotId);
+    } catch {
+      // ignore
+    }
+  }, [activeBotId]);
 
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -138,7 +185,7 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
     setActiveBotId(botId);
     const targetBot = botRoles.find((b) => b.id === botId) || botRoles[0];
     
-    // Check if greeting already present for this bot
+    // Check if greeting already present for this bot in recent history
     const lastMsg = messages[messages.length - 1];
     if (!lastMsg || lastMsg.botRoleId !== botId) {
       const greetingMsg: Message = {
@@ -150,6 +197,23 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
         botName: targetBot.name,
       };
       setMessages((prev) => [...prev, greetingMsg]);
+    }
+  };
+
+  const handleClearChat = () => {
+    const freshGreeting: Message = {
+      id: Date.now().toString(),
+      sender: 'ai',
+      text: activeBot.greeting,
+      timestamp: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+      botRoleId: activeBot.id,
+      botName: activeBot.name,
+    };
+    setMessages([freshGreeting]);
+    try {
+      localStorage.removeItem(STORAGE_KEY_MESSAGES);
+    } catch {
+      // ignore
     }
   };
 
@@ -175,9 +239,10 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
     if (!textToSend) setInput('');
     setIsLoading(true);
 
-    // Format multi-turn conversation history for API
-    const historyPayload = updatedMessages.slice(-8).map((m) => ({
+    // Format multi-turn conversation history for API (last 12 turns)
+    const historyPayload = updatedMessages.slice(-12).map((m) => ({
       sender: m.sender,
+      role: m.sender === 'user' ? 'user' : 'model',
       text: m.text,
       botName: m.botName,
     }));
@@ -205,18 +270,18 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
       const aiMsg: Message = {
         id: (Date.now() + 1).toString(),
         sender: 'ai',
-        text: data.text || 'Я рядом. Давай попробуем сформулировать вопрос немного иначе 🤍',
+        text: data.text || 'Я рядом. Чем могу тебе помочь по здоровью или самочувствию? 🤍',
         timestamp: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
         botRoleId: activeBot.id,
         botName: data.botName || activeBot.name,
       };
       setMessages((prev) => [...prev, aiMsg]);
     } catch (err) {
-      console.error(err);
+      console.error('Chat send error:', err);
       const errorMsg: Message = {
         id: (Date.now() + 1).toString(),
         sender: 'ai',
-        text: 'Произошёл временно сбой связи. Попробуй отправить сообщение ещё раз через пару секунд.',
+        text: 'Я рядом и сохранила твоё сообщение. Напиши ещё раз или выбери одну из подсказок ниже 🤍',
         timestamp: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
         botRoleId: activeBot.id,
         botName: activeBot.name,
@@ -250,19 +315,13 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
         </div>
 
         <div className="flex items-center gap-2 self-end sm:self-auto">
+          <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-full">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="text-[10px] font-medium text-emerald-300">История сохраняется</span>
+          </div>
+
           <button
-            onClick={() =>
-              setMessages([
-                {
-                  id: Date.now().toString(),
-                  sender: 'ai',
-                  text: activeBot.greeting,
-                  timestamp: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
-                  botRoleId: activeBot.id,
-                  botName: activeBot.name,
-                },
-              ])
-            }
+            onClick={handleClearChat}
             className="p-2 text-gray-400 hover:text-gray-200 hover:bg-gray-800/80 rounded-xl transition-colors text-xs flex items-center gap-1.5 cursor-pointer border border-gray-800"
             title="Очистить историю диалога"
           >

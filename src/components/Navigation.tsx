@@ -22,6 +22,7 @@ import {
   Home,
   UserRound,
   PersonStanding,
+  RefreshCw,
 } from 'lucide-react';
 
 interface NavigationProps {
@@ -35,6 +36,8 @@ interface NavigationProps {
   activeRemindersCount?: number;
   reminders?: Reminder[];
   documents?: MedicalDocument[];
+  onRefreshAnalysis?: () => void;
+  isLoadingAnalysis?: boolean;
 }
 
 export const Navigation: React.FC<NavigationProps> = ({
@@ -48,6 +51,8 @@ export const Navigation: React.FC<NavigationProps> = ({
   activeRemindersCount,
   reminders = [],
   documents = [],
+  onRefreshAnalysis,
+  isLoadingAnalysis = false,
 }) => {
   const [showBellDropdown, setShowBellDropdown] = useState(false);
   const [dismissedNotifIds, setDismissedNotifIds] = useState<string[]>([]);
@@ -123,22 +128,22 @@ export const Navigation: React.FC<NavigationProps> = ({
   const navTabs = React.useMemo(
     () => [
       { id: 'home', label: 'Главная', icon: Home },
-      { id: 'analysis', label: 'Анализы', icon: FileText },
+      { id: 'mental', label: 'Психика', icon: Brain },
       { id: 'body', label: 'Организм', icon: UserRound },
       { id: 'aida', label: 'Аида', icon: Sparkles },
-      { id: 'tasks', label: 'Задачи', icon: CheckSquare },
+      { id: 'profile', label: 'Профиль', icon: User },
     ],
     []
   );
 
   const activeIndex = React.useMemo(() => {
-    if (currentScreen === 'dashboard' && dashboardTab === 'main') return 0;
-    if (currentScreen === 'dashboard' && dashboardTab === 'lab') return 1;
-    if (['mental_diary', 'pressure_diary', 'body_map'].includes(currentScreen)) return 2;
+    if (currentScreen === 'dashboard') return 0;
+    if (currentScreen === 'mental_diary') return 1;
+    if (['body_map', 'pressure_diary'].includes(currentScreen)) return 2;
     if (currentScreen === 'ai_chat') return 3;
-    if (currentScreen === 'reminders') return 4;
+    if (['profile', 'settings'].includes(currentScreen)) return 4;
     return 0;
-  }, [currentScreen, dashboardTab]);
+  }, [currentScreen]);
 
   return (
     <>
@@ -168,22 +173,52 @@ export const Navigation: React.FC<NavigationProps> = ({
 
 
 
-          {/* RIGHT: NOTIFICATIONS + SETTINGS + USER AVATAR + NAME + ARROW */}
-          <div className="flex items-center gap-2 sm:gap-3">
+          {/* RIGHT: REFRESH AI ANALYSIS + SETTINGS + NOTIFICATIONS + USER AVATAR */}
+          <div className="flex items-center gap-1.5 sm:gap-2.5">
+            {/* REFRESH AI ANALYSIS BUTTON */}
+            <button
+              onClick={() => onRefreshAnalysis?.()}
+              disabled={isLoadingAnalysis}
+              className={`px-2.5 py-2 sm:px-3 sm:py-2.5 rounded-2xl bg-[#111827] border transition-all cursor-pointer min-h-[40px] flex items-center justify-center gap-1.5 ${
+                isLoadingAnalysis
+                  ? 'border-[#3DD9C5]/50 text-[#3DD9C5] opacity-80'
+                  : 'border-white/[0.06] text-white/80 hover:text-white hover:border-[#3DD9C5]/40 hover:bg-[#151d2e]'
+              }`}
+              title="Обновить ИИ-анализ"
+            >
+              <RefreshCw className={`w-4 h-4 text-[#3DD9C5] ${isLoadingAnalysis ? 'animate-spin' : ''}`} />
+              <span className="text-xs font-semibold text-white/90 hidden md:inline">
+                {isLoadingAnalysis ? 'Обновляем...' : 'Обновить анализ'}
+              </span>
+            </button>
+
+            {/* SETTINGS BUTTON */}
+            <button
+              onClick={() => setCurrentScreen('settings')}
+              className={`p-2 sm:p-2.5 rounded-2xl bg-[#111827] border transition-all cursor-pointer min-h-[40px] min-w-[40px] flex items-center justify-center ${
+                currentScreen === 'settings'
+                  ? 'border-[#8B5CF6] text-[#8B5CF6] shadow-[0_0_12px_rgba(139,92,246,0.2)]'
+                  : 'border-white/[0.06] text-white/70 hover:text-white hover:border-white/20'
+              }`}
+              title="Настройки"
+            >
+              <Settings className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
+            </button>
+
             {/* NOTIFICATION CENTER DROPDOWN */}
             <div className="relative">
               <button
                 onClick={() => setShowBellDropdown(!showBellDropdown)}
-                className={`relative p-2 sm:p-2.5 rounded-2xl bg-[#0B1320] border transition-all cursor-pointer min-h-[40px] min-w-[40px] flex items-center justify-center ${
+                className={`relative p-2 sm:p-2.5 rounded-2xl bg-[#111827] border transition-all cursor-pointer min-h-[40px] min-w-[40px] flex items-center justify-center ${
                   showBellDropdown
-                    ? 'border-[#34F5A4] text-[#34F5A4] shadow-[0_0_12px_rgba(52,245,164,0.2)]'
+                    ? 'border-[#3DD9C5] text-[#3DD9C5] shadow-[0_0_12px_rgba(61,217,197,0.2)]'
                     : 'border-white/[0.06] text-white/70 hover:text-white hover:border-white/20'
                 }`}
                 title="Центр уведомлений"
               >
                 <Bell className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
                 {unreadCount > 0 && (
-                  <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-[#34F5A4] animate-pulse" />
+                  <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-[#3DD9C5] animate-pulse" />
                 )}
               </button>
 
@@ -193,109 +228,86 @@ export const Navigation: React.FC<NavigationProps> = ({
                     className="fixed inset-0 z-[105]"
                     onClick={() => setShowBellDropdown(false)}
                   />
-                  <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-[#0B1320] border border-white/15 rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.9)] p-4 z-[110] space-y-3 text-xs">
+                  <div className="fixed sm:absolute top-16 sm:top-full left-3 right-3 sm:left-auto sm:right-0 mt-2 w-auto sm:w-96 bg-[#111827] border border-white/10 rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.9)] p-4 z-[110] space-y-3 text-xs">
                     <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
                       <div className="flex items-center gap-2 font-bold text-white text-sm">
-                        <Bell className="w-4 h-4 text-[#34F5A4]" />
+                        <Bell className="w-4 h-4 text-[#3DD9C5]" />
                         <span>Центр уведомлений</span>
                       </div>
-                      <span className="px-2 py-0.5 rounded-full bg-[#34F5A4]/10 text-[#34F5A4] font-bold text-[10px]">
+                      <span className="px-2 py-0.5 rounded-full bg-[#3DD9C5]/10 text-[#3DD9C5] font-bold text-[10px]">
                         {unreadCount > 0 ? `Новых: ${unreadCount}` : 'Нет новых'}
                       </span>
                     </div>
 
-                  <div className="space-y-2 max-h-60 overflow-y-auto">
-                    {dynamicNotifs.length === 0 ? (
-                      <div className="py-6 px-4 text-center space-y-2 text-white/50">
-                        <BellOff className="w-7 h-7 mx-auto text-white/20" />
-                        <p className="font-semibold text-xs text-white/70">Новых уведомлений нет</p>
-                        <p className="text-[11px] text-white/40">
-                          Все текущие напоминания и отчёты просмотрены
-                        </p>
-                      </div>
-                    ) : (
-                      dynamicNotifs.map((item) => (
-                        <div
-                          key={item.id}
-                          className="p-2.5 bg-[#101A28] hover:bg-[#142133] rounded-xl border border-white/[0.04] space-y-1 relative group transition-colors"
-                        >
-                          <div className="flex items-center justify-between font-bold text-white text-xs pr-6">
-                            <span
-                              className="cursor-pointer hover:text-[#34F5A4] transition-colors flex items-center gap-1.5"
-                              onClick={() => {
-                                if (item.targetScreen) {
-                                  setCurrentScreen(item.targetScreen);
-                                  setShowBellDropdown(false);
-                                }
-                              }}
-                            >
-                              {item.type === 'reminder' && <Pill className="w-3.5 h-3.5 text-[#34F5A4]" />}
-                              {item.type === 'document' && <FileText className="w-3.5 h-3.5 text-[#4DEBFF]" />}
-                              {item.type === 'system' && <Sparkles className="w-3.5 h-3.5 text-purple-400" />}
-                              <span>{item.title}</span>
-                            </span>
-                            <span className="text-[10px] text-white/40 shrink-0">{item.time}</span>
-                          </div>
-                          <p className="text-white/60 text-[11px] leading-relaxed">{item.message}</p>
-
-                          <button
-                            onClick={() => setDismissedNotifIds((prev) => [...prev, item.id])}
-                            className="absolute top-2 right-2 p-1 text-white/30 hover:text-white rounded transition-colors cursor-pointer"
-                            title="Скрыть уведомление"
-                          >
-                            <X className="w-3.5 h-3.5" />
-                          </button>
+                    <div className="space-y-2 max-h-60 overflow-y-auto">
+                      {dynamicNotifs.length === 0 ? (
+                        <div className="py-6 px-4 text-center space-y-2 text-white/50">
+                          <BellOff className="w-7 h-7 mx-auto text-white/20" />
+                          <p className="font-semibold text-xs text-white/70">Новых уведомлений нет</p>
+                          <p className="text-[11px] text-white/40">
+                            Все текущие напоминания и отчёты просмотрены
+                          </p>
                         </div>
-                      ))
-                    )}
-                  </div>
+                      ) : (
+                        dynamicNotifs.map((item) => (
+                          <div
+                            key={item.id}
+                            className="p-2.5 bg-[#090B10] hover:bg-[#151D2E] rounded-xl border border-white/[0.04] space-y-1 relative group transition-colors"
+                          >
+                            <div className="flex items-center justify-between font-bold text-white text-xs pr-6">
+                              <span
+                                className="cursor-pointer hover:text-[#3DD9C5] transition-colors flex items-center gap-1.5"
+                                onClick={() => {
+                                  if (item.targetScreen) {
+                                    setCurrentScreen(item.targetScreen);
+                                    setShowBellDropdown(false);
+                                  }
+                                }}
+                              >
+                                {item.type === 'reminder' && <Pill className="w-3.5 h-3.5 text-[#3DD9C5]" />}
+                                {item.type === 'document' && <FileText className="w-3.5 h-3.5 text-[#8B5CF6]" />}
+                                {item.type === 'system' && <Sparkles className="w-3.5 h-3.5 text-[#8B5CF6]" />}
+                                <span>{item.title}</span>
+                              </span>
+                              <span className="text-[10px] text-white/40 shrink-0">{item.time}</span>
+                            </div>
+                            <p className="text-white/60 text-[11px] leading-relaxed">{item.message}</p>
 
-                  <button
-                    onClick={() => {
-                      setShowBellDropdown(false);
-                      setCurrentScreen('settings');
-                    }}
-                    className="w-full py-2 bg-white/5 hover:bg-white/10 text-white font-bold text-xs rounded-xl border border-white/10 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
-                  >
-                    <span>Управление уведомлениями в Настройках</span>
-                  </button>
-                </div>
-              </>
+                            <button
+                              onClick={() => setDismissedNotifIds((prev) => [...prev, item.id])}
+                              className="absolute top-2 right-2 p-1 text-white/30 hover:text-white rounded transition-colors cursor-pointer"
+                              title="Скрыть уведомление"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        setShowBellDropdown(false);
+                        setCurrentScreen('settings');
+                      }}
+                      className="w-full py-2 bg-white/5 hover:bg-white/10 text-white font-bold text-xs rounded-xl border border-white/10 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <span>Управление уведомлениями в Настройках</span>
+                    </button>
+                  </div>
+                </>
               )}
             </div>
 
-            {onOpenTutorial && (
-              <button
-                onClick={onOpenTutorial}
-                className="hidden sm:flex px-2.5 sm:px-3 py-2 rounded-2xl bg-[#34F5A4]/10 border border-[#34F5A4]/20 hover:bg-[#34F5A4]/20 text-[#34F5A4] transition-all cursor-pointer min-h-[40px] items-center justify-center gap-1.5 text-xs font-bold"
-                title="Обучение по функционалу"
-              >
-                <Sparkles className="w-4 h-4 shrink-0" />
-                <span className="hidden sm:inline">Обучение</span>
-              </button>
-            )}
-
-            <button
-              onClick={() => setCurrentScreen('settings')}
-              className={`p-2 sm:p-2.5 rounded-2xl bg-[#0B1320] border transition-all cursor-pointer min-h-[40px] min-w-[40px] flex items-center justify-center ${
-                currentScreen === 'settings'
-                  ? 'border-[#34F5A4] text-[#34F5A4] shadow-[0_0_12px_rgba(52,245,164,0.2)]'
-                  : 'border-white/[0.06] text-white/70 hover:text-white hover:border-white/20'
-              }`}
-              title="Настройки"
-            >
-              <Settings className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
-            </button>
-
             <button
               onClick={() => setCurrentScreen('profile')}
-              className="flex items-center gap-2 sm:gap-3 pl-1.5 sm:pl-2 pr-2.5 sm:pr-3 py-1.5 rounded-2xl bg-[#0B1320] border border-white/[0.06] hover:border-white/20 transition-all cursor-pointer text-left min-h-[40px]"
+              className="flex items-center gap-2 sm:gap-2.5 pl-1.5 sm:pl-2 pr-2.5 sm:pr-3 py-1.5 rounded-2xl bg-[#111827] border border-white/[0.06] hover:border-white/20 transition-all cursor-pointer text-left min-h-[40px]"
+              title="Профиль"
             >
-              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-gradient-to-tr from-[#34F5A4] to-[#4DEBFF] text-[#050A12] font-black text-xs sm:text-sm flex items-center justify-center shadow-md">
+              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-gradient-to-tr from-[#8B5CF6] to-[#3DD9C5] text-[#090B10] font-black text-xs sm:text-sm flex items-center justify-center shadow-md">
                 {userName.charAt(0)}
               </div>
               <span className="text-xs sm:text-sm font-medium text-white hidden sm:inline">{userName}</span>
-              <ChevronDown className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white/40" />
             </button>
           </div>
         </div>
@@ -321,7 +333,7 @@ export const Navigation: React.FC<NavigationProps> = ({
                   }}
                   className="pointer-events-auto absolute left-1/2 -translate-x-1/2 top-0 flex flex-col items-center cursor-pointer group"
                 >
-                  <div className="w-[46px] h-[46px] rounded-full flex items-center justify-center text-white bg-[#0A0E16]/95 backdrop-blur-2xl border border-[#8968FF]/60 shadow-[0_0_22px_rgba(137,104,255,0.5),0_8px_22px_rgba(0,0,0,0.7)] group-hover:border-[#8968FF] group-hover:shadow-[0_0_28px_rgba(137,104,255,0.75)] group-hover:-translate-y-0.5 active:scale-95 transition-all duration-200">
+                  <div className="w-[46px] h-[46px] rounded-full flex items-center justify-center text-white bg-[radial-gradient(circle_at_50%_35%,rgba(137,104,255,0.35)_0%,rgba(10,14,22,0.96)_80%)] backdrop-blur-2xl border border-[#8968FF]/40 shadow-[inset_0_1px_10px_rgba(137,104,255,0.4),0_8px_18px_rgba(0,0,0,0.65)] group-hover:border-[#8968FF]/80 group-hover:shadow-[inset_0_1px_14px_rgba(137,104,255,0.6),0_0_12px_rgba(137,104,255,0.35)] group-hover:-translate-y-0.5 active:scale-95 transition-all duration-200">
                     <Activity className="w-5 h-5 text-[#8968FF] group-hover:scale-110 transition-transform" strokeWidth={2} />
                   </div>
                   <span className="text-[10px] font-medium tracking-tight text-gray-200 mt-1 whitespace-nowrap drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]">
@@ -342,7 +354,7 @@ export const Navigation: React.FC<NavigationProps> = ({
                   }}
                   className="pointer-events-auto absolute left-2 top-[24px] flex flex-col items-center cursor-pointer group"
                 >
-                  <div className="w-[46px] h-[46px] rounded-full flex items-center justify-center text-white bg-[#0A0E16]/95 backdrop-blur-2xl border border-[#4DEBFF]/60 shadow-[0_0_22px_rgba(77,235,255,0.5),0_8px_22px_rgba(0,0,0,0.7)] group-hover:border-[#4DEBFF] group-hover:shadow-[0_0_28px_rgba(77,235,255,0.75)] group-hover:-translate-y-0.5 active:scale-95 transition-all duration-200">
+                  <div className="w-[46px] h-[46px] rounded-full flex items-center justify-center text-white bg-[radial-gradient(circle_at_50%_35%,rgba(77,235,255,0.35)_0%,rgba(10,14,22,0.96)_80%)] backdrop-blur-2xl border border-[#4DEBFF]/40 shadow-[inset_0_1px_10px_rgba(77,235,255,0.4),0_8px_18px_rgba(0,0,0,0.65)] group-hover:border-[#4DEBFF]/80 group-hover:shadow-[inset_0_1px_14px_rgba(77,235,255,0.6),0_0_12px_rgba(77,235,255,0.35)] group-hover:-translate-y-0.5 active:scale-95 transition-all duration-200">
                     <Brain className="w-5 h-5 text-[#4DEBFF] group-hover:scale-110 transition-transform" strokeWidth={2} />
                   </div>
                   <span className="text-[10px] font-medium tracking-tight text-gray-200 mt-1 whitespace-nowrap drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]">
@@ -363,7 +375,7 @@ export const Navigation: React.FC<NavigationProps> = ({
                   }}
                   className="pointer-events-auto absolute right-2 top-[24px] flex flex-col items-center cursor-pointer group"
                 >
-                  <div className="w-[46px] h-[46px] rounded-full flex items-center justify-center text-white bg-[#0A0E16]/95 backdrop-blur-2xl border border-[#34F5A4]/60 shadow-[0_0_22px_rgba(52,245,164,0.5),0_8px_22px_rgba(0,0,0,0.7)] group-hover:border-[#34F5A4] group-hover:shadow-[0_0_28px_rgba(52,245,164,0.75)] group-hover:-translate-y-0.5 active:scale-95 transition-all duration-200">
+                  <div className="w-[46px] h-[46px] rounded-full flex items-center justify-center text-white bg-[radial-gradient(circle_at_50%_35%,rgba(52,245,164,0.35)_0%,rgba(10,14,22,0.96)_80%)] backdrop-blur-2xl border border-[#34F5A4]/40 shadow-[inset_0_1px_10px_rgba(52,245,164,0.4),0_8px_18px_rgba(0,0,0,0.65)] group-hover:border-[#34F5A4]/80 group-hover:shadow-[inset_0_1px_14px_rgba(52,245,164,0.6),0_0_12px_rgba(52,245,164,0.35)] group-hover:-translate-y-0.5 active:scale-95 transition-all duration-200">
                     <PersonStanding className="w-5 h-5 text-[#34F5A4] group-hover:scale-110 transition-transform" strokeWidth={2} />
                   </div>
                   <span className="text-[10px] font-medium tracking-tight text-gray-200 mt-1 whitespace-nowrap drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]">
@@ -400,25 +412,18 @@ export const Navigation: React.FC<NavigationProps> = ({
                   key={tab.id}
                   type="button"
                   onClick={() => {
+                    setShowOrganismMenu(false);
                     if (tab.id === 'home') {
-                      setShowOrganismMenu(false);
                       setCurrentScreen('dashboard');
                       setDashboardTab('main');
-                    } else if (tab.id === 'analysis') {
-                      setShowOrganismMenu(false);
-                      setCurrentScreen('dashboard');
-                      setDashboardTab('lab');
+                    } else if (tab.id === 'mental') {
+                      setCurrentScreen('mental_diary');
                     } else if (tab.id === 'body') {
-                      setShowOrganismMenu((prev) => !prev);
-                      if (!['mental_diary', 'pressure_diary', 'body_map'].includes(currentScreen)) {
-                        setCurrentScreen('body_map');
-                      }
+                      setCurrentScreen('body_map');
                     } else if (tab.id === 'aida') {
-                      setShowOrganismMenu(false);
                       setCurrentScreen('ai_chat');
-                    } else if (tab.id === 'tasks') {
-                      setShowOrganismMenu(false);
-                      setCurrentScreen('reminders');
+                    } else if (tab.id === 'profile') {
+                      setCurrentScreen('profile');
                     }
                   }}
                   className={`nav-item ${isActive ? 'active' : ''}`}
@@ -426,7 +431,7 @@ export const Navigation: React.FC<NavigationProps> = ({
                   <div className="nav-icon">
                     {!isActive && <Icon size={20} strokeWidth={1.8} />}
                   </div>
-                  <span>{tab.label}</span>
+                  <span className="text-[11px] font-medium tracking-tight text-white/80">{tab.label}</span>
                 </button>
               );
             })}

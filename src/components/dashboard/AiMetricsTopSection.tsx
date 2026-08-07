@@ -2,14 +2,17 @@ import React, { useState } from 'react';
 import {
   Database,
   ShieldCheck,
+  Sparkles,
+  ThumbsUp,
+  ThumbsDown,
   ChevronDown,
   ChevronUp,
-  ChevronRight,
-  Info,
+  X,
   Heart,
   Zap,
   Moon,
   TrendingUp,
+  ChevronRight,
 } from 'lucide-react';
 import {
   StructuredHealthAnalysis,
@@ -40,6 +43,7 @@ export const AiMetricsTopSection: React.FC<AiMetricsTopSectionProps> = ({
 }) => {
   const [showSources, setShowSources] = useState(false);
   const [feedbackSent, setFeedbackSent] = useState<'useful' | 'inaccurate' | null>(null);
+  const [activeInfoTooltip, setActiveInfoTooltip] = useState<'completeness' | 'confidence' | 'ai' | null>(null);
 
   // 1. Calculate values
   const completenessPct = aiAnalysis?.dataCompleteness
@@ -96,98 +100,6 @@ export const AiMetricsTopSection: React.FC<AiMetricsTopSectionProps> = ({
 
   return (
     <div className="space-y-3.5 sm:space-y-4">
-      {/* AI TOP STATUS BAR */}
-      <div className="bg-[#0B1320] border border-white/[0.08] rounded-2xl sm:rounded-3xl p-4 sm:p-5 shadow-xl space-y-3">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/[0.06] pb-3">
-          {/* Metadata badges */}
-          <div className="flex flex-wrap items-center gap-4 text-xs font-semibold text-white/80">
-            <div className="flex items-center gap-2">
-              <Database className="w-4 h-4 text-[#4DEBFF]" />
-              <span>
-                Полнота данных: <strong className="text-white font-extrabold">{completenessPct}%</strong>
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4 text-[#34F5A4]" />
-              <span>
-                Достоверность ИИ: <strong className="text-white font-extrabold">{confidencePct}%</strong>
-              </span>
-            </div>
-          </div>
-
-          {/* Action buttons */}
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={() => handleSendFeedback('useful')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border ${
-                feedbackSent === 'useful'
-                  ? 'bg-[#34F5A4]/20 border-[#34F5A4]/50 text-[#34F5A4]'
-                  : 'bg-[#101A28] hover:bg-[#34F5A4]/15 border-white/[0.08] text-emerald-400'
-              }`}
-            >
-              👍 Полезно
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleSendFeedback('inaccurate')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border ${
-                feedbackSent === 'inaccurate'
-                  ? 'bg-rose-500/20 border-rose-500/50 text-rose-300'
-                  : 'bg-[#101A28] hover:bg-rose-500/15 border-white/[0.08] text-rose-400'
-              }`}
-            >
-              👎 Неточно
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setShowSources(!showSources)}
-              className="px-3.5 py-1.5 rounded-xl bg-[#101A28] hover:bg-white/[0.08] text-white/90 border border-white/10 font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer shrink-0"
-            >
-              <span>Источники</span>
-              {showSources ? <ChevronUp className="w-3.5 h-3.5 text-[#34F5A4]" /> : <ChevronDown className="w-3.5 h-3.5 text-white/60" />}
-            </button>
-          </div>
-        </div>
-
-        {/* AI DISCLAIMER */}
-        <div className="p-3 bg-[#101A28]/60 border border-white/[0.04] rounded-xl text-[11px] text-white/60 flex items-center gap-2.5">
-          <Info className="w-4 h-4 text-[#34F5A4] shrink-0" />
-          <p className="leading-tight">
-            Сгенерировано ИИ. Материал носит информационный характер, не является постановкой диагноза и не заменяет приём врача.
-          </p>
-        </div>
-
-        {/* EXPANDABLE SOURCES LIST */}
-        {showSources && (
-          <div className="bg-[#101A28] p-4 rounded-2xl border border-white/[0.08] space-y-2 text-xs text-white/80 animate-fadeIn mt-2">
-            <span className="font-bold text-[#34F5A4] block mb-1">
-              Источники данных и клинические валидаторы:
-            </span>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              <div className="p-2.5 bg-black/20 rounded-xl border border-white/[0.04]">
-                <span className="font-bold text-white block">Лабораторные анализы</span>
-                <span className="text-white/50 text-[11px] block mt-0.5">
-                  {documents.length > 0 ? `Загружено бланков: ${documents.length}` : 'Бланки пока не загружены'}
-                </span>
-              </div>
-              <div className="p-2.5 bg-black/20 rounded-xl border border-white/[0.04]">
-                <span className="font-bold text-white block">Электронная анкета</span>
-                <span className="text-white/50 text-[11px] block mt-0.5">Профиль здоровья пользователя</span>
-              </div>
-              <div className="p-2.5 bg-black/20 rounded-xl border border-white/[0.04]">
-                <span className="font-bold text-white block">Дневник самочувствия</span>
-                <span className="text-white/50 text-[11px] block mt-0.5">
-                  {dailyLogs.length > 0 || diaryEntries.length > 0 ? 'Записи активности сохранены' : 'Ожидает новых записей'}
-                </span>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
       {/* 4 METRIC CARDS GRID */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
         {/* CARD 1: ОБЩЕЕ СОСТОЯНИЕ */}
@@ -291,6 +203,191 @@ export const AiMetricsTopSection: React.FC<AiMetricsTopSectionProps> = ({
             </span>
           </div>
         </div>
+      </div>
+
+      {/* AI STATUS BAR (MOVED TO BOTTOM) */}
+      <div className="bg-[#0B1320] border border-white/[0.08] rounded-2xl sm:rounded-3xl p-4 sm:p-5 shadow-xl space-y-3">
+        <div className="flex items-center justify-between gap-3 border-b border-white/[0.06] pb-3">
+          {/* Metadata Icon Buttons Row (Only icons visible, text revealed on click) */}
+          <div className="flex items-center gap-2">
+            {/* 1. Database Icon Button (Полнота данных) */}
+            <button
+              type="button"
+              onClick={() => setActiveInfoTooltip(activeInfoTooltip === 'completeness' ? null : 'completeness')}
+              className={`p-2 rounded-xl transition-all border cursor-pointer flex items-center justify-center relative group ${
+                activeInfoTooltip === 'completeness'
+                  ? 'bg-[#4DEBFF]/20 border-[#4DEBFF] shadow-[0_0_12px_rgba(77,235,255,0.4)]'
+                  : 'bg-[#101A28] hover:bg-white/10 border-white/10 text-[#4DEBFF]'
+              }`}
+              title="Полнота данных (нажмите для подробностей)"
+            >
+              <Database className="w-4 h-4 text-[#4DEBFF]" />
+            </button>
+
+            {/* 2. ShieldCheck Icon Button (Достоверность ИИ) */}
+            <button
+              type="button"
+              onClick={() => setActiveInfoTooltip(activeInfoTooltip === 'confidence' ? null : 'confidence')}
+              className={`p-2 rounded-xl transition-all border cursor-pointer flex items-center justify-center relative group ${
+                activeInfoTooltip === 'confidence'
+                  ? 'bg-[#34F5A4]/20 border-[#34F5A4] shadow-[0_0_12px_rgba(52,245,164,0.4)]'
+                  : 'bg-[#101A28] hover:bg-white/10 border-white/10 text-[#34F5A4]'
+              }`}
+              title="Достоверность ИИ (нажмите для подробностей)"
+            >
+              <ShieldCheck className="w-4 h-4 text-[#34F5A4]" />
+            </button>
+
+            {/* 3. Sparkles Icon Button (Сгенерировано ИИ — directly to the right of the first two) */}
+            <button
+              type="button"
+              onClick={() => setActiveInfoTooltip(activeInfoTooltip === 'ai' ? null : 'ai')}
+              className={`p-2 rounded-xl transition-all border cursor-pointer flex items-center justify-center relative group ${
+                activeInfoTooltip === 'ai'
+                  ? 'bg-[#8968FF]/20 border-[#8968FF] shadow-[0_0_12px_rgba(137,104,255,0.4)]'
+                  : 'bg-[#101A28] hover:bg-white/10 border-white/10 text-[#8968FF]'
+              }`}
+              title="Сгенерировано ИИ (нажмите для подробностей)"
+            >
+              <Sparkles className="w-4 h-4 text-[#8968FF]" />
+            </button>
+          </div>
+
+          {/* Action buttons */}
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => handleSendFeedback('useful')}
+              className={`p-2 rounded-xl transition-all border cursor-pointer flex items-center justify-center relative ${
+                feedbackSent === 'useful'
+                  ? 'bg-[#34F5A4]/20 border-[#34F5A4] text-[#34F5A4] shadow-[0_0_12px_rgba(52,245,164,0.4)]'
+                  : 'bg-[#101A28] hover:bg-[#34F5A4]/15 border-white/10 text-emerald-400'
+              }`}
+              title="Полезно"
+            >
+              <ThumbsUp className="w-4 h-4" />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleSendFeedback('inaccurate')}
+              className={`p-2 rounded-xl transition-all border cursor-pointer flex items-center justify-center relative ${
+                feedbackSent === 'inaccurate'
+                  ? 'bg-rose-500/20 border-rose-500/50 text-rose-300 shadow-[0_0_12px_rgba(244,63,94,0.4)]'
+                  : 'bg-[#101A28] hover:bg-rose-500/15 border-white/10 text-rose-400'
+              }`}
+              title="Неточно"
+            >
+              <ThumbsDown className="w-4 h-4" />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowSources(!showSources)}
+              className="px-3.5 py-1.5 rounded-xl bg-[#101A28] hover:bg-white/[0.08] text-white/90 border border-white/10 font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer shrink-0"
+            >
+              <span>Источники</span>
+              {showSources ? <ChevronUp className="w-3.5 h-3.5 text-[#34F5A4]" /> : <ChevronDown className="w-3.5 h-3.5 text-white/60" />}
+            </button>
+          </div>
+        </div>
+
+        {/* REVEALED EXPLANATION POPOVER ON CLICK */}
+        {activeInfoTooltip === 'completeness' && (
+          <div className="p-3 bg-[#101A28] border border-[#4DEBFF]/30 rounded-xl text-xs text-white/90 flex items-start justify-between gap-3 animate-fadeIn">
+            <div className="flex items-start gap-2.5">
+              <Database className="w-4 h-4 text-[#4DEBFF] shrink-0 mt-0.5" />
+              <div>
+                <span className="font-extrabold text-[#4DEBFF] block">
+                  Полнота данных: {completenessPct}%
+                </span>
+                <p className="text-white/70 text-[11px] mt-0.5 leading-relaxed">
+                  Рассчитано на основе объёма загруженных медицинских исследований, лабораторий, записей в дневниках и анкеты.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setActiveInfoTooltip(null)}
+              className="text-gray-400 hover:text-white p-1 rounded-lg cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
+        {activeInfoTooltip === 'confidence' && (
+          <div className="p-3 bg-[#101A28] border border-[#34F5A4]/30 rounded-xl text-xs text-white/90 flex items-start justify-between gap-3 animate-fadeIn">
+            <div className="flex items-start gap-2.5">
+              <ShieldCheck className="w-4 h-4 text-[#34F5A4] shrink-0 mt-0.5" />
+              <div>
+                <span className="font-extrabold text-[#34F5A4] block">
+                  Достоверность ИИ: {confidencePct}%
+                </span>
+                <p className="text-white/70 text-[11px] mt-0.5 leading-relaxed">
+                  Высокая степень клинической уверенности на основе алгоритмов мед. анализа и действующих клинических рекомендаций.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setActiveInfoTooltip(null)}
+              className="text-gray-400 hover:text-white p-1 rounded-lg cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
+        {activeInfoTooltip === 'ai' && (
+          <div className="p-3 bg-[#101A28] border border-[#8968FF]/30 rounded-xl text-xs text-white/90 flex items-start justify-between gap-3 animate-fadeIn">
+            <div className="flex items-start gap-2.5">
+              <Sparkles className="w-4 h-4 text-[#8968FF] shrink-0 mt-0.5" />
+              <div>
+                <span className="font-extrabold text-[#8968FF] block">
+                  Сгенерировано ИИ
+                </span>
+                <p className="text-white/70 text-[11px] mt-0.5 leading-relaxed">
+                  Материал носит исключительно информационный характер, не является постановкой диагноза и не заменяет приём врача.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setActiveInfoTooltip(null)}
+              className="text-gray-400 hover:text-white p-1 rounded-lg cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
+        {/* EXPANDABLE SOURCES LIST */}
+        {showSources && (
+          <div className="bg-[#101A28] p-4 rounded-2xl border border-white/[0.08] space-y-2 text-xs text-white/80 animate-fadeIn mt-2">
+            <span className="font-bold text-[#34F5A4] block mb-1">
+              Источники данных и клинические валидаторы:
+            </span>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div className="p-2.5 bg-black/20 rounded-xl border border-white/[0.04]">
+                <span className="font-bold text-white block">Лабораторные анализы</span>
+                <span className="text-white/50 text-[11px] block mt-0.5">
+                  {documents.length > 0 ? `Загружено бланков: ${documents.length}` : 'Бланки пока не загружены'}
+                </span>
+              </div>
+              <div className="p-2.5 bg-black/20 rounded-xl border border-white/[0.04]">
+                <span className="font-bold text-white block">Электронная анкета</span>
+                <span className="text-white/50 text-[11px] block mt-0.5">Профиль здоровья пользователя</span>
+              </div>
+              <div className="p-2.5 bg-black/20 rounded-xl border border-white/[0.04]">
+                <span className="font-bold text-white block">Дневник самочувствия</span>
+                <span className="text-white/50 text-[11px] block mt-0.5">
+                  {dailyLogs.length > 0 || diaryEntries.length > 0 ? 'Записи активности сохранены' : 'Ожидает новых записей'}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

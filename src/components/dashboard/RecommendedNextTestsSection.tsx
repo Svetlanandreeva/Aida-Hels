@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { RecommendedTest, Reminder } from '../../types';
-import { Microscope, CheckCircle2, AlertCircle, Plus, Calendar, ArrowRight, Sparkles } from 'lucide-react';
+import { Microscope, CheckCircle2, AlertCircle, Plus, Calendar, ArrowRight, Sparkles, ChevronDown } from 'lucide-react';
 
 interface RecommendedNextTestsSectionProps {
   recommendedTests: RecommendedTest[];
@@ -13,6 +13,7 @@ export const RecommendedNextTestsSection: React.FC<RecommendedNextTestsSectionPr
   onAddReminder,
   onNavigateToLab,
 }) => {
+  const [isOpen, setIsOpen] = useState(true);
   const [addedIds, setAddedIds] = useState<Record<string, boolean>>({});
 
   const handleAdd = (test: RecommendedTest) => {
@@ -25,20 +26,34 @@ export const RecommendedNextTestsSection: React.FC<RecommendedNextTestsSectionPr
   if (recommendedTests.length === 0) {
     return (
       <div className="bg-[#0B1320] border border-white/[0.08] rounded-2xl sm:rounded-3xl p-4 sm:p-5 shadow-xl space-y-3">
-        <div className="flex items-center gap-2 border-b border-white/[0.06] pb-2.5">
-          <div className="w-7 h-7 rounded-lg bg-[#34F5A4]/10 border border-[#34F5A4]/20 text-[#34F5A4] flex items-center justify-center shrink-0">
-            <Microscope className="w-4 h-4" />
+        <button
+          type="button"
+          onClick={() => setIsOpen(!isOpen)}
+          className="w-full flex items-center justify-between border-b border-white/[0.06] pb-2.5 text-left cursor-pointer group"
+        >
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-[#34F5A4]/10 border border-[#34F5A4]/20 text-[#34F5A4] flex items-center justify-center shrink-0">
+              <Microscope className="w-4 h-4" />
+            </div>
+            <h2 className="font-extrabold text-white text-sm sm:text-base tracking-tight group-hover:text-[#34F5A4] transition-colors">
+              Что ещё сдать для полного анализа (0)
+            </h2>
           </div>
-          <h2 className="font-extrabold text-white text-sm sm:text-base tracking-tight">
-            Рекомендации по дообследованию
-          </h2>
-        </div>
-        <div className="p-4 bg-[#101A28] border border-white/[0.06] rounded-xl text-xs text-white/70 flex items-center gap-3">
-          <CheckCircle2 className="w-4 h-4 text-[#34F5A4] shrink-0" />
-          <span>
-            У вас собран исчерпывающий набор исследований! Все ключевые функциональные системы имеют подтвержденные данные.
-          </span>
-        </div>
+          <ChevronDown
+            className={`w-5 h-5 text-white/50 group-hover:text-white transition-transform duration-200 ${
+              isOpen ? 'rotate-180' : ''
+            }`}
+          />
+        </button>
+
+        {isOpen && (
+          <div className="p-4 bg-[#101A28] border border-white/[0.06] rounded-xl text-xs text-white/70 flex items-center gap-3 animate-fadeIn">
+            <CheckCircle2 className="w-4 h-4 text-[#34F5A4] shrink-0" />
+            <span>
+              У вас собран исчерпывающий набор исследований! Все ключевые функциональные системы имеют подтвержденные данные.
+            </span>
+          </div>
+        )}
       </div>
     );
   }
@@ -46,39 +61,51 @@ export const RecommendedNextTestsSection: React.FC<RecommendedNextTestsSectionPr
   return (
     <div className="bg-[#0B1320] border border-emerald-500/30 rounded-2xl sm:rounded-3xl p-4 sm:p-5 shadow-xl space-y-4">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/[0.06] pb-3">
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 flex items-center justify-center shrink-0">
-            <Microscope className="w-4.5 h-4.5" />
-          </div>
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="font-black text-white text-sm sm:text-base tracking-tight">
-                Что ещё сдать для полного анализа ({recommendedTests.length})
-              </h2>
-              <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold border border-emerald-500/30 shrink-0">
-                100% полнота карты
-              </span>
+      <div className="flex items-center justify-between gap-2 border-b border-white/[0.06] pb-3">
+        <button
+          type="button"
+          onClick={() => setIsOpen(!isOpen)}
+          className="flex-1 flex items-center justify-between text-left cursor-pointer group pr-2"
+        >
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 flex items-center justify-center shrink-0">
+              <Microscope className="w-4.5 h-4.5" />
             </div>
-            <p className="text-[11px] text-white/60">
-              Дополнительные лабораторные и инструментальные тесты для уточнения выявленных отклонений
-            </p>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="font-black text-white text-sm sm:text-base tracking-tight group-hover:text-emerald-400 transition-colors">
+                  Что ещё сдать для полного анализа ({recommendedTests.length})
+                </h2>
+                <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold border border-emerald-500/30 shrink-0 hidden sm:inline-block">
+                  100% полнота карты
+                </span>
+              </div>
+              <p className="text-[11px] text-white/60">
+                Дополнительные лабораторные и инструментальные тесты для уточнения выявленных отклонений
+              </p>
+            </div>
           </div>
-        </div>
+          <ChevronDown
+            className={`w-5 h-5 text-white/50 group-hover:text-white transition-transform duration-200 shrink-0 ${
+              isOpen ? 'rotate-180' : ''
+            }`}
+          />
+        </button>
 
         {onNavigateToLab && (
           <button
             onClick={onNavigateToLab}
             className="px-3 py-1.5 bg-[#8E74FF]/15 hover:bg-[#8E74FF]/25 border border-[#8E74FF]/30 rounded-xl text-xs font-bold text-[#8E74FF] hover:text-white transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
           >
-            <span>Загрузить готовый бланк</span>
+            <span className="hidden sm:inline">Загрузить готовый бланк</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </button>
         )}
       </div>
 
       {/* Tests Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      {isOpen && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 animate-fadeIn">
         {recommendedTests.map((test) => {
           const isAdded = addedIds[test.id];
 
@@ -144,6 +171,7 @@ export const RecommendedNextTestsSection: React.FC<RecommendedNextTestsSectionPr
           );
         })}
       </div>
+      )}
     </div>
   );
 };

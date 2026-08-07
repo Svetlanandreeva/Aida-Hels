@@ -905,43 +905,50 @@ app.post('/api/chat', requireAuth, async (req: AuthenticatedRequest, res) => {
       aida: {
         name: 'Аида',
         title: 'Персональный ИИ-помощник здоровья',
-        promptRole: 'Персональный помощник здоровья. Характер: спокойная, мягкая, доброжелательная, тактичная, сфокусированная на общем самочувствии и поддержке.',
+        promptRole: 'Персональный помощник здоровья. Характер: живая, мягкая, заботливая, доброжелательная, тактичная, сфокусированная на общем самочувствии и эмоциональной поддержке.',
         model: 'gemini-3.6-flash',
       },
       sofia: {
         name: 'Доктор София',
         title: 'Эксперт по анализам и диагностике',
-        promptRole: 'Врач-консультант по лабораторным бланкам, показателям крови, УЗИ и медицинским заключениям. Характер: профессиональная, подчёркнуто грамотная, объясняет сложные лабораторные термины простыми словами.',
+        promptRole: 'Врач-консультант по лабораторным бланкам, показателям крови, УЗИ и медицинским заключениям. Характер: живая, профессиональная, подчёркнуто грамотная, объясняет сложные лабораторные термины простыми словами.',
         model: 'gemini-3.6-flash',
       },
       mark: {
         name: 'Марк',
         title: 'Консультант по сну и ментальному балансу',
-        promptRole: 'Эксперт сомнолог и специалист по управлению стрессом, тревожностью и восстановлением нервной системы. Характер: спокойный, глубокий, даёт практические техники дыхания, гигиены сна и снижения нагрузки.',
+        promptRole: 'Эксперт сомнолог и специалист по управлению стрессом, тревожностью и восстановлением нервной системы. Характер: живой, спокойный, глубокий, даёт практические техники дыхания, гигиены сна и снижения нагрузки.',
         model: 'gemini-3.6-flash',
       },
       eva: {
         name: 'Ева',
         title: 'Нутрициолог и специалист по метаболизму',
-        promptRole: 'Эксперт по сбалансированному питанию, микроэлементам, витаминам и правильным пищевым привычкам. Характер: вдохновляющая, практичная, сфокусированная на здоровом рационе без жестких ограничений.',
+        promptRole: 'Эксперт по сбалансированному питанию, микроэлементам, витаминам и правильным пищевым привычкам. Характер: живая, вдохновляющая, практичная, сфокусированная на здоровом рационе без жестких ограничений.',
         model: 'gemini-3.6-flash',
       },
     };
 
     const activeBot = botRoleConfig[selectedRole] || botRoleConfig.aida;
 
-    if (!ai) {
+    // Helper for smart fallback
+    const fallbackResponse = () => {
       const responseText = generateSmartHealthAdvice(message || '', context || {});
-      return res.json({ text: sanitizeChatResponse(responseText), mode: 'rule_based', botName: activeBot.name });
+      return sanitizeChatResponse(responseText);
+    };
+
+    if (!ai) {
+      return res.json({ text: fallbackResponse(), mode: 'rule_based', botName: activeBot.name });
     }
 
     const userSummary = buildUserContextSummary(context || {});
 
-    const systemInstruction = `Имя бота: ${activeBot.name}. Роль: ${activeBot.title}.
+    const userName = context?.user?.fullName || req.user?.fullName || 'друг';
+
+    const systemInstruction = `Имя бота: ${activeBot.name}. Роль: ${activeBot.title}. Имя пользователя: ${userName}.
 
 ${activeBot.promptRole}
 
-Твоя задача — вести диалог в формате полезного многошагового чата (multi-turn chat).
+Твоя задача — вести живой, заботливый, поддерживающий и эмпатичный диалог в формате многошагового чата (multi-turn chat). Обращайся к пользователю по имени (${userName}), будь внимательной и искренне вовлечённой.
 
 Перед каждым ответом о здоровье тебе предоставлены актуальные данные текущего пользователя из приложения (дневник, сон, настроение, тревога, стресс, энергия, симптомы, измерения АД и пульса, исследования, опросы, лекарства, побочные эффекты):
 
@@ -950,45 +957,79 @@ ${userSummary}
 ПРАВИЛО О ДАННЫХ:
 Бот не задаёт лишних вопросов, ответы на которые уже сохранены в приложении.
 
-СТРУКТУРА ОТВЕТА (от 4 до 7 коротких понятных предложений):
+СТРУКТУРА ОТВЕТА (от 3 до 6 коротких понятных предложений):
 1. Мягкая человеческая реакция от имени ${activeBot.name}.
-2. Краткий профессиональный вывод по вопросу с учётом ролевой специфики.
-3. Простое объяснение возможных причин.
+2. Краткий профессиональный и поддержанный вывод по вопросу с учётом ролевой специфики.
+3. Простое объяснение возможных причин или взаимосвязей.
 4. Полезные практические шаги на сегодня.
-5. При необходимости — тактичный совет проконсультироваться со специалистом.
+5. Забота и при необходимости — тактичный совет проконсультироваться со специалистом.
 
 СТРОГО БЕЗ MARKDOWN:
 - НЕ ставить звёздочки (* или **);
 - НЕ использовать жирный текст или курсив;
 - НЕ использовать заголовки с символами #;
 - НЕ делать нумерованные списки или дефисы в начале строк;
-- Пиши только обычными абзацами и предложение за предложением.`;
+- Пиши только обычными красивыми абзацами и предложение за предложением.`;
 
+    // Process history payload into clean alternating user / model turns
     const contents: any[] = [];
     if (history && Array.isArray(history)) {
       for (const msg of history) {
+        const text = (msg.text || msg.content || '').trim();
+        if (!text) continue;
+
+        const role = (msg.role === 'user' || msg.sender === 'user') ? 'user' : 'model';
+        
+        // Prevent consecutive turns of the same role for Gemini SDK
+        if (contents.length > 0 && contents[contents.length - 1].role === role) {
+          contents[contents.length - 1].parts[0].text += `\n${text}`;
+        } else {
+          contents.push({
+            role,
+            parts: [{ text }],
+          });
+        }
+      }
+    }
+
+    // Ensure the first message in history is 'user' if contents starts with 'model'
+    if (contents.length > 0 && contents[0].role === 'model') {
+      contents.shift();
+    }
+
+    // Append current user message
+    const cleanUserMsg = (message || '').trim();
+    if (cleanUserMsg) {
+      if (contents.length > 0 && contents[contents.length - 1].role === 'user') {
+        contents[contents.length - 1].parts[0].text += `\n${cleanUserMsg}`;
+      } else {
         contents.push({
-          role: msg.role === 'user' ? 'user' : 'model',
-          parts: [{ text: msg.content || msg.text || '' }],
+          role: 'user',
+          parts: [{ text: cleanUserMsg }],
         });
       }
     }
-    contents.push({
-      role: 'user',
-      parts: [{ text: message || '' }],
-    });
 
-    const response = await ai.models.generateContent({
-      model: activeBot.model,
-      contents,
-      config: { systemInstruction },
-    });
+    try {
+      const response = await ai.models.generateContent({
+        model: activeBot.model,
+        contents: contents.length > 0 ? contents : cleanUserMsg,
+        config: { systemInstruction },
+      });
 
-    const replyText = response.text || 'К сожалению, не удалось получить ответ от ИИ-помощника.';
-    res.json({ text: sanitizeChatResponse(replyText), mode: 'gemini', botName: activeBot.name });
+      const replyText = response.text || fallbackResponse();
+      return res.json({ text: sanitizeChatResponse(replyText), mode: 'gemini', botName: activeBot.name });
+    } catch (geminiError: any) {
+      console.warn('Gemini generateContent error in chat, using smart fallback:', geminiError?.message || geminiError);
+      return res.json({ text: fallbackResponse(), mode: 'rule_based_fallback', botName: activeBot.name });
+    }
   } catch (err: any) {
-    console.error('Chat AI Error:', err);
-    res.status(500).json({ success: false, message: 'Ошибка ИИ-чата: ' + err.message });
+    console.error('Chat API Fatal Error:', err);
+    return res.json({
+      text: 'Я рядом. Произошёл небольшой сбой связи, но я сохранила твой вопрос. Задай его ещё раз или выбери одну из тем 🤍',
+      mode: 'error_fallback',
+      botName: 'Аида',
+    });
   }
 });
 

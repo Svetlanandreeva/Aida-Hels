@@ -10,6 +10,8 @@ import {
   CheckCircle2,
   Database,
   Info,
+  ThumbsUp,
+  ThumbsDown,
 } from 'lucide-react';
 
 interface OverallAiSummaryCardProps {
@@ -147,6 +149,7 @@ export const OverallAiSummaryCard: React.FC<OverallAiSummaryCardProps> = ({ anal
         {/* FEEDBACK BUTTONS */}
         <div className="flex items-center gap-2">
           <button
+            title="Полезно"
             onClick={() => {
               fetch('/api/ai/feedback', {
                 method: 'POST',
@@ -155,11 +158,12 @@ export const OverallAiSummaryCard: React.FC<OverallAiSummaryCardProps> = ({ anal
               });
               alert('Спасибо за оценку! Ответ сохранен в журнале аудита.');
             }}
-            className="px-2.5 py-1.5 bg-[#101A28] hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded-xl text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+            className="p-2 bg-[#101A28] hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded-xl transition-all cursor-pointer flex items-center justify-center"
           >
-            👍 Полезно
+            <ThumbsUp className="w-4 h-4" />
           </button>
           <button
+            title="Неточно"
             onClick={() => {
               fetch('/api/ai/feedback', {
                 method: 'POST',
@@ -168,9 +172,9 @@ export const OverallAiSummaryCard: React.FC<OverallAiSummaryCardProps> = ({ anal
               });
               alert('Спасибо за отзыв! Качество ответа будет пересмотрено.');
             }}
-            className="px-2.5 py-1.5 bg-[#101A28] hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 rounded-xl text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+            className="p-2 bg-[#101A28] hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 rounded-xl transition-all cursor-pointer flex items-center justify-center"
           >
-            👎 Неточно
+            <ThumbsDown className="w-4 h-4" />
           </button>
           <button
             onClick={() => setShowSources(!showSources)}

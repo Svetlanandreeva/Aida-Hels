@@ -1,16 +1,26 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import {
   Sparkles,
-  ChevronRight,
-  AlertTriangle,
+  Zap,
+  Moon,
+  Heart,
+  Smile,
+  Brain,
+  Dna,
+  FlaskConical,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   Pill,
   Check,
-  Calendar,
-  Activity,
+  Clock,
+  ArrowDown,
+  Info,
+  AlertTriangle,
+  Settings,
   RefreshCw,
-  Flame,
-  Brain,
+  Calendar,
 } from 'lucide-react';
 
 import {
@@ -28,12 +38,8 @@ import {
   StructuredHealthAnalysis,
 } from '../types';
 import { calculateHealthProfile } from '../utils/calculateHealthProfile';
-import { deduplicateMarkers } from '../utils/markerUtils';
 import { StateConnectionsSection } from './dashboard/StateConnectionsSection';
 import { RecommendedNextTestsSection } from './dashboard/RecommendedNextTestsSection';
-import { MaturityStageIndicator } from './dashboard/MaturityStageIndicator';
-import { AiMetricsTopSection } from './dashboard/AiMetricsTopSection';
-import { MedicationTodaySection } from './dashboard/MedicationTodaySection';
 
 export interface HomeDashboardProps {
   user: UserProfile;
@@ -59,6 +65,7 @@ export default function HomeDashboard({
   documents = [],
   onNavigate,
   setActiveTab,
+  onOpenDoctorReport,
   reminders = [],
   setReminders,
   dailyLogs = [],
@@ -68,626 +75,502 @@ export default function HomeDashboard({
   fetchHealthAnalysis,
   aiAnalysis,
 }: HomeDashboardProps) {
-  const firstName = user?.fullName
-    ? user.fullName.split(' ')[0]
-    : 'Пользователь';
+  // Collapsible state for extra detailed sections
+  const [isAttentionOpen, setIsAttentionOpen] = useState(false);
 
-  const todayStr = new Date().toISOString().slice(0, 10);
-  const formattedDate = new Date().toLocaleDateString('ru-RU', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
+  // Medication interactive check state
+  const [medsState, setMedsState] = useState<{ [key: string]: boolean }>({
+    'omega-3': true,
+    'magnesium': false,
   });
 
-  // Check if any user health data exists
-  const hasUserData = Boolean(
-    aiAnalysis?.overallScore ||
-    documents.length > 0 ||
-    dailyLogs.length > 0 ||
-    diaryEntries.length > 0 ||
-    pressureLogs.length > 0
-  );
+  const toggleMed = (medKey: string) => {
+    setMedsState((prev) => ({
+      ...prev,
+      [medKey]: !prev[medKey],
+    }));
+  };
 
-  const isDemoUser = (u: UserProfile) => u.email === 'anna.ivanova@health.ru' || u.id === 'usr-1' || Boolean((u as any).isDemoUser);
-
-  // Calculate full dynamic profile and inter-system chains
   const healthProfile = calculateHealthProfile(user, documents, dailyLogs, pressureLogs);
 
-  const displayHealthScore = documents.length > 0 || isDemoUser(user)
-    ? healthProfile.overallHealthScore
-    : (aiAnalysis?.overallScore ? Math.round(aiAnalysis.overallScore * 10) : healthProfile.overallHealthScore);
+  // Active ring metrics navigation tooltip state
+  const [hoveredRingItem, setHoveredRingItem] = useState<string | null>(null);
 
-  const displayStatusLabel = displayHealthScore !== null
-    ? (displayHealthScore >= 80 ? 'Отличное' : displayHealthScore >= 60 ? 'В норме' : 'Требует внимания')
-    : 'Недостаточно данных';
-
-  const displaySummary = healthProfile.summaryText || aiAnalysis?.summary || 'Состояние стабильное.';
-
-  const handleAddTestReminder = (testName: string) => {
-    if (!setReminders) return;
-    const newRem: Reminder = {
-      id: `rem-test-${Date.now()}`,
-      title: `Сдать анализ: ${testName}`,
-      time: '09:00',
-      category: 'custom',
-      frequency: 'once',
-      isEnabled: true,
-      notes: 'Запланировано из рекомендаций по дообследованию',
-    };
-    setReminders((prev) => [newRem, ...prev]);
-  };
-
-  // 1. "Что требует внимания" (max 3 items)
-  const rawDeviations = documents.flatMap((d) => d.deviations || []);
-  const allDeviations = deduplicateMarkers(rawDeviations);
-  const attentionItems: Array<{
-    id: string;
-    title: string;
-    description: string;
-    severity: 'risk' | 'warning';
-    action: () => void;
-  }> = [];
-
-  // Add lab deviations
-  allDeviations.forEach((dev, idx) => {
-    attentionItems.push({
-      id: `dev-${idx}`,
-      title: `${dev.marker}: ${dev.value}`,
-      description: dev.explanation || `Статус: ${dev.status} (Норма: ${dev.norm})`,
-      severity: dev.status === 'Внимание' ? 'risk' : 'warning',
-      action: () => setActiveTab('lab'),
-    });
-  });
-
-  // Check pressure logs for high readings
-  const latestPressure = pressureLogs[0];
-  if (latestPressure && (latestPressure.systolic >= 140 || latestPressure.diastolic >= 90)) {
-    attentionItems.push({
-      id: 'press-high',
-      title: `АД ${latestPressure.systolic}/${latestPressure.diastolic} мм рт. ст.`,
-      description: 'Повышенное артериальное давление',
-      severity: 'risk',
-      action: () => onNavigate('pressure_diary'),
-    });
-  }
-
-  // Deduplicate attention items by title to guarantee no duplicate cards
-  const seenTitles = new Set<string>();
-  const uniqueAttentionItems: typeof attentionItems = [];
-  for (const item of attentionItems) {
-    if (!seenTitles.has(item.title)) {
-      seenTitles.add(item.title);
-      uniqueAttentionItems.push(item);
+  // Formatted date for AI analysis
+  const analysisDateFormatted = React.useMemo(() => {
+    const latestDoc = documents[0]?.date;
+    if (latestDoc) {
+      return `${latestDoc} (по документам)`;
     }
-  }
-
-  const activeAttentionItems = uniqueAttentionItems.slice(0, 3);
-
-  // 2. "Лекарства сегодня"
-  const medReminders = reminders.filter((r) => r.category === 'medication' && r.isEnabled);
-  const completedMeds = medReminders.filter((r) => r.lastCompletedDate === todayStr);
-  const nextMed = medReminders.find((r) => r.lastCompletedDate !== todayStr) || medReminders[0];
-
-  const handleToggleMed = (e: React.MouseEvent, medId: string) => {
-    e.stopPropagation();
-    if (!setReminders) return;
-    setReminders((prev) =>
-      prev.map((rem) => {
-        if (rem.id === medId) {
-          const isDone = rem.lastCompletedDate === todayStr;
-          return {
-            ...rem,
-            lastCompletedDate: isDone ? undefined : todayStr,
-          };
-        }
-        return rem;
-      })
-    );
-  };
-
-  // 3. "Женское здоровье"
-  const isWomenHealthConfigured = Boolean(user.womenHealth?.lastPeriodDate);
-  const isFemaleUser = user.gender === 'female' || Boolean(user.womenHealth);
-  let cycleDay = 1;
-  let cyclePhase = 'Не настроено';
-  let daysToPeriod = 0;
-  let cycleNote = '';
-
-  if (user.womenHealth?.lastPeriodDate) {
-    const cycleLength = user.womenHealth.cycleLength || 28;
-    const lastDate = new Date(user.womenHealth.lastPeriodDate);
-    const diffDays = Math.floor((Date.now() - lastDate.getTime()) / (1000 * 3600 * 24));
-    cycleDay = (Math.abs(diffDays) % cycleLength) + 1;
-    daysToPeriod = cycleLength - cycleDay + 1;
-
-    if (cycleDay <= 5) {
-      cyclePhase = 'Фолликулярная фаза (менструация)';
-      cycleNote = 'Рекомендуется отдых и щадящий режим';
-    } else if (cycleDay <= 12) {
-      cyclePhase = 'Фолликулярная фаза';
-      cycleNote = 'Постепенный подъём выносливости и энергии';
-    } else if (cycleDay <= 16) {
-      cyclePhase = 'Овуляторная фаза';
-      cycleNote = 'Максимальная физическая и ментальная продуктивность';
-    } else {
-      cyclePhase = 'Лютеиновая фаза';
-      cycleNote = 'Важен полноценный сон и контроль потребления сахара';
-    }
-  }
-
-  // 4. "Компактный ежедневный чек-ин"
-  const todayLog = dailyLogs[0];
-  const isCheckinFilledToday = Boolean(todayLog);
-
-  // 5. "Блок Сегодня" (Tasks for today, max 3)
-  const todayTasks: Array<{
-    id: string;
-    category: 'medication' | 'pressure' | 'diary' | 'lab';
-    title: string;
-    time: string;
-    isCompleted: boolean;
-    action: () => void;
-  }> = [];
-
-  // Task 1: Next Medication
-  if (nextMed) {
-    todayTasks.push({
-      id: `task-med-${nextMed.id}`,
-      category: 'medication',
-      title: `${nextMed.title} ${nextMed.dosage ? `(${nextMed.dosage})` : ''}`,
-      time: nextMed.time || '20:00',
-      isCompleted: nextMed.lastCompletedDate === todayStr,
-      action: () => onNavigate('reminders'),
-    });
-  }
-
-  // Task 2: Pressure measurement
-  const hasPressureLogToday = pressureLogs.some((p) => p.date === todayStr);
-  todayTasks.push({
-    id: 'task-pressure',
-    category: 'pressure',
-    title: 'Вечерний замер давления',
-    time: '20:30',
-    isCompleted: hasPressureLogToday,
-    action: () => onNavigate('pressure_diary'),
-  });
-
-  // Task 3: Mental Diary
-  const hasDiaryEntryToday = diaryEntries.some(
-    (d) => d.created_at && d.created_at.slice(0, 10) === todayStr
-  );
-  todayTasks.push({
-    id: 'task-diary',
-    category: 'diary',
-    title: 'Запись эмоций и состояния',
-    time: '21:00',
-    isCompleted: hasDiaryEntryToday,
-    action: () => onNavigate('mental_diary'),
-  });
-
-  const activeTodayTasks = todayTasks.slice(0, 3);
-
-  // 6. "Совет Аиды" (Single Recommendation)
-  const singleTip =
-    aiAnalysis?.dailyRecommendations?.[0] ||
-    (hasUserData
-      ? 'Поддерживайте комфортный водный баланс и уделяйте 30 минут пешим прогулкам на свежем воздухе.'
-      : 'Загрузите результаты анализов или заполните дневник самочувствия, чтобы получить ваш первый персональный совет от Аиды.');
-
-  const tipBasis = documents.length > 0
-    ? `Сформировано на основе анализа лабораторных бланков от ${documents[0]?.date || 'недавней даты'} и показателей активности`
-    : hasUserData
-    ? 'Сформировано на основе анкеты и дневника самочувствия'
-    : 'Персональный совет появится после добавления ваших первых данных';
+    return '7 августа 2026, 14:30';
+  }, [documents]);
 
   return (
-    <div className="w-full max-w-[1000px] mx-auto space-y-3.5 sm:space-y-4 px-1.5 sm:px-0">
-      {/* 1. COMPACT TOP BANNER */}
-      <div className="flex items-center justify-between bg-[#0B1320]/60 border border-white/[0.06] rounded-2xl p-3.5 sm:p-4 backdrop-blur-xl">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-[#8E74FF]/15 border border-[#8E74FF]/30 text-[#8E74FF] flex items-center justify-center font-bold text-sm shrink-0">
-            <Sparkles className="w-4 h-4" />
-          </div>
-          <div>
-            <h1 className="text-sm sm:text-base font-extrabold text-white tracking-tight leading-tight">
-              Добрый день, {firstName}
-            </h1>
-            <p className="text-[11px] text-white/50 capitalize mt-0.5">{formattedDate}</p>
-          </div>
-        </div>
+    <div className="w-full bg-[#090B10] min-h-screen py-4 px-3 sm:px-4 text-white font-sans antialiased">
+      {/* IPHONE 16 PRO SCREEN CONTAINER (393px width feel, max 430px centered) */}
+      <div className="max-w-[393px] mx-auto space-y-4">
 
-        <button
-          type="button"
-          onClick={fetchHealthAnalysis}
-          disabled={isLoadingAnalysis}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-white/80 hover:text-white text-xs font-semibold transition-all cursor-pointer shrink-0"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${isLoadingAnalysis ? 'animate-spin text-[#8E74FF]' : ''}`} />
-          <span className="hidden sm:inline">Обновить анализ</span>
-        </button>
-      </div>
-
-      {/* AI STATUS TOP BAR & 4 METRIC CARDS GRID (ОБЩЕЕ СОСТОЯНИЕ, ЭНЕРГИЯ, СОН, ПРОГНОЗ) */}
-      <AiMetricsTopSection
-        user={user}
-        aiAnalysis={aiAnalysis}
-        documents={documents}
-        dailyLogs={dailyLogs}
-        diaryEntries={diaryEntries}
-        onNavigate={onNavigate}
-        displayHealthScore={displayHealthScore}
-      />
-
-      {/* MEDICATION SCHEDULE SECTION */}
-      <MedicationTodaySection
-        user={user}
-        reminders={reminders}
-        onNavigate={onNavigate}
-        onOpenAddMedication={() => onNavigate('reminders')}
-      />
-
-      {/* MATURITY STAGE INDICATOR (ACCURATE DATA SUFFICIENCY BANNER) */}
-      <MaturityStageIndicator
-        daysSinceRegistration={1}
-        hasSurvey={Boolean(user.isQuestionnaireCompleted)}
-        documentsCount={documents.length}
-        diaryEntriesCount={(diaryEntries?.length || 0) + (dailyLogs?.length || 0)}
-        onOpenProposal={() => onNavigate('settings')}
-      />
-
-      {/* 3. БЛОК «ЧТО ТРЕБУЕТ ВНИМАНИЯ» */}
-      <div className="bg-[#0B1320] border border-white/[0.08] rounded-2xl sm:rounded-3xl p-4 sm:p-5 shadow-xl space-y-3">
-        <div className="flex items-center justify-between border-b border-white/[0.06] pb-2.5">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-[#FF8C42]/10 border border-[#FF8C42]/20 text-[#FF8C42] flex items-center justify-center shrink-0">
-              <AlertTriangle className="w-4 h-4" />
-            </div>
-            <h2 className="font-extrabold text-white text-sm sm:text-base tracking-tight">
-              Что требует внимания ({activeAttentionItems.length})
-            </h2>
-          </div>
-        </div>
-
-        {activeAttentionItems.length === 0 ? (
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3.5 bg-[#101A28] border border-white/[0.06] rounded-xl text-white/80 text-xs sm:text-sm">
-            <div className="flex items-center gap-2.5">
-              <CheckCircle2 className="w-4 h-4 text-[#34F5A4] shrink-0" />
-              <span>
-                {hasUserData
-                  ? 'Все ключевые показатели в норме, рисков и отклонений не обнаружено'
-                  : 'Загрузите результаты анализов или пройдите ежедневный чек-ин, чтобы Аида могла выявить риски.'}
-              </span>
-            </div>
-            {!hasUserData && (
-              <button
-                type="button"
-                onClick={() => setActiveTab('lab')}
-                className="px-3 py-1.5 rounded-lg bg-[#8E74FF]/20 hover:bg-[#8E74FF]/30 text-[#8E74FF] font-bold text-xs shrink-0 cursor-pointer"
-              >
-                + Добавить данные
-              </button>
-            )}
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {activeAttentionItems.map((item) => (
-              <div
-                key={item.id}
-                onClick={item.action}
-                className="w-full p-3 bg-[#101A28] hover:bg-[#142133] border border-white/[0.06] hover:border-[#FF8C42]/40 rounded-xl flex items-center justify-between gap-3 transition-all cursor-pointer group"
-              >
-                <div className="flex items-center gap-3">
-                  <div
-                    className={`w-2 h-2 rounded-full shrink-0 ${
-                      item.severity === 'risk' ? 'bg-[#FF5252]' : 'bg-[#FF8C42]'
-                    }`}
-                  />
-                  <div>
-                    <span className="font-bold text-white text-xs sm:text-sm block">
-                      {item.title}
-                    </span>
-                    <span className="text-[11px] text-white/50 block mt-0.5">
-                      {item.description}
-                    </span>
-                  </div>
-                </div>
-
-                <ChevronRight className="w-4 h-4 text-white/40 group-hover:text-white group-hover:translate-x-1 transition-all shrink-0" />
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* 4. СВЯЗИ СОСТОЯНИЙ И МЕЖСИСТЕМНЫЙ АНАЛИЗ */}
-      <StateConnectionsSection
-        connections={healthProfile.stateConnections}
-        onOpenDoctorReport={() => onNavigate('body_map')}
-      />
-
-      {/* 5. ЧТО ЕЩЁ НАДО СДАТЬ ДЛЯ ПОЛНОГО АНАЛИЗА */}
-      <RecommendedNextTestsSection
-        recommendedTests={healthProfile.recommendedNextTests}
-        onAddReminder={handleAddTestReminder}
-        onNavigateToLab={() => setActiveTab('lab')}
-      />
-
-
-
-      {/* GRID FOR MEDICATION & WOMEN's HEALTH */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 sm:gap-4">
-        {/* 4. КАРТОЧКА «ЛЕКАРСТВА И ВИТАМИНЫ» */}
-        <div
-          onClick={() => onNavigate('reminders')}
-          className="bg-[#0B1320] hover:bg-[#0E182A] border border-white/[0.08] hover:border-[#8E74FF]/40 rounded-2xl sm:rounded-3xl p-4 sm:p-5 shadow-xl transition-all cursor-pointer flex flex-col justify-between space-y-3 group"
-        >
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-xl bg-[#8E74FF]/10 border border-[#8E74FF]/20 text-[#8E74FF] flex items-center justify-center shrink-0">
-                <Pill className="w-4 h-4" />
-              </div>
-              <div>
-                <h3 className="font-extrabold text-white text-sm">Лекарства сегодня</h3>
-                <p className="text-[10px] text-white/50">
-                  {medReminders.length > 0
-                    ? `${completedMeds.length} из ${medReminders.length} принято`
-                    : 'График приёма не настроен'}
-                </p>
-              </div>
-            </div>
-
-            <ChevronRight className="w-4 h-4 text-white/40 group-hover:text-white group-hover:translate-x-1 transition-all" />
-          </div>
-
-          {medReminders.length === 0 ? (
-            <div className="p-3 bg-[#101A28] border border-white/[0.06] rounded-xl flex items-center justify-between gap-2 text-xs text-white/60">
-              <span>Добавить график приёма лекарств или витаминов</span>
-              <span className="text-[#8E74FF] font-bold shrink-0">+ Добавить</span>
-            </div>
-          ) : nextMed ? (
-            <div className="p-3 bg-[#101A28] border border-white/[0.06] rounded-xl flex items-center justify-between gap-3">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="font-extrabold text-white text-xs sm:text-sm">
-                    {nextMed.title}
-                  </span>
-                  {nextMed.dosage && (
-                    <span className="text-[10px] text-[#8E74FF] font-semibold bg-[#8E74FF]/10 px-2 py-0.5 rounded-md">
-                      {nextMed.dosage}
-                    </span>
-                  )}
-                </div>
-                <span className="text-[11px] text-white/50 block mt-0.5">
-                  Время приёма: {nextMed.time || '20:00'}
-                </span>
-              </div>
-
-              <button
-                type="button"
-                onClick={(e) => handleToggleMed(e, nextMed.id)}
-                className={`p-2 rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                  nextMed.lastCompletedDate === todayStr
-                    ? 'bg-[#34F5A4]/10 border-[#34F5A4]/30 text-[#34F5A4]'
-                    : 'bg-white/5 hover:bg-white/10 border-white/10 text-white'
-                }`}
-              >
-                <Check className="w-3.5 h-3.5" />
-                <span>
-                  {nextMed.lastCompletedDate === todayStr ? 'Принято' : 'Отметить'}
-                </span>
-              </button>
-            </div>
-          ) : (
-            <div className="text-xs text-white/50 py-2">Все лекарства на сегодня приняты</div>
-          )}
-        </div>
-
-        {/* 5. КАРТОЧКА «ЖЕНСКОЕ ЗДОРОВЬЕ» */}
-        {isFemaleUser && (
-          <div
-            onClick={() => onNavigate('settings')}
-            className="bg-[#0B1320] hover:bg-[#0E182A] border border-white/[0.08] hover:border-pink-500/40 rounded-2xl sm:rounded-3xl p-4 sm:p-5 shadow-xl transition-all cursor-pointer flex flex-col justify-between space-y-3 group"
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-pink-500/10 border border-pink-500/20 text-pink-400 flex items-center justify-center shrink-0">
-                  <Flame className="w-4 h-4" />
-                </div>
-                <div>
-                  <h3 className="font-extrabold text-white text-sm">Женское здоровье</h3>
-                  <p className="text-[10px] text-pink-400 font-medium">
-                    {isWomenHealthConfigured ? cyclePhase : 'Трекер цикла'}
-                  </p>
-                </div>
-              </div>
-
-              <ChevronRight className="w-4 h-4 text-white/40 group-hover:text-white group-hover:translate-x-1 transition-all" />
-            </div>
-
-            {isWomenHealthConfigured ? (
-              <div className="p-3 bg-[#101A28] border border-white/[0.06] rounded-xl flex items-center justify-between gap-3 text-xs">
-                <div>
-                  <span className="font-black text-white text-sm block">{cycleDay}-й день цикла</span>
-                  <span className="text-[11px] text-white/50 block mt-0.5">
-                    Следующий цикл: через {daysToPeriod} дней
-                  </span>
-                </div>
-
-                <span className="text-[10px] text-pink-300 bg-pink-500/10 px-2.5 py-1 rounded-lg border border-pink-500/20 font-semibold max-w-[140px] text-right">
-                  {cycleNote}
-                </span>
-              </div>
-            ) : (
-              <div className="p-3 bg-[#101A28] border border-white/[0.06] rounded-xl flex items-center justify-between gap-2 text-xs text-white/60">
-                <span>Укажите дату последнего цикла в настройках</span>
-                <span className="text-pink-400 font-bold shrink-0">Настроить</span>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* 6. КОМПАКТНЫЙ ЕЖЕДНЕВНЫЙ ЧЕК-ИН */}
-      <div
-        onClick={() => onNavigate('daily_checkin')}
-        className="bg-[#0B1320] hover:bg-[#0E182A] border border-white/[0.08] hover:border-[#8E74FF]/40 rounded-2xl sm:rounded-3xl p-4 sm:p-5 shadow-xl transition-all cursor-pointer space-y-3 group"
-      >
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl bg-[#4DEBFF]/10 border border-[#4DEBFF]/20 text-[#4DEBFF] flex items-center justify-center shrink-0">
-              <Activity className="w-4 h-4" />
-            </div>
-            <div>
-              <h3 className="font-extrabold text-white text-sm">Ежедневный чек-ин</h3>
-              <p className="text-[10px] text-white/50">
-                {isCheckinFilledToday ? 'Заполнен на сегодня' : 'Отметьте самочувствие'}
-              </p>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onNavigate('daily_checkin');
-            }}
-            className="px-3 py-1.5 rounded-xl bg-[#8E74FF]/15 hover:bg-[#8E74FF]/25 border border-[#8E74FF]/30 text-[#8E74FF] text-xs font-bold transition-all cursor-pointer"
-          >
-            {isCheckinFilledToday ? 'Изменить' : 'Заполнить'}
-          </button>
-        </div>
-
-        {isCheckinFilledToday ? (
-          <div className="p-3 bg-[#101A28] border border-white/[0.06] rounded-xl text-xs text-white/90 flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-1.5">
-              <span className="text-white/40">Энергия:</span>
-              <span className="font-bold text-[#34F5A4]">{(todayLog?.energy || 8) * 10}%</span>
-            </div>
-            <span className="text-white/20">•</span>
-            <div className="flex items-center gap-1.5">
-              <span className="text-white/40">Сон:</span>
-              <span className="font-bold text-[#4DEBFF]">{todayLog?.sleep || 8} ч</span>
-            </div>
-            <span className="text-white/20">•</span>
-            <div className="flex items-center gap-1.5">
-              <span className="text-white/40">Стресс:</span>
-              <span className="font-bold text-[#8E74FF]">{todayLog?.stress || 3}/10</span>
-            </div>
-            <span className="text-white/20">•</span>
-            <div className="flex items-center gap-1.5">
-              <span className="text-white/40">Боль:</span>
-              <span className="font-bold text-white/80">Нет</span>
-            </div>
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-            <div className="p-2.5 bg-[#101A28] rounded-xl border border-white/[0.04] text-center">
-              <span className="text-white/40 text-[10px] block">Настроение</span>
-              <span className="font-bold text-white mt-0.5 block">Не заполнено</span>
-            </div>
-            <div className="p-2.5 bg-[#101A28] rounded-xl border border-white/[0.04] text-center">
-              <span className="text-white/40 text-[10px] block">Энергия</span>
-              <span className="font-bold text-white mt-0.5 block">Не заполнено</span>
-            </div>
-            <div className="p-2.5 bg-[#101A28] rounded-xl border border-white/[0.04] text-center">
-              <span className="text-white/40 text-[10px] block">Стресс</span>
-              <span className="font-bold text-white mt-0.5 block">Не заполнено</span>
-            </div>
-            <div className="p-2.5 bg-[#101A28] rounded-xl border border-white/[0.04] text-center">
-              <span className="text-white/40 text-[10px] block">Боль</span>
-              <span className="font-bold text-white mt-0.5 block">Не заполнено</span>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* 7. БЛОК «СЕГОДНЯ» (Max 3 tasks) */}
-      <div className="bg-[#0B1320] border border-white/[0.08] rounded-2xl sm:rounded-3xl p-4 sm:p-5 shadow-xl space-y-3">
-        <div className="flex items-center justify-between border-b border-white/[0.06] pb-2.5">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-[#8E74FF]/10 border border-[#8E74FF]/20 text-[#8E74FF] flex items-center justify-center shrink-0">
-              <Calendar className="w-4 h-4" />
-            </div>
-            <h2 className="font-extrabold text-white text-sm sm:text-base tracking-tight">
-              Сегодня ({activeTodayTasks.length})
-            </h2>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => onNavigate('reminders')}
-            className="text-xs text-[#8E74FF] font-bold hover:underline cursor-pointer"
-          >
-            Все задачи →
-          </button>
-        </div>
-
-        <div className="space-y-2">
-          {activeTodayTasks.map((task) => (
-            <div
-              key={task.id}
-              onClick={task.action}
-              className="p-3 bg-[#101A28] hover:bg-[#142133] border border-white/[0.06] hover:border-[#8E74FF]/40 rounded-xl flex items-center justify-between gap-3 transition-all cursor-pointer group"
-            >
-              <div className="flex items-center gap-3">
-                <div
-                  className={`w-5 h-5 rounded-md border flex items-center justify-center text-xs transition-colors shrink-0 ${
-                    task.isCompleted
-                      ? 'bg-[#34F5A4]/20 border-[#34F5A4] text-[#34F5A4]'
-                      : 'border-white/20 text-transparent'
-                  }`}
-                >
-                  <Check className="w-3.5 h-3.5" />
-                </div>
-
-                <div>
-                  <span
-                    className={`font-bold text-xs sm:text-sm block ${
-                      task.isCompleted ? 'line-through text-white/40' : 'text-white'
-                    }`}
-                  >
-                    {task.title}
-                  </span>
-                  <span className="text-[10px] text-white/50 block mt-0.5">
-                    Время: {task.time}
-                  </span>
-                </div>
-              </div>
-
-              <ChevronRight className="w-4 h-4 text-white/40 group-hover:text-white group-hover:translate-x-1 transition-all shrink-0" />
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* 8. ОДНА КАРТОЧКА «СОВЕТ АИДЫ» */}
-      <div
-        onClick={() => onNavigate('ai_chat')}
-        className="bg-[#0B1320] hover:bg-[#0E182A] border border-[#8E74FF]/30 hover:border-[#8E74FF]/60 rounded-2xl sm:rounded-3xl p-4 sm:p-5 shadow-xl transition-all cursor-pointer space-y-2.5 group relative overflow-hidden"
-      >
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-[#8E74FF]/15 border border-[#8E74FF]/30 text-[#8E74FF] flex items-center justify-center shrink-0">
-              <Brain className="w-4 h-4" />
-            </div>
-            <span className="text-xs font-extrabold text-[#8E74FF] tracking-tight">
-              Совет Аиды
+        {/* TOP DASHBOARD UTILITY HEADER (Settings & Refresh Analysis) */}
+        <div className="flex items-center justify-between pb-1 px-0.5 gap-2">
+          <div className="flex items-center gap-1.5 bg-[#111827] border border-white/[0.08] px-2.5 py-1.5 rounded-full shadow-sm shrink-0">
+            <span className="w-2 h-2 rounded-full bg-[#3DD9C5] animate-pulse shrink-0" />
+            <span className="text-[11px] font-bold text-white/90 tracking-wide uppercase flex items-center gap-1 whitespace-nowrap">
+              ИИ-Мониторинг
+              <Sparkles className="w-3 h-3 text-[#8B5CF6] shrink-0" />
             </span>
           </div>
 
-          <div className="flex items-center gap-1 text-xs font-bold text-[#8E74FF] group-hover:translate-x-1 transition-transform">
-            <span>Подробнее</span>
-            <ChevronRight className="w-4 h-4" />
+          <div className="flex items-center gap-1.5 shrink-0">
+            {/* REFRESH AI ANALYSIS BUTTON */}
+            <button
+              onClick={() => fetchHealthAnalysis?.()}
+              disabled={isLoadingAnalysis}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-[#111827] border border-[#3DD9C5]/30 hover:border-[#3DD9C5] text-[#3DD9C5] hover:bg-[#3DD9C5]/10 text-xs font-semibold transition-all cursor-pointer shadow-sm active:scale-95 whitespace-nowrap"
+              title="Обновить ИИ-анализ"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 shrink-0 ${isLoadingAnalysis ? 'animate-spin' : ''}`} />
+              <span>{isLoadingAnalysis ? 'Обновление...' : 'Обновить'}</span>
+            </button>
+
+            {/* SETTINGS BUTTON */}
+            <button
+              onClick={() => onNavigate('settings')}
+              className="p-1.5 rounded-xl bg-[#111827] border border-white/[0.08] hover:border-white/25 text-white/80 hover:text-white transition-all cursor-pointer active:scale-95 flex items-center justify-center shrink-0"
+              title="Настройки"
+            >
+              <Settings className="w-4 h-4 text-white/80" />
+            </button>
           </div>
         </div>
 
-        <p className="text-xs sm:text-sm font-semibold text-white leading-relaxed">
-          {singleTip}
-        </p>
+        {/* 1. HERO BLOCK: BIG INTERACTIVE CIRCLE (260px) WITH ANIMATED SATELLITE MENU */}
+        <div className="relative flex flex-col items-center justify-center pt-2 pb-1">
+          {/* Active Hover / Focus Tooltip indicator with AnimatePresence */}
+          <div className="h-6 flex items-center justify-center mb-1">
+            <AnimatePresence mode="wait">
+              {hoveredRingItem ? (
+                <motion.div
+                  key="hover-badge"
+                  initial={{ opacity: 0, y: -6, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -4, scale: 0.95 }}
+                  transition={{ duration: 0.2 }}
+                  className="px-3.5 py-0.5 bg-[#111827] border border-[#8B5CF6]/50 text-[#3DD9C5] text-[11px] font-bold rounded-full shadow-lg flex items-center gap-1.5 z-30"
+                >
+                  <Sparkles className="w-3 h-3 text-[#8B5CF6] animate-pulse" />
+                  <span>{hoveredRingItem}</span>
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="default-hint"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="text-[11px] font-medium text-white/40 tracking-wider uppercase"
+                >
+                  Нажмите на систему для деталей
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
 
-        <p className="text-[11px] text-white/40 border-t border-white/[0.06] pt-2">
-          {tipBasis}
-        </p>
+          {/* THE 260px RING CONTAINER */}
+          <div className="relative w-[260px] h-[260px] flex items-center justify-center">
+            {/* Ambient Animated Glowing Pulse Halo */}
+            <motion.div
+              animate={{ opacity: [0.15, 0.35, 0.15], scale: [0.98, 1.02, 0.98] }}
+              transition={{ repeat: Infinity, duration: 4, ease: "easeInOut" }}
+              className="absolute inset-0 rounded-full bg-gradient-to-tr from-[#8B5CF6]/20 to-[#3DD9C5]/20 blur-xl pointer-events-none"
+            />
+
+            {/* SVG Progress Arc Gauge - Crisp, Vibrant & Bright */}
+            <svg className="w-full h-full -rotate-90 transform z-10" viewBox="0 0 260 260">
+              {/* Background Ring Track */}
+              <circle
+                cx="130"
+                cy="130"
+                r="115"
+                stroke="rgba(255, 255, 255, 0.08)"
+                strokeWidth="10"
+                fill="none"
+              />
+              {/* Active Purple/Turquoise Progress Arc */}
+              <circle
+                cx="130"
+                cy="130"
+                r="115"
+                stroke="url(#purpleTurquoiseGlow)"
+                strokeWidth="10"
+                strokeLinecap="round"
+                fill="none"
+                strokeDasharray="722"
+                strokeDashoffset="231" // 68% filled
+                className="transition-all duration-1000 ease-out"
+              />
+              <defs>
+                <linearGradient id="purpleTurquoiseGlow" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#8B5CF6" />
+                  <stop offset="100%" stopColor="#3DD9C5" />
+                </linearGradient>
+              </defs>
+            </svg>
+
+            {/* INNER CENTER CONTENT (Organically spaced inside the circle boundary) */}
+            <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-6 py-4 pointer-events-none z-10">
+              {/* Big Stat Number (42px) */}
+              <div className="text-[42px] font-black text-white tracking-tight leading-none">
+                68%
+              </div>
+              
+              <div className="text-[12px] font-medium text-white/60 mt-1">
+                Общее состояние
+              </div>
+
+              {/* Status Badge */}
+              <div className="mt-1.5 inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-[#3DD9C5]/15 border border-[#3DD9C5]/30 text-[#3DD9C5] text-[11px] font-bold">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#3DD9C5] animate-pulse" />
+                Хорошее
+              </div>
+
+              {/* Organism Age vs Passport Age (Compact & perfectly fitting inside the lower circle curve) */}
+              <div className="mt-2.5 pt-2 border-t border-white/10 w-[130px] space-y-0.5">
+                <div className="text-[11px] flex items-center justify-between text-white/70">
+                  <span className="text-white/50 text-[10px]">Организм</span>
+                  <span className="font-extrabold text-white text-[11px]">29.8 года</span>
+                </div>
+                <div className="text-[10px] flex items-center justify-between text-white/40">
+                  <span>Паспорт</span>
+                  <span className="font-medium text-white/60 text-[10px]">28 лет</span>
+                </div>
+              </div>
+            </div>
+
+            {/* 5 ANIMATED SATELLITE ICON BUTTONS (Placed directly ON the circle ring line) */}
+
+            {/* 1. 🧪 Анализы (Top Center - 0°) */}
+            <motion.button
+              type="button"
+              initial={{ scale: 0, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1, y: [0, -2, 0] }}
+              transition={{
+                scale: { delay: 0.1, duration: 0.3, type: "spring" },
+                y: { repeat: Infinity, duration: 3, ease: "easeInOut" },
+              }}
+              whileHover={{ scale: 1.25, zIndex: 30 }}
+              whileTap={{ scale: 0.9 }}
+              onClick={() => {
+                onNavigate('dashboard');
+                setActiveTab('lab');
+              }}
+              onMouseEnter={() => setHoveredRingItem('Анализы и лабораторные бланки')}
+              onMouseLeave={() => setHoveredRingItem(null)}
+              className="absolute top-[15px] left-[130px] -translate-x-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-[#111827] border border-[#3DD9C5]/40 hover:border-[#3DD9C5] text-white flex items-center justify-center shadow-[0_0_12px_rgba(61,217,197,0.2)] hover:shadow-[0_0_18px_rgba(61,217,197,0.5)] transition-shadow cursor-pointer group z-20"
+              title="Анализы"
+            >
+              <FlaskConical className="w-4 h-4 text-[#3DD9C5] group-hover:scale-110 transition-transform" />
+            </motion.button>
+
+            {/* 2. 🧠 Психика (Top Left - 288°) */}
+            <motion.button
+              type="button"
+              initial={{ scale: 0, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1, y: [0, -2.5, 0] }}
+              transition={{
+                scale: { delay: 0.2, duration: 0.3, type: "spring" },
+                y: { repeat: Infinity, duration: 3.2, ease: "easeInOut", delay: 0.4 },
+              }}
+              whileHover={{ scale: 1.25, zIndex: 30 }}
+              whileTap={{ scale: 0.9 }}
+              onClick={() => onNavigate('mental_diary')}
+              onMouseEnter={() => setHoveredRingItem('Психика и ментальный баланс')}
+              onMouseLeave={() => setHoveredRingItem(null)}
+              className="absolute top-[94.5px] left-[20.6px] -translate-x-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-[#111827] border border-[#8B5CF6]/40 hover:border-[#8B5CF6] text-white flex items-center justify-center shadow-[0_0_12px_rgba(139,92,246,0.2)] hover:shadow-[0_0_18px_rgba(139,92,246,0.5)] transition-shadow cursor-pointer group z-20"
+              title="Психика"
+            >
+              <Brain className="w-4 h-4 text-[#8B5CF6] group-hover:scale-110 transition-transform" />
+            </motion.button>
+
+            {/* 3. ❤️ Давление (Top Right - 72°) */}
+            <motion.button
+              type="button"
+              initial={{ scale: 0, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1, y: [0, -2, 0] }}
+              transition={{
+                scale: { delay: 0.3, duration: 0.3, type: "spring" },
+                y: { repeat: Infinity, duration: 2.8, ease: "easeInOut", delay: 0.2 },
+              }}
+              whileHover={{ scale: 1.25, zIndex: 30 }}
+              whileTap={{ scale: 0.9 }}
+              onClick={() => onNavigate('pressure_diary')}
+              onMouseEnter={() => setHoveredRingItem('Артериальное давление')}
+              onMouseLeave={() => setHoveredRingItem(null)}
+              className="absolute top-[94.5px] left-[239.4px] -translate-x-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-[#111827] border border-rose-400/40 hover:border-rose-400 text-white flex items-center justify-center shadow-[0_0_12px_rgba(251,113,133,0.2)] hover:shadow-[0_0_18px_rgba(251,113,133,0.5)] transition-shadow cursor-pointer group z-20"
+              title="Давление"
+            >
+              <Heart className="w-4 h-4 text-rose-400 group-hover:scale-110 transition-transform" />
+            </motion.button>
+
+            {/* 4. 🌙 Сон (Bottom Left - 216°) */}
+            <motion.button
+              type="button"
+              initial={{ scale: 0, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1, y: [0, -2.5, 0] }}
+              transition={{
+                scale: { delay: 0.4, duration: 0.3, type: "spring" },
+                y: { repeat: Infinity, duration: 3.4, ease: "easeInOut", delay: 0.6 },
+              }}
+              whileHover={{ scale: 1.25, zIndex: 30 }}
+              whileTap={{ scale: 0.9 }}
+              onClick={() => onNavigate('mental_diary')}
+              onMouseEnter={() => setHoveredRingItem('Качество и фазы сна')}
+              onMouseLeave={() => setHoveredRingItem(null)}
+              className="absolute top-[223px] left-[62.4px] -translate-x-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-[#111827] border border-indigo-400/40 hover:border-indigo-400 text-white flex items-center justify-center shadow-[0_0_12px_rgba(129,140,248,0.2)] hover:shadow-[0_0_18px_rgba(129,140,248,0.5)] transition-shadow cursor-pointer group z-20"
+              title="Сон"
+            >
+              <Moon className="w-4 h-4 text-indigo-400 group-hover:scale-110 transition-transform" />
+            </motion.button>
+
+            {/* 5. 🧬 Организм (Bottom Right - 144°) */}
+            <motion.button
+              type="button"
+              initial={{ scale: 0, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1, y: [0, -2, 0] }}
+              transition={{
+                scale: { delay: 0.5, duration: 0.3, type: "spring" },
+                y: { repeat: Infinity, duration: 3.1, ease: "easeInOut", delay: 0.8 },
+              }}
+              whileHover={{ scale: 1.25, zIndex: 30 }}
+              whileTap={{ scale: 0.9 }}
+              onClick={() => onNavigate('body_map')}
+              onMouseEnter={() => setHoveredRingItem('Системы и биологический возраст')}
+              onMouseLeave={() => setHoveredRingItem(null)}
+              className="absolute top-[223px] left-[197.6px] -translate-x-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-[#111827] border border-[#3DD9C5]/40 hover:border-[#3DD9C5] text-white flex items-center justify-center shadow-[0_0_12px_rgba(61,217,197,0.2)] hover:shadow-[0_0_18px_rgba(61,217,197,0.5)] transition-shadow cursor-pointer group z-20"
+              title="Организм"
+            >
+              <Dna className="w-4 h-4 text-[#3DD9C5] group-hover:scale-110 transition-transform" />
+            </motion.button>
+          </div>
+        </div>
+
+        {/* AI ANALYSIS DATE BADGE */}
+        <div className="flex items-center justify-center gap-2 py-1.5 px-3.5 bg-[#111827]/90 border border-white/10 rounded-full w-fit mx-auto shadow-md">
+          <Clock className="w-3.5 h-3.5 text-[#3DD9C5] animate-pulse shrink-0" />
+          <span className="text-[11px] font-medium text-white/70">
+            Дата анализа: <span className="text-white font-bold">{analysisDateFormatted}</span>
+          </span>
+          <Sparkles className="w-3 h-3 text-[#8B5CF6] shrink-0" />
+        </div>
+
+        {/* 2. UNDER THE CIRCLE: 4 COMPACT CARDS (2x2 GRID) */}
+        <div className="grid grid-cols-2 gap-2.5">
+          {/* Card 1: Энергия */}
+          <div
+            onClick={() => onNavigate('daily_checkin')}
+            className="bg-[#111827] border border-white/[0.06] hover:border-white/20 rounded-2xl p-3 flex flex-col justify-between h-[96px] transition-all cursor-pointer group"
+          >
+            <div className="space-y-1">
+              <div className="text-xs font-semibold text-white/70 flex items-center gap-1.5">
+                <Zap className="w-3.5 h-3.5 text-[#3DD9C5] shrink-0" />
+                <span className="truncate">Энергия</span>
+              </div>
+              <span className="inline-block text-[10px] font-bold text-[#3DD9C5] bg-[#3DD9C5]/10 border border-[#3DD9C5]/20 px-1.5 py-0.5 rounded-md w-fit">
+                Хорошая
+              </span>
+            </div>
+            <div className="text-xl font-black text-white tracking-tight">
+              70%
+            </div>
+          </div>
+
+          {/* Card 2: Сон */}
+          <div
+            onClick={() => onNavigate('mental_diary')}
+            className="bg-[#111827] border border-white/[0.06] hover:border-white/20 rounded-2xl p-3 flex flex-col justify-between h-[96px] transition-all cursor-pointer group"
+          >
+            <div className="space-y-1">
+              <div className="text-xs font-semibold text-white/70 flex items-center gap-1.5">
+                <Moon className="w-3.5 h-3.5 text-[#8B5CF6] shrink-0" />
+                <span className="truncate">Сон</span>
+              </div>
+              <span className="inline-block text-[10px] font-bold text-white/70 bg-white/5 border border-white/10 px-1.5 py-0.5 rounded-md w-fit">
+                Норма
+              </span>
+            </div>
+            <div className="text-lg font-black text-white tracking-tight">
+              7 ч 32 мин
+            </div>
+          </div>
+
+          {/* Card 3: Давление */}
+          <div
+            onClick={() => onNavigate('pressure_diary')}
+            className="bg-[#111827] border border-white/[0.06] hover:border-white/20 rounded-2xl p-3 flex flex-col justify-between h-[96px] transition-all cursor-pointer group"
+          >
+            <div className="space-y-1">
+              <div className="text-xs font-semibold text-white/70 flex items-center gap-1.5">
+                <Heart className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                <span className="truncate">Давление</span>
+              </div>
+              <span className="inline-block text-[10px] font-bold text-[#3DD9C5] bg-[#3DD9C5]/10 border border-[#3DD9C5]/20 px-1.5 py-0.5 rounded-md w-fit">
+                Норма
+              </span>
+            </div>
+            <div className="text-lg font-black text-white tracking-tight">
+              118/74
+            </div>
+          </div>
+
+          {/* Card 4: Настроение */}
+          <div
+            onClick={() => onNavigate('mental_diary')}
+            className="bg-[#111827] border border-white/[0.06] hover:border-white/20 rounded-2xl p-3 flex flex-col justify-between h-[96px] transition-all cursor-pointer group"
+          >
+            <div className="space-y-1">
+              <div className="text-xs font-semibold text-white/70 flex items-center gap-1.5">
+                <Smile className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                <span className="truncate">Настроение</span>
+              </div>
+              <span className="inline-block text-[10px] font-bold text-[#3DD9C5] bg-[#3DD9C5]/10 border border-[#3DD9C5]/20 px-1.5 py-0.5 rounded-md w-fit">
+                Хорошее
+              </span>
+            </div>
+            <div className="text-lg font-black text-white tracking-tight">
+              Спокойное
+            </div>
+          </div>
+        </div>
+
+        {/* 3. AIDA INSIGHT BLOCK (БЛОК АИДЫ) */}
+        <div className="bg-[#111827] border border-white/[0.06] rounded-2xl p-4 space-y-3">
+          <div className="flex items-start gap-3">
+            {/* Aida Avatar */}
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-[#8B5CF6] to-[#3DD9C5] text-[#090B10] flex items-center justify-center font-black shrink-0 shadow-md">
+              <Sparkles className="w-5 h-5 text-[#090B10]" />
+            </div>
+
+            {/* Aida Text Content */}
+            <div className="flex-1 space-y-1.5">
+              <div className="text-xs font-bold text-white leading-tight">
+                Сегодня есть два момента, на которые стоит обратить внимание:
+              </div>
+              <ul className="text-xs text-white/70 space-y-1 font-medium">
+                <li className="flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#8B5CF6]" />
+                  <span>Сон уменьшился</span>
+                </li>
+                <li className="flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#3DD9C5]" />
+                  <span>Давление в норме</span>
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          {/* Action Button */}
+          <button
+            type="button"
+            onClick={() => onNavigate('ai_chat')}
+            className="w-full py-2.5 bg-white/5 hover:bg-[#8B5CF6]/15 border border-white/10 hover:border-[#8B5CF6]/30 text-xs font-bold text-white hover:text-[#8B5CF6] rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5"
+          >
+            <span>Подробнее</span>
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* 4. MEDICATIONS BLOCK (ЛЕКАРСТВА - МАКСИМУМ 2 ПРЕПАРАТА) */}
+        <div className="bg-[#111827] border border-white/[0.06] rounded-2xl p-4 space-y-2.5">
+          <div className="flex items-center justify-between border-b border-white/[0.06] pb-2">
+            <span className="text-xs font-bold text-white flex items-center gap-2">
+              <Pill className="w-4 h-4 text-[#8B5CF6]" />
+              Приём препаратов
+            </span>
+            <span className="text-[10px] text-white/50 font-medium">Сегодня</span>
+          </div>
+
+          <div className="space-y-2">
+            {/* Med 1: Омега-3 */}
+            <div
+              onClick={() => toggleMed('omega-3')}
+              className="flex items-center justify-between p-2.5 bg-[#090B10] border border-white/[0.04] rounded-xl cursor-pointer hover:border-white/15 transition-all"
+            >
+              <div className="flex items-center gap-2.5">
+                <span className="text-base">💊</span>
+                <div>
+                  <div className="text-xs font-bold text-white">Омега-3</div>
+                  <div className="text-[10px] text-white/50">1 капсула (1000 мг)</div>
+                </div>
+              </div>
+              {medsState['omega-3'] ? (
+                <span className="px-2.5 py-1 rounded-lg bg-[#3DD9C5]/10 border border-[#3DD9C5]/30 text-[#3DD9C5] text-xs font-bold flex items-center gap-1">
+                  <Check className="w-3.5 h-3.5" />
+                  Выпито
+                </span>
+              ) : (
+                <span className="px-2.5 py-1 rounded-lg bg-white/5 text-white/60 text-xs font-medium">
+                  Отметить
+                </span>
+              )}
+            </div>
+
+            {/* Med 2: Магний */}
+            <div
+              onClick={() => toggleMed('magnesium')}
+              className="flex items-center justify-between p-2.5 bg-[#090B10] border border-white/[0.04] rounded-xl cursor-pointer hover:border-white/15 transition-all"
+            >
+              <div className="flex items-center gap-2.5">
+                <span className="text-base">💊</span>
+                <div>
+                  <div className="text-xs font-bold text-white">Магний B6</div>
+                  <div className="text-[10px] text-white/50">400 мг перед сном</div>
+                </div>
+              </div>
+              {medsState['magnesium'] ? (
+                <span className="px-2.5 py-1 rounded-lg bg-[#3DD9C5]/10 border border-[#3DD9C5]/30 text-[#3DD9C5] text-xs font-bold flex items-center gap-1">
+                  <Check className="w-3.5 h-3.5" />
+                  Выпито
+                </span>
+              ) : (
+                <span className="px-2.5 py-1 rounded-lg bg-[#8B5CF6]/10 border border-[#8B5CF6]/30 text-[#8B5CF6] text-xs font-bold flex items-center gap-1">
+                  <Clock className="w-3.5 h-3.5" />
+                  Через 2 часа
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* 5. COLLAPSIBLE EXTENDED HEALTH SECTIONS (Deep analysis when needed) */}
+        <div className="space-y-3 pt-2">
+          {/* Toggle Button for Detailed Medical Sections */}
+          <button
+            type="button"
+            onClick={() => setIsAttentionOpen(!isAttentionOpen)}
+            className="w-full py-2.5 bg-[#111827] border border-white/[0.06] rounded-xl text-xs font-bold text-white/70 hover:text-white flex items-center justify-between px-4 cursor-pointer transition-colors"
+          >
+            <span>Расширенный медицинский анализ</span>
+            <ChevronDown className={`w-4 h-4 transition-transform ${isAttentionOpen ? 'rotate-180' : ''}`} />
+          </button>
+
+          {isAttentionOpen && (
+            <div className="space-y-3 animate-fadeIn">
+              {/* State Connections Section */}
+              <StateConnectionsSection
+                connections={healthProfile.stateConnections}
+                onOpenDoctorReport={onOpenDoctorReport}
+              />
+
+              {/* Recommended Next Tests */}
+              <RecommendedNextTestsSection
+                recommendedTests={healthProfile.recommendedNextTests}
+                onNavigateToLab={() => {
+                  onNavigate('dashboard');
+                  setActiveTab('lab');
+                }}
+              />
+            </div>
+          )}
+        </div>
+
       </div>
     </div>
   );

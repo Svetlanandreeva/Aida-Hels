@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { StateConnection } from '../../types';
-import { GitCommit, AlertTriangle, ArrowRight, Info, ShieldAlert, Sparkles } from 'lucide-react';
+import { GitCommit, AlertTriangle, ArrowRight, Info, ShieldAlert, Sparkles, ChevronDown } from 'lucide-react';
 
 interface StateConnectionsSectionProps {
   connections: StateConnection[];
@@ -11,6 +11,7 @@ export const StateConnectionsSection: React.FC<StateConnectionsSectionProps> = (
   connections,
   onOpenDoctorReport,
 }) => {
+  const [isOpen, setIsOpen] = useState(true);
   const [selectedConnection, setSelectedConnection] = useState<StateConnection | null>(
     connections[0] || null
   );
@@ -18,20 +19,34 @@ export const StateConnectionsSection: React.FC<StateConnectionsSectionProps> = (
   if (connections.length === 0) {
     return (
       <div className="bg-[#0B1320] border border-white/[0.08] rounded-2xl sm:rounded-3xl p-4 sm:p-5 shadow-xl space-y-3">
-        <div className="flex items-center gap-2 border-b border-white/[0.06] pb-2.5">
-          <div className="w-7 h-7 rounded-lg bg-[#8E74FF]/10 border border-[#8E74FF]/20 text-[#8E74FF] flex items-center justify-center shrink-0">
-            <GitCommit className="w-4 h-4" />
+        <button
+          type="button"
+          onClick={() => setIsOpen(!isOpen)}
+          className="w-full flex items-center justify-between border-b border-white/[0.06] pb-2.5 text-left cursor-pointer group"
+        >
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-[#8E74FF]/10 border border-[#8E74FF]/20 text-[#8E74FF] flex items-center justify-center shrink-0">
+              <GitCommit className="w-4 h-4" />
+            </div>
+            <h2 className="font-extrabold text-white text-sm sm:text-base tracking-tight group-hover:text-[#8E74FF] transition-colors">
+              Связи состояний и патофизиологические цепочки (0)
+            </h2>
           </div>
-          <h2 className="font-extrabold text-white text-sm sm:text-base tracking-tight">
-            Связи состояний и патофизиологические цепочки
-          </h2>
-        </div>
-        <div className="p-4 bg-[#101A28] border border-white/[0.06] rounded-xl text-xs text-white/70 flex items-center gap-3">
-          <Sparkles className="w-4 h-4 text-[#8E74FF] shrink-0" />
-          <span>
-            При выведении показателей за рамки нормы Аида автоматически формирует межсистемные связи (например, влияние дефицита ферритина на сердечный пульс или влияние уровня ТТГ на липидный обмен).
-          </span>
-        </div>
+          <ChevronDown
+            className={`w-5 h-5 text-white/50 group-hover:text-white transition-transform duration-200 ${
+              isOpen ? 'rotate-180' : ''
+            }`}
+          />
+        </button>
+
+        {isOpen && (
+          <div className="p-4 bg-[#101A28] border border-white/[0.06] rounded-xl text-xs text-white/70 flex items-center gap-3 animate-fadeIn">
+            <Sparkles className="w-4 h-4 text-[#8E74FF] shrink-0" />
+            <span>
+              При выведении показателей за рамки нормы Аида автоматически формирует межсистемные связи (например, влияние дефицита ферритина на сердечный пульс или влияние уровня ТТГ на липидный обмен).
+            </span>
+          </div>
+        )}
       </div>
     );
   }
@@ -42,39 +57,51 @@ export const StateConnectionsSection: React.FC<StateConnectionsSectionProps> = (
       <div className="absolute -top-20 -right-20 w-40 h-40 bg-[#8E74FF]/10 rounded-full blur-3xl pointer-events-none" />
 
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/[0.06] pb-3">
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl bg-[#8E74FF]/15 border border-[#8E74FF]/30 text-[#8E74FF] flex items-center justify-center shrink-0">
-            <GitCommit className="w-4.5 h-4.5 animate-pulse" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="font-black text-white text-sm sm:text-base tracking-tight">
-                Связи состояний ({connections.length})
-              </h2>
-              <span className="px-2 py-0.5 rounded-full bg-[#8E74FF]/20 text-[#8E74FF] text-[10px] font-bold border border-[#8E74FF]/30">
-                Межсистемный ИИ-анализ
-              </span>
+      <div className="flex items-center justify-between gap-2 border-b border-white/[0.06] pb-3">
+        <button
+          type="button"
+          onClick={() => setIsOpen(!isOpen)}
+          className="flex-1 flex items-center justify-between text-left cursor-pointer group pr-2"
+        >
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-[#8E74FF]/15 border border-[#8E74FF]/30 text-[#8E74FF] flex items-center justify-center shrink-0">
+              <GitCommit className="w-4.5 h-4.5 animate-pulse" />
             </div>
-            <p className="text-[11px] text-white/60">
-              Взаимосвязи между показателями лабораторных анализов и функциональными системами
-            </p>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="font-black text-white text-sm sm:text-base tracking-tight group-hover:text-[#8E74FF] transition-colors">
+                  Связи состояний ({connections.length})
+                </h2>
+                <span className="px-2 py-0.5 rounded-full bg-[#8E74FF]/20 text-[#8E74FF] text-[10px] font-bold border border-[#8E74FF]/30 hidden sm:inline-block">
+                  Межсистемный ИИ-анализ
+                </span>
+              </div>
+              <p className="text-[11px] text-white/60">
+                Взаимосвязи между показателями лабораторных анализов и функциональными системами
+              </p>
+            </div>
           </div>
-        </div>
+          <ChevronDown
+            className={`w-5 h-5 text-white/50 group-hover:text-white transition-transform duration-200 shrink-0 ${
+              isOpen ? 'rotate-180' : ''
+            }`}
+          />
+        </button>
 
         {onOpenDoctorReport && (
           <button
             onClick={onOpenDoctorReport}
-            className="self-start sm:self-auto px-3 py-1.5 bg-[#8E74FF]/10 hover:bg-[#8E74FF]/20 border border-[#8E74FF]/30 rounded-xl text-xs font-bold text-[#8E74FF] hover:text-white transition-all cursor-pointer flex items-center gap-1.5"
+            className="px-3 py-1.5 bg-[#8E74FF]/10 hover:bg-[#8E74FF]/20 border border-[#8E74FF]/30 rounded-xl text-xs font-bold text-[#8E74FF] hover:text-white transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
           >
             <Info className="w-3.5 h-3.5" />
-            <span>Отчёт врачу</span>
+            <span className="hidden sm:inline">Отчёт врачу</span>
           </button>
         )}
       </div>
 
       {/* Grid Layout: Connection Selector Buttons & Connection Detail View */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5">
+      {isOpen && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5 animate-fadeIn">
         {/* Connection Tabs */}
         <div className="lg:col-span-5 space-y-2">
           {connections.map((conn) => {
@@ -177,6 +204,7 @@ export const StateConnectionsSection: React.FC<StateConnectionsSectionProps> = (
           </div>
         )}
       </div>
+      )}
     </div>
   );
 };

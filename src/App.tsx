@@ -563,6 +563,13 @@ export default function App() {
           activeRemindersCount={reminders.filter((r) => r.isEnabled).length}
           reminders={reminders}
           documents={documents}
+          onRefreshAnalysis={() => {
+            // Trigger navigation back to dashboard or trigger refresh
+            if (currentScreen !== 'dashboard') {
+              setCurrentScreen('dashboard');
+              setDashboardTab('main');
+            }
+          }}
         />
       )}
 
@@ -687,12 +694,17 @@ export default function App() {
           <DailyCheckin logs={dailyLogs} setLogs={setDailyLogs} />
         )}
 
-        {/* SCREEN 11: BODY MAP (10 SYSTEMS) */}
+        {/* SCREEN 11: BODY MAP (10 SYSTEMS) & ORGANISM AGE */}
         {currentScreen === 'body_map' && (
           <BodyMap
             systems={bodySystems}
             onSelectSystem={(system) => setSelectedSystemDetail(system)}
             onOpenOverviewModal={() => setIsOverviewModalOpen(true)}
+            user={user}
+            documents={documents}
+            pressureLogs={pressureLogs}
+            dailyLogs={dailyLogs}
+            onNavigate={(screen) => setCurrentScreen(screen)}
           />
         )}
 
