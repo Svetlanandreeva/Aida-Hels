@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Reminder, ReminderCategory, ReminderFrequency } from '../types';
+import { Reminder, ReminderCategory, ReminderFrequency, UserProfile } from '../types';
 import { AutocompleteInput } from './AutocompleteInput';
 import { MEDICATIONS_SUGGESTIONS } from '../data/medicalSuggestions';
 import {
@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 
 interface RemindersScreenProps {
+  user?: UserProfile;
   reminders: Reminder[];
   setReminders: React.Dispatch<React.SetStateAction<Reminder[]>>;
   onNavigateToCheckin?: () => void;
@@ -96,6 +97,7 @@ const playSoundAlert = (type: 'chime' | 'gentle' | 'pulse' | 'complete' = 'chime
 };
 
 export const RemindersScreen: React.FC<RemindersScreenProps> = ({
+  user,
   reminders,
   setReminders,
   onNavigateToCheckin,
@@ -160,8 +162,8 @@ export const RemindersScreen: React.FC<RemindersScreenProps> = ({
         body: JSON.stringify({
           newMedication: medName,
           currentMedications: currentMeds,
-          allergies: ['Пенициллин'],
-          chronicConditions: ['Гипертензия'],
+          allergies: user?.allergies || [],
+          chronicConditions: user?.chronicDiagnoses?.map((d) => d.name) || [],
         }),
       });
       const data = await res.json();

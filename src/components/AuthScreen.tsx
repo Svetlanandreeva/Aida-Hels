@@ -173,14 +173,16 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess, onDemoLo
       );
 
       setIsSubmitting(false);
+      const serverProfile = data.userData?.profile || data.userData || {};
       onLoginSuccess({
-        id: data.user?.id,
+        ...serverProfile,
+        id: data.user?.id || serverProfile.id,
         email: normEmail,
         password,
-        fullName: data.user?.fullName || fullName || normEmail.split('@')[0],
+        fullName: data.user?.fullName || serverProfile.fullName || fullName || normEmail.split('@')[0],
         isAuthenticated: true,
         isQuestionnaireCompleted: true,
-        registrationDate: new Date().toISOString(),
+        registrationDate: serverProfile.registrationDate || new Date().toISOString(),
         introCardDismissedAt: null,
       });
     } catch (err: any) {
@@ -230,14 +232,16 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess, onDemoLo
       );
 
       setIsSubmitting(false);
+      const serverProfile = data.userData?.profile || data.userData || {};
       onLoginSuccess({
-        id: data.user?.id,
+        ...serverProfile,
+        id: data.user?.id || serverProfile.id,
         email: normEmail,
         password,
-        fullName: storedName,
+        fullName: serverProfile.fullName || storedName,
         isAuthenticated: true,
         isQuestionnaireCompleted: tab === 'register' ? false : true,
-        registrationDate: new Date().toISOString(),
+        registrationDate: serverProfile.registrationDate || new Date().toISOString(),
         introCardDismissedAt: null,
       });
     } catch (err: any) {

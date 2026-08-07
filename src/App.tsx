@@ -76,7 +76,7 @@ export const logSecurityEvent = async (event: string, severity: 'low' | 'high') 
 };
 
 const isDemoUser = (u: UserProfile) => {
-  return u.email === 'anna.ivanova@health.ru' || u.id === 'usr-1' || Boolean((u as any).isDemoUser);
+  return Boolean((u as any)?.isDemoUser) || u?.email === 'anna.ivanova@health.ru';
 };
 
 export default function App() {
@@ -106,7 +106,23 @@ export default function App() {
     const saved = localStorage.getItem('app_user_profile');
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (!parsed.isDemoUser && parsed.email !== 'anna.ivanova@health.ru' && parsed.fullName !== 'Анна Сергеевна Иванова') {
+          if (parsed.id === 'usr-1') parsed.id = `usr-${Date.now()}`;
+          if (parsed.birthDate === '1995-06-14') parsed.birthDate = '';
+          if (parsed.height === 168) parsed.height = 0;
+          if (parsed.weight === 58) parsed.weight = 0;
+          parsed.allergies = (parsed.allergies || []).filter(
+            (a: string) => a !== 'Пенициллин' && a !== 'Цветение березы' && a !== 'Арахис'
+          );
+          parsed.chronicDiagnoses = (parsed.chronicDiagnoses || []).filter(
+            (d: any) => d.name !== 'Субклинический гипотиреоз' && d.name !== 'Синдром раздраженного кишечника'
+          );
+          if (parsed.womenHealth?.partnerSyncCode === 'PARTNER-9842-RU') {
+            parsed.womenHealth = { ...parsed.womenHealth, partnerSyncCode: '', lastPeriodDate: '' };
+          }
+        }
+        return parsed;
       } catch {
         // ignore
       }
@@ -326,12 +342,39 @@ export default function App() {
   // Handlers
   const handleAuthSuccess = (userData?: Partial<UserProfile>) => {
     const isNewRegistration = userData?.isQuestionnaireCompleted === false;
+    const isPrevDemo = isDemoUser(user) || user.email === 'anna.ivanova@health.ru' || user.fullName === 'Анна Сергеевна Иванова';
+
+    const baseProfile = (isPrevDemo || isNewRegistration) ? emptyUserProfile : user;
+
     const updatedUser: UserProfile = {
-      ...(isNewRegistration ? emptyUserProfile : user),
+      ...emptyUserProfile,
+      ...baseProfile,
       ...userData,
+      isDemoUser: false,
       isAuthenticated: true,
     };
+
+    if (!updatedUser.id || updatedUser.id === 'usr-1') {
+      updatedUser.id = `usr-${Date.now()}`;
+    }
+
+    if (updatedUser.fullName !== 'Анна Сергеевна Иванова' && updatedUser.email !== 'anna.ivanova@health.ru') {
+      if (updatedUser.birthDate === '1995-06-14') updatedUser.birthDate = '';
+      if (updatedUser.height === 168) updatedUser.height = 0;
+      if (updatedUser.weight === 58) updatedUser.weight = 0;
+      updatedUser.allergies = (updatedUser.allergies || []).filter(
+        (a: string) => a !== 'Пенициллин' && a !== 'Цветение березы' && a !== 'Арахис'
+      );
+      updatedUser.chronicDiagnoses = (updatedUser.chronicDiagnoses || []).filter(
+        (d: any) => d.name !== 'Субклинический гипотиреоз' && d.name !== 'Синдром раздраженного кишечника'
+      );
+      if (updatedUser.womenHealth?.partnerSyncCode === 'PARTNER-9842-RU') {
+        updatedUser.womenHealth = { ...updatedUser.womenHealth, partnerSyncCode: '', lastPeriodDate: '' };
+      }
+    }
+
     setUser(updatedUser);
+    localStorage.setItem('app_user_profile', JSON.stringify(updatedUser));
 
     if (isNewRegistration || !updatedUser.isQuestionnaireCompleted) {
       setBodySystems(emptyBodySystems);
