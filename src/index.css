@@ -400,3 +400,162 @@
   color: #a78bfa;
 }
 
+/* ====================================
+   НИЖНЯЯ НАВИГАЦИЯ (MOVING ACTIVE TAB INDICATOR)
+==================================== */
+
+.bottom-nav-wrapper {
+  position: fixed;
+  left: 50%;
+  bottom: 4px;
+  transform: translateX(-50%);
+  width: calc(100% - 24px);
+  max-width: 390px;
+  z-index: 100;
+  pointer-events: auto;
+  user-select: none;
+}
+
+.bottom-nav {
+  --nav-height: 70px;
+  --orb-size: 48px;
+
+  position: relative;
+  width: 100%;
+  height: var(--nav-height);
+
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+
+  align-items: center;
+
+  padding: 6px 8px 4px;
+
+  border-radius: 27px;
+
+  background: linear-gradient(
+    180deg,
+    rgba(17, 26, 46, 0.97),
+    rgba(9, 16, 31, 0.98)
+  );
+
+  border: 1px solid rgba(89, 113, 179, 0.35);
+
+  box-shadow:
+    0 14px 38px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+/* ====================================
+   ПОДВИЖНЫЙ АКТИВНЫЙ КРУГ
+==================================== */
+
+.active-orb {
+  position: absolute;
+
+  top: -18px;
+
+  width: var(--orb-size);
+  height: var(--orb-size);
+
+  border-radius: 50%;
+
+  /* Центр круга рассчитывается из номера вкладки */
+  left: calc(
+    (
+      (100% / var(--tabs-count)) *
+      (var(--active-index) + 0.5)
+    )
+    - (var(--orb-size) / 2)
+  );
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  color: #ffffff;
+
+  background: radial-gradient(
+    circle at 35% 25%,
+    #8c78ff 0%,
+    #7760ff 38%,
+    #6551e8 100%
+  );
+
+  /* Гладкое кольцо-гнездо вокруг круга без темных прямоугольных отступов */
+  box-shadow:
+    0 0 0 4px #0d1527,
+    0 0 0 5px rgba(89, 113, 179, 0.4),
+    0 8px 24px rgba(108, 78, 255, 0.45),
+    0 0 16px rgba(100, 84, 255, 0.25),
+    inset 0 1px 1px rgba(255, 255, 255, 0.35);
+
+  z-index: 5;
+
+  transition:
+    left 340ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 180ms ease,
+    box-shadow 180ms ease;
+}
+
+/* ====================================
+   ПУНКТЫ МЕНЮ
+==================================== */
+
+.nav-item {
+  position: relative;
+
+  z-index: 3;
+
+  border: 0;
+  outline: 0;
+  background: transparent;
+
+  color: #8e98b2;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+
+  gap: 2px;
+
+  min-width: 0;
+  height: 100%;
+
+  padding: 2px 2px 4px;
+
+  cursor: pointer;
+
+  font-family: inherit;
+
+  transition:
+    color 200ms ease,
+    opacity 200ms ease;
+}
+
+.nav-icon {
+  height: 22px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.nav-item span {
+  font-size: 10px;
+  line-height: 1;
+  font-weight: 600;
+
+  white-space: nowrap;
+}
+
+.nav-item.active {
+  color: #826bff;
+}
+
+.nav-item.active .nav-icon {
+  opacity: 0;
+}
+
+

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { ScreenId, DashboardTab, UserProfile, Reminder, MedicalDocument } from '../types';
 import {
   Heart,
@@ -17,6 +18,10 @@ import {
   User,
   Check,
   X,
+  Plus,
+  Home,
+  UserRound,
+  PersonStanding,
 } from 'lucide-react';
 
 interface NavigationProps {
@@ -46,6 +51,7 @@ export const Navigation: React.FC<NavigationProps> = ({
 }) => {
   const [showBellDropdown, setShowBellDropdown] = useState(false);
   const [dismissedNotifIds, setDismissedNotifIds] = useState<string[]>([]);
+  const [showOrganismMenu, setShowOrganismMenu] = useState(false);
 
   // Build dynamic real notifications from user data
   const dynamicNotifs = React.useMemo(() => {
@@ -114,16 +120,25 @@ export const Navigation: React.FC<NavigationProps> = ({
 
   const userName = user?.fullName ? user.fullName.split(' ')[0] : 'Пользователь';
 
-  // Check center tabs active state
-  const isTabActive = (tabKey: string) => {
-    if (tabKey === 'main') return currentScreen === 'dashboard' && dashboardTab === 'main';
-    if (tabKey === 'diary') return currentScreen === 'mental_diary';
-    if (tabKey === 'pressure_diary') return currentScreen === 'pressure_diary';
-    if (tabKey === 'analytics') return currentScreen === 'dashboard' && dashboardTab === 'lab';
-    if (tabKey === 'body_map') return currentScreen === 'body_map';
-    if (tabKey === 'ai_chat') return currentScreen === 'ai_chat';
-    return false;
-  };
+  const navTabs = React.useMemo(
+    () => [
+      { id: 'home', label: 'Главная', icon: Home },
+      { id: 'analysis', label: 'Анализы', icon: FileText },
+      { id: 'body', label: 'Организм', icon: UserRound },
+      { id: 'aida', label: 'Аида', icon: Sparkles },
+      { id: 'tasks', label: 'Задачи', icon: CheckSquare },
+    ],
+    []
+  );
+
+  const activeIndex = React.useMemo(() => {
+    if (currentScreen === 'dashboard' && dashboardTab === 'main') return 0;
+    if (currentScreen === 'dashboard' && dashboardTab === 'lab') return 1;
+    if (['mental_diary', 'pressure_diary', 'body_map'].includes(currentScreen)) return 2;
+    if (currentScreen === 'ai_chat') return 3;
+    if (currentScreen === 'reminders') return 4;
+    return 0;
+  }, [currentScreen, dashboardTab]);
 
   return (
     <>
@@ -286,116 +301,137 @@ export const Navigation: React.FC<NavigationProps> = ({
         </div>
       </header>
 
-      {/* FLOATING BOTTOM MENU (НИЖНЕЕ МЕНЮ - СТЕКЛЯННОЕ, ПЛАВАЮЩЕЕ) */}
+      {/* FLOATING BOTTOM MENU (MOVING ACTIVE TAB INDICATOR) */}
       {isAppView && (
-        <nav
-          aria-label="Мобильная навигация"
-          className="fixed bottom-1.5 sm:bottom-6 left-1/2 -translate-x-1/2 z-50 bg-[#0A0E1D]/95 backdrop-blur-2xl border border-[#98AEEB]/20 shadow-[0_24px_80px_rgba(0,0,0,0.85)] rounded-2xl sm:rounded-[28px] p-1 sm:p-1.5 flex items-center justify-around gap-0.5 sm:gap-1 w-[98vw] max-w-[680px] overflow-x-auto no-scrollbar select-none"
-        >
-          <button
-            onClick={() => {
-              setCurrentScreen('dashboard');
-              setDashboardTab('main');
-            }}
-            title="Главная"
-            type="button"
-            className={`flex-1 min-w-[42px] flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 px-0.5 sm:px-2 py-1 sm:py-1.5 rounded-xl sm:rounded-2xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap min-h-[44px] ${
-              isTabActive('main')
-                ? 'bg-gradient-to-r from-[#8968FF] to-[#47D8FF] text-[#050711] font-extrabold shadow-lg shadow-[#8968FF]/30'
-                : 'text-gray-400 hover:text-white hover:bg-white/[0.06]'
-            }`}
-          >
-            <LayoutDashboard className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
-            <span className="text-[9px] sm:text-xs leading-none tracking-tight">Главная</span>
-          </button>
+        <div className="bottom-nav-wrapper">
+          {/* SATELLITE BUTTONS ARC FOR ORGANISM */}
+          <AnimatePresence>
+            {showOrganismMenu && (
+              <div className="absolute -top-[105px] left-1/2 -translate-x-1/2 w-[240px] h-[100px] pointer-events-none z-30">
+                {/* Top Center Satellite: Давление */}
+                <motion.button
+                  initial={{ opacity: 0, scale: 0.5, y: 14 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.5, y: 12 }}
+                  transition={{ type: 'spring', stiffness: 360, damping: 24 }}
+                  type="button"
+                  onClick={() => {
+                    setCurrentScreen('pressure_diary');
+                    setShowOrganismMenu(false);
+                  }}
+                  className="pointer-events-auto absolute left-1/2 -translate-x-1/2 top-0 flex flex-col items-center cursor-pointer group"
+                >
+                  <div className="w-[46px] h-[46px] rounded-full flex items-center justify-center text-white bg-[#0A0E16]/95 backdrop-blur-2xl border border-[#8968FF]/60 shadow-[0_0_22px_rgba(137,104,255,0.5),0_8px_22px_rgba(0,0,0,0.7)] group-hover:border-[#8968FF] group-hover:shadow-[0_0_28px_rgba(137,104,255,0.75)] group-hover:-translate-y-0.5 active:scale-95 transition-all duration-200">
+                    <Activity className="w-5 h-5 text-[#8968FF] group-hover:scale-110 transition-transform" strokeWidth={2} />
+                  </div>
+                  <span className="text-[10px] font-medium tracking-tight text-gray-200 mt-1 whitespace-nowrap drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]">
+                    Давление
+                  </span>
+                </motion.button>
 
-          <button
-            onClick={() => setCurrentScreen('mental_diary')}
-            title="Психика"
-            type="button"
-            className={`flex-1 min-w-[42px] flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 px-0.5 sm:px-2 py-1 sm:py-1.5 rounded-xl sm:rounded-2xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap min-h-[44px] ${
-              isTabActive('diary')
-                ? 'bg-gradient-to-r from-[#8968FF] to-[#47D8FF] text-[#050711] font-extrabold shadow-lg shadow-[#8968FF]/30'
-                : 'text-gray-400 hover:text-white hover:bg-white/[0.06]'
-            }`}
-          >
-            <Brain className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
-            <span className="text-[9px] sm:text-xs leading-none tracking-tight">Психика</span>
-          </button>
+                {/* Left Satellite: Психика */}
+                <motion.button
+                  initial={{ opacity: 0, scale: 0.5, x: 14, y: 14 }}
+                  animate={{ opacity: 1, scale: 1, x: 0, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.5, x: 12, y: 12 }}
+                  transition={{ type: 'spring', stiffness: 360, damping: 24, delay: 0.02 }}
+                  type="button"
+                  onClick={() => {
+                    setCurrentScreen('mental_diary');
+                    setShowOrganismMenu(false);
+                  }}
+                  className="pointer-events-auto absolute left-2 top-[24px] flex flex-col items-center cursor-pointer group"
+                >
+                  <div className="w-[46px] h-[46px] rounded-full flex items-center justify-center text-white bg-[#0A0E16]/95 backdrop-blur-2xl border border-[#4DEBFF]/60 shadow-[0_0_22px_rgba(77,235,255,0.5),0_8px_22px_rgba(0,0,0,0.7)] group-hover:border-[#4DEBFF] group-hover:shadow-[0_0_28px_rgba(77,235,255,0.75)] group-hover:-translate-y-0.5 active:scale-95 transition-all duration-200">
+                    <Brain className="w-5 h-5 text-[#4DEBFF] group-hover:scale-110 transition-transform" strokeWidth={2} />
+                  </div>
+                  <span className="text-[10px] font-medium tracking-tight text-gray-200 mt-1 whitespace-nowrap drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]">
+                    Психика
+                  </span>
+                </motion.button>
 
-          <button
-            onClick={() => setCurrentScreen('pressure_diary')}
-            title="Давление"
-            type="button"
-            className={`flex-1 min-w-[42px] flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 px-0.5 sm:px-2 py-1 sm:py-1.5 rounded-xl sm:rounded-2xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap min-h-[44px] ${
-              isTabActive('pressure_diary')
-                ? 'bg-gradient-to-r from-[#8968FF] to-[#47D8FF] text-[#050711] font-extrabold shadow-lg shadow-[#8968FF]/30'
-                : 'text-gray-400 hover:text-white hover:bg-white/[0.06]'
-            }`}
-          >
-            <Activity className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
-            <span className="text-[9px] sm:text-xs leading-none tracking-tight">Давление</span>
-          </button>
+                {/* Right Satellite: Тело */}
+                <motion.button
+                  initial={{ opacity: 0, scale: 0.5, x: -14, y: 14 }}
+                  animate={{ opacity: 1, scale: 1, x: 0, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.5, x: -12, y: 12 }}
+                  transition={{ type: 'spring', stiffness: 360, damping: 24, delay: 0.04 }}
+                  type="button"
+                  onClick={() => {
+                    setCurrentScreen('body_map');
+                    setShowOrganismMenu(false);
+                  }}
+                  className="pointer-events-auto absolute right-2 top-[24px] flex flex-col items-center cursor-pointer group"
+                >
+                  <div className="w-[46px] h-[46px] rounded-full flex items-center justify-center text-white bg-[#0A0E16]/95 backdrop-blur-2xl border border-[#34F5A4]/60 shadow-[0_0_22px_rgba(52,245,164,0.5),0_8px_22px_rgba(0,0,0,0.7)] group-hover:border-[#34F5A4] group-hover:shadow-[0_0_28px_rgba(52,245,164,0.75)] group-hover:-translate-y-0.5 active:scale-95 transition-all duration-200">
+                    <PersonStanding className="w-5 h-5 text-[#34F5A4] group-hover:scale-110 transition-transform" strokeWidth={2} />
+                  </div>
+                  <span className="text-[10px] font-medium tracking-tight text-gray-200 mt-1 whitespace-nowrap drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]">
+                    Тело
+                  </span>
+                </motion.button>
+              </div>
+            )}
+          </AnimatePresence>
 
-          <button
-            onClick={() => setCurrentScreen('body_map')}
-            title="Организм"
-            type="button"
-            className={`flex-1 min-w-[42px] flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 px-0.5 sm:px-2 py-1 sm:py-1.5 rounded-xl sm:rounded-2xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap min-h-[44px] ${
-              isTabActive('body_map')
-                ? 'bg-gradient-to-r from-[#8968FF] to-[#47D8FF] text-[#050711] font-extrabold shadow-lg shadow-[#8968FF]/30'
-                : 'text-gray-400 hover:text-white hover:bg-white/[0.06]'
-            }`}
+          <nav
+            className="bottom-nav"
+            style={
+              {
+                '--active-index': activeIndex,
+                '--tabs-count': navTabs.length,
+              } as React.CSSProperties
+            }
           >
-            <User className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
-            <span className="text-[9px] sm:text-xs leading-none tracking-tight">Организм</span>
-          </button>
+            {/* MOVING ACTIVE ORB */}
+            <div className="active-orb">
+              {(() => {
+                const ActiveIcon = navTabs[activeIndex]?.icon || Home;
+                return <ActiveIcon size={20} strokeWidth={2} />;
+              })()}
+            </div>
 
-          <button
-            onClick={() => {
-              setCurrentScreen('dashboard');
-              setDashboardTab('lab');
-            }}
-            title="Анализы"
-            type="button"
-            className={`flex-1 min-w-[42px] flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 px-0.5 sm:px-2 py-1 sm:py-1.5 rounded-xl sm:rounded-2xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap min-h-[44px] ${
-              isTabActive('analytics')
-                ? 'bg-gradient-to-r from-[#8968FF] to-[#47D8FF] text-[#050711] font-extrabold shadow-lg shadow-[#8968FF]/30'
-                : 'text-gray-400 hover:text-white hover:bg-white/[0.06]'
-            }`}
-          >
-            <FileText className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
-            <span className="text-[9px] sm:text-xs leading-none tracking-tight">Анализы</span>
-          </button>
+            {navTabs.map((tab, idx) => {
+              const Icon = tab.icon;
+              const isActive = activeIndex === idx;
 
-          <button
-            onClick={() => setCurrentScreen('ai_chat')}
-            title="Аида"
-            type="button"
-            className={`flex-1 min-w-[42px] flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 px-0.5 sm:px-2 py-1 sm:py-1.5 rounded-xl sm:rounded-2xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap min-h-[44px] ${
-              isTabActive('ai_chat')
-                ? 'bg-gradient-to-r from-[#8968FF] to-[#47D8FF] text-[#050711] font-extrabold shadow-lg shadow-[#8968FF]/30'
-                : 'text-gray-400 hover:text-white hover:bg-white/[0.06]'
-            }`}
-          >
-            <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
-            <span className="text-[9px] sm:text-xs leading-none tracking-tight">Аида</span>
-          </button>
-
-          <button
-            onClick={() => setCurrentScreen('reminders')}
-            title="Задачи"
-            type="button"
-            className={`flex-1 min-w-[42px] flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 px-0.5 sm:px-2 py-1 sm:py-1.5 rounded-xl sm:rounded-2xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap min-h-[44px] ${
-              currentScreen === 'reminders'
-                ? 'bg-gradient-to-r from-[#8968FF] to-[#47D8FF] text-[#050711] font-extrabold shadow-lg shadow-[#8968FF]/30'
-                : 'text-gray-400 hover:text-white hover:bg-white/[0.06]'
-            }`}
-          >
-            <CheckSquare className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
-            <span className="text-[9px] sm:text-xs leading-none tracking-tight">Задачи</span>
-          </button>
-        </nav>
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => {
+                    if (tab.id === 'home') {
+                      setShowOrganismMenu(false);
+                      setCurrentScreen('dashboard');
+                      setDashboardTab('main');
+                    } else if (tab.id === 'analysis') {
+                      setShowOrganismMenu(false);
+                      setCurrentScreen('dashboard');
+                      setDashboardTab('lab');
+                    } else if (tab.id === 'body') {
+                      setShowOrganismMenu((prev) => !prev);
+                      if (!['mental_diary', 'pressure_diary', 'body_map'].includes(currentScreen)) {
+                        setCurrentScreen('body_map');
+                      }
+                    } else if (tab.id === 'aida') {
+                      setShowOrganismMenu(false);
+                      setCurrentScreen('ai_chat');
+                    } else if (tab.id === 'tasks') {
+                      setShowOrganismMenu(false);
+                      setCurrentScreen('reminders');
+                    }
+                  }}
+                  className={`nav-item ${isActive ? 'active' : ''}`}
+                >
+                  <div className="nav-icon">
+                    {!isActive && <Icon size={20} strokeWidth={1.8} />}
+                  </div>
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
+          </nav>
+        </div>
       )}
     </>
   );
