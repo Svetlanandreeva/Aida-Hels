@@ -31,6 +31,7 @@ import { calculateHealthProfile } from '../utils/calculateHealthProfile';
 import { StateConnectionsSection } from './dashboard/StateConnectionsSection';
 import { RecommendedNextTestsSection } from './dashboard/RecommendedNextTestsSection';
 import { MaturityStageIndicator } from './dashboard/MaturityStageIndicator';
+import { AiMetricsTopSection } from './dashboard/AiMetricsTopSection';
 
 export interface HomeDashboardProps {
   user: UserProfile;
@@ -293,6 +294,17 @@ export default function HomeDashboard({
         </button>
       </div>
 
+      {/* 2. AI STATUS TOP BAR & 4 METRIC CARDS GRID (UNDER GREETING) */}
+      <AiMetricsTopSection
+        user={user}
+        aiAnalysis={aiAnalysis}
+        documents={documents}
+        dailyLogs={dailyLogs}
+        diaryEntries={diaryEntries}
+        onNavigate={onNavigate}
+        displayHealthScore={displayHealthScore}
+      />
+
       {/* MATURITY STAGE INDICATOR (ACCURATE DATA SUFFICIENCY BANNER) */}
       <MaturityStageIndicator
         daysSinceRegistration={1}
@@ -301,91 +313,6 @@ export default function HomeDashboard({
         diaryEntriesCount={(diaryEntries?.length || 0) + (dailyLogs?.length || 0)}
         onOpenProposal={() => onNavigate('settings')}
       />
-
-      {/* 2. ГЛАВНАЯ КАРТОЧКА «ОБЩЕЕ СОСТОЯНИЕ И ШКАЛЫ» */}
-      <div
-        onClick={() => onNavigate('body_map')}
-        className="w-full text-left bg-[#0B1320] hover:bg-[#0E182A] border border-[#8E74FF]/30 hover:border-[#8E74FF]/60 rounded-2xl sm:rounded-3xl p-4 sm:p-6 transition-all duration-200 cursor-pointer shadow-xl relative overflow-hidden group space-y-4"
-      >
-        <div className="absolute -top-24 -right-24 w-48 h-48 bg-[#8E74FF]/10 rounded-full blur-3xl pointer-events-none group-hover:bg-[#8E74FF]/20 transition-all" />
-
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-[#8E74FF] bg-[#8E74FF]/10 border border-[#8E74FF]/20 px-2.5 py-1 rounded-lg">
-              Общее состояние
-            </span>
-            <span
-              className={`text-[11px] font-bold px-2.5 py-1 rounded-lg border ${
-                displayHealthScore !== null && displayHealthScore >= 80
-                  ? 'text-[#34F5A4] bg-[#34F5A4]/10 border-[#34F5A4]/20'
-                  : displayHealthScore !== null && displayHealthScore >= 60
-                  ? 'text-amber-300 bg-amber-500/10 border-amber-500/20'
-                  : 'text-red-300 bg-red-500/10 border-red-500/20'
-              }`}
-            >
-              {displayStatusLabel}
-            </span>
-          </div>
-
-          <div className="flex items-center gap-1 text-xs font-bold text-[#8E74FF] group-hover:translate-x-1 transition-transform">
-            <span>Карта организма</span>
-            <ChevronRight className="w-4 h-4" />
-          </div>
-        </div>
-
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div className="flex items-baseline gap-3">
-            <span className="text-4xl sm:text-5xl font-black text-white tracking-tight">
-              {displayHealthScore !== null ? displayHealthScore : '—'}
-            </span>
-            <div className="flex flex-col">
-              <span className="text-xs text-white/50 font-semibold">
-                {displayHealthScore !== null ? 'из 100 баллов' : 'нет данных'}
-              </span>
-              {displayHealthScore !== null && (
-                <span className="text-xs font-extrabold text-[#34F5A4] flex items-center gap-1 mt-0.5">
-                  <span>
-                    {displayHealthScore >= 80 ? 'Высокий показатель' : displayHealthScore >= 60 ? 'Стабильный статус' : 'Требует внимания'}
-                  </span>
-                </span>
-              )}
-            </div>
-          </div>
-
-          <p className="text-xs sm:text-sm text-white/80 leading-relaxed max-w-xl font-normal">
-            {displaySummary}
-          </p>
-        </div>
-
-        {/* Dynamic Progress Scales Bar */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3 border-t border-white/[0.06]">
-          <div className="space-y-1">
-            <div className="flex justify-between text-[11px] font-bold">
-              <span className="text-white/60">Шкала индекса здоровья</span>
-              <span className="text-[#8E74FF]">{displayHealthScore !== null ? `${displayHealthScore}%` : '0%'}</span>
-            </div>
-            <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-gradient-to-r from-[#8E74FF] to-[#34F5A4] transition-all duration-500"
-                style={{ width: `${displayHealthScore !== null ? displayHealthScore : 0}%` }}
-              />
-            </div>
-          </div>
-
-          <div className="space-y-1">
-            <div className="flex justify-between text-[11px] font-bold">
-              <span className="text-white/60">Заполненность карты обследований</span>
-              <span className="text-emerald-400">{healthProfile.completenessScore}%</span>
-            </div>
-            <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-gradient-to-r from-emerald-500 to-[#4DEBFF] transition-all duration-500"
-                style={{ width: `${healthProfile.completenessScore}%` }}
-              />
-            </div>
-          </div>
-        </div>
-      </div>
 
       {/* 3. БЛОК «ЧТО ТРЕБУЕТ ВНИМАНИЯ» */}
       <div className="bg-[#0B1320] border border-white/[0.08] rounded-2xl sm:rounded-3xl p-4 sm:p-5 shadow-xl space-y-3">
