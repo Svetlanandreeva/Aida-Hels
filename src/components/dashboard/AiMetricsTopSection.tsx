@@ -45,25 +45,29 @@ export const AiMetricsTopSection: React.FC<AiMetricsTopSectionProps> = ({
   const [feedbackSent, setFeedbackSent] = useState<'useful' | 'inaccurate' | null>(null);
   const [activeInfoTooltip, setActiveInfoTooltip] = useState<'completeness' | 'confidence' | 'ai' | null>(null);
 
-  // 1. Calculate values
-  const completenessPct = aiAnalysis?.dataCompleteness
-    ? Math.round(aiAnalysis.dataCompleteness * 100)
-    : 72;
+  const hasAnyData = documents.length > 0 || dailyLogs.length > 0 || diaryEntries.length > 0;
 
-  const confidencePct = aiAnalysis?.confidence
+  // 1. Calculate values
+  const completenessPct = aiAnalysis?.dataCompleteness !== undefined && aiAnalysis?.dataCompleteness !== null
+    ? Math.round(aiAnalysis.dataCompleteness * 100)
+    : hasAnyData ? 50 : 0;
+
+  const confidencePct = aiAnalysis?.confidence !== undefined && aiAnalysis?.confidence !== null
     ? Math.round(aiAnalysis.confidence * 100)
-    : 85;
+    : hasAnyData ? 75 : 0;
 
   // General health score: e.g. 58%
-  const overallScoreVal = displayHealthScore !== undefined && displayHealthScore !== null
+  const overallScoreVal = (displayHealthScore !== undefined && displayHealthScore !== null && displayHealthScore > 0)
     ? `${displayHealthScore}%`
-    : aiAnalysis?.overallScore
+    : (aiAnalysis?.overallScore !== undefined && aiAnalysis?.overallScore !== null && aiAnalysis?.overallScore > 0)
     ? `${Math.round(aiAnalysis.overallScore * 10)}%`
-    : '58%';
+    : '— %';
 
   const overallScoreSource = documents.length > 0
     ? '• По исследованиям'
-    : '• Оценка по опросу';
+    : hasAnyData
+    ? '• Оценка по опросу'
+    : '• Нет данных';
 
   // Energy
   const latestLog = dailyLogs[0];
@@ -73,18 +77,18 @@ export const AiMetricsTopSection: React.FC<AiMetricsTopSectionProps> = ({
     ? `${latestLog.energy * 10}%`
     : latestDiary?.energy_score !== undefined
     ? `${latestDiary.energy_score * 10}%`
-    : '30%';
+    : 'Нет данных';
 
-  const energySource = (latestLog || latestDiary) ? '• По данным дневника' : '• По данным анкеты';
+  const energySource = (latestLog || latestDiary) ? '• По данным дневника' : '• Нет записей';
 
   // Sleep
   const sleepVal = latestLog?.sleep !== undefined
     ? `${latestLog.sleep}ч`
     : latestDiary?.physical_factors?.sleepDurationHours !== undefined
     ? `${latestDiary.physical_factors.sleepDurationHours}ч`
-    : '11.5ч';
+    : 'Нет данных';
 
-  const sleepSource = (latestLog || latestDiary) ? '• По данным дневника' : '• По данным анкеты';
+  const sleepSource = (latestLog || latestDiary) ? '• По данным дневника' : '• Нет записей';
 
   const handleSendFeedback = (type: 'useful' | 'inaccurate') => {
     setFeedbackSent(type);

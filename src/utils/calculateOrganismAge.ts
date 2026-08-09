@@ -96,8 +96,6 @@ export function calculateOrganismAge(
       const currentYear = new Date().getFullYear();
       passportAge = currentYear - birthYear;
     }
-  } else if (user?.fullName === 'Анна Сергеевна Иванова' || user?.email === 'anna.ivanova@health.ru') {
-    passportAge = 31;
   }
 
   // 2. Aggregate markers from MedicalDocuments
@@ -208,8 +206,34 @@ export function calculateOrganismAge(
     dailyLogMetricsCount;
 
   // Determine Data Sufficiency & Confidence Level
-  const hasSufficientData = totalEvaluatedMetrics >= 3;
+  const hasSufficientData = totalEvaluatedMetrics >= 3 || (documents.length > 0 && allLabMarkers.length > 0);
   const missingMetricsCount = Math.max(0, 5 - totalEvaluatedMetrics);
+
+  if (!hasSufficientData) {
+    return {
+      passportAge,
+      organismAge: 0,
+      differenceYears: 0,
+      confidenceLevel: 'Предварительная оценка',
+      confidenceScore: 0,
+      evaluatedMetricsCount: totalEvaluatedMetrics,
+      hasSufficientData: false,
+      missingMetricsCount,
+      scores: {
+        cardiovascularScore: 0,
+        metabolicScore: 0,
+        bloodScore: 0,
+        liverScore: 0,
+        kidneyScore: 0,
+        inflammationScore: 0,
+        recoveryScore: 0,
+        lifestyleScore: 0,
+      },
+      systemAges: [],
+      factors: [],
+      differenceText: 'Недостаточно данных для расчёта',
+    };
+  }
 
   let confidenceLevel: 'Высокая точность' | 'Средняя точность' | 'Предварительная оценка' = 'Предварительная оценка';
   let confidenceScore = 50;
@@ -277,13 +301,7 @@ export function calculateOrganismAge(
     recoveryDelta * 0.1 +
     lifestyleDelta * 0.05;
 
-  // Round net delta to whole years or +3 / -4 matching demo realistic expectations
   let roundedDiffYears = Math.round(totalNetDelta * 3);
-  
-  // If demo user Anna Ivanova with known lab state, provide realistic calculated values (+3 years)
-  if (user?.fullName === 'Анна Сергеевна Иванова' || user?.email === 'anna.ivanova@health.ru') {
-    roundedDiffYears = 3;
-  }
 
   const organismAge = Math.max(18, passportAge + roundedDiffYears);
   const differenceYears = organismAge - passportAge;

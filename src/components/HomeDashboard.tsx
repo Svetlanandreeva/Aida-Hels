@@ -78,19 +78,6 @@ export default function HomeDashboard({
   // Collapsible state for extra detailed sections
   const [isAttentionOpen, setIsAttentionOpen] = useState(false);
 
-  // Medication interactive check state
-  const [medsState, setMedsState] = useState<{ [key: string]: boolean }>({
-    'omega-3': true,
-    'magnesium': false,
-  });
-
-  const toggleMed = (medKey: string) => {
-    setMedsState((prev) => ({
-      ...prev,
-      [medKey]: !prev[medKey],
-    }));
-  };
-
   const healthProfile = calculateHealthProfile(user, documents, dailyLogs, pressureLogs);
 
   // Active ring metrics navigation tooltip state
@@ -102,8 +89,66 @@ export default function HomeDashboard({
     if (latestDoc) {
       return `${latestDoc} (по документам)`;
     }
-    return '7 августа 2026, 14:30';
-  }, [documents]);
+    if (dailyLogs.length > 0) {
+      try {
+        return new Date(dailyLogs[0].date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
+      } catch {}
+    }
+    return '—';
+  }, [documents, dailyLogs]);
+
+  // Data-driven latest metric values
+  const latestDailyLog = dailyLogs[0];
+  const latestPressure = pressureLogs[0];
+  const latestDiaryEntry = diaryEntries[0];
+
+  const energyVal = latestDailyLog?.energy !== undefined ? `${latestDailyLog.energy * 10}%` : '—';
+  const energyStatus = latestDailyLog?.energy !== undefined
+    ? (latestDailyLog.energy >= 7 ? 'Хорошая' : latestDailyLog.energy >= 5 ? 'Умеренная' : 'Низкая')
+    : 'Нет данных';
+
+  const sleepVal = latestDailyLog?.sleep !== undefined ? `${latestDailyLog.sleep} ч` : '—';
+  const sleepStatus = latestDailyLog?.sleep !== undefined
+    ? (latestDailyLog.sleep >= 7 ? 'Норма' : 'Дефицит')
+    : 'Нет данных';
+
+  const pressureVal = latestPressure ? `${latestPressure.systolic}/${latestPressure.diastolic}` : '—';
+  const pressureStatus = latestPressure
+    ? (latestPressure.systolic <= 129 && latestPressure.diastolic <= 84 ? 'Норма' : 'Повышено')
+    : 'Нет данных';
+
+  const moodVal = latestDailyLog?.mood || latestDiaryEntry?.moods?.[0] || '—';
+  const moodStatus = (latestDailyLog?.mood || latestDiaryEntry?.moods?.[0]) ? 'Зафиксировано' : 'Нет данных';
+
+  const insights = React.useMemo(() => {
+    if (documents.length === 0 && dailyLogs.length === 0 && pressureLogs.length === 0) {
+      return {
+        title: 'Данные здоровья пока не внесены',
+        bullets: [
+          'Пройдите ежедневный чек-ин или внесите запись в дневник',
+          'Загрузите результаты анализов для полной оценки 10 систем организма',
+        ],
+      };
+    }
+
+    const list: string[] = [];
+    if (latestPressure) {
+      list.push(`Последний замер давления: ${latestPressure.systolic}/${latestPressure.diastolic} мм рт. ст. (${latestPressure.systolic <= 129 ? 'норма' : 'требует внимания'})`);
+    }
+    if (latestDailyLog) {
+      list.push(`Оценка энергии: ${latestDailyLog.energy}/10, продолжительность сна: ${latestDailyLog.sleep} ч`);
+    }
+    if (documents.length > 0) {
+      list.push(`Загружено медицинских документов: ${documents.length}`);
+    }
+
+    return {
+      title: 'Оперативный ИИ-обзор состояния:',
+      bullets: list.length > 0 ? list : ['Данные обновлены. Внесите замеры для расширенного анализа.'],
+    };
+  }, [documents, dailyLogs, pressureLogs, latestPressure, latestDailyLog]);
+
+  const activeMedReminders = reminders.filter((r) => r.isEnabled);
 
   return (
     <div className="w-full bg-[#090B10] min-h-screen py-4 px-3 sm:px-6 text-white font-sans antialiased">
@@ -379,11 +424,11 @@ export default function HomeDashboard({
                     <span className="truncate">Энергия</span>
                   </div>
                   <span className="inline-block text-[10px] font-bold text-[#3DD9C5] bg-[#3DD9C5]/10 border border-[#3DD9C5]/20 px-1.5 py-0.5 rounded-md w-fit">
-                    Хорошая
+                    {energyStatus}
                   </span>
                 </div>
                 <div className="text-xl font-black text-white tracking-tight">
-                  70%
+                  {energyVal}
                 </div>
               </div>
 
@@ -398,11 +443,11 @@ export default function HomeDashboard({
                     <span className="truncate">Сон</span>
                   </div>
                   <span className="inline-block text-[10px] font-bold text-white/70 bg-white/5 border border-white/10 px-1.5 py-0.5 rounded-md w-fit">
-                    Норма
+                    {sleepStatus}
                   </span>
                 </div>
                 <div className="text-lg font-black text-white tracking-tight">
-                  7 ч 32 мин
+                  {sleepVal}
                 </div>
               </div>
 
@@ -417,11 +462,11 @@ export default function HomeDashboard({
                     <span className="truncate">Давление</span>
                   </div>
                   <span className="inline-block text-[10px] font-bold text-[#3DD9C5] bg-[#3DD9C5]/10 border border-[#3DD9C5]/20 px-1.5 py-0.5 rounded-md w-fit">
-                    Норма
+                    {pressureStatus}
                   </span>
                 </div>
                 <div className="text-lg font-black text-white tracking-tight">
-                  118/74
+                  {pressureVal}
                 </div>
               </div>
 
@@ -436,11 +481,11 @@ export default function HomeDashboard({
                     <span className="truncate">Настроение</span>
                   </div>
                   <span className="inline-block text-[10px] font-bold text-[#3DD9C5] bg-[#3DD9C5]/10 border border-[#3DD9C5]/20 px-1.5 py-0.5 rounded-md w-fit">
-                    Хорошее
+                    {moodStatus}
                   </span>
                 </div>
-                <div className="text-lg font-black text-white tracking-tight">
-                  Спокойное
+                <div className="text-lg font-black text-white tracking-tight truncate">
+                  {moodVal}
                 </div>
               </div>
             </div>
@@ -456,17 +501,15 @@ export default function HomeDashboard({
                 {/* Aida Text Content */}
                 <div className="flex-1 space-y-2">
                   <div className="text-xs sm:text-sm font-bold text-white leading-tight">
-                    Сегодня есть два момента, на которые стоит обратить внимание:
+                    {insights.title}
                   </div>
                   <ul className="text-xs sm:text-sm text-white/70 space-y-1.5 font-medium">
-                    <li className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-[#8B5CF6] shrink-0" />
-                      <span>Сон уменьшился на 40 минут по сравнению с прошлой неделей</span>
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-[#3DD9C5] shrink-0" />
-                      <span>Артериальное давление и пульс сохраняются в идеальной норме</span>
-                    </li>
+                    {insights.bullets.map((b, idx) => (
+                      <li key={idx} className="flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-[#8B5CF6] shrink-0" />
+                        <span>{b}</span>
+                      </li>
+                    ))}
                   </ul>
                 </div>
               </div>
@@ -498,54 +541,37 @@ export default function HomeDashboard({
             </div>
 
             <div className="space-y-2.5">
-              {/* Med 1: Омега-3 */}
-              <div
-                onClick={() => toggleMed('omega-3')}
-                className="flex items-center justify-between p-3 bg-[#090B10] border border-white/[0.04] rounded-xl cursor-pointer hover:border-white/15 transition-all"
-              >
-                <div className="flex items-center gap-2.5">
-                  <span className="text-base">💊</span>
-                  <div>
-                    <div className="text-xs font-bold text-white">Омега-3</div>
-                    <div className="text-[10px] text-white/50">1 капсула (1000 мг)</div>
+              {activeMedReminders.length > 0 ? (
+                activeMedReminders.map((r) => (
+                  <div
+                    key={r.id}
+                    className="flex items-center justify-between p-3 bg-[#090B10] border border-white/[0.04] rounded-xl transition-all"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <span className="text-base">💊</span>
+                      <div>
+                        <div className="text-xs font-bold text-white">{r.title}</div>
+                        <div className="text-[10px] text-white/50">{r.time} • {r.dosage || 'По графику'}</div>
+                      </div>
+                    </div>
+                    <span className="px-2.5 py-1 rounded-lg bg-[#3DD9C5]/10 border border-[#3DD9C5]/30 text-[#3DD9C5] text-xs font-bold flex items-center gap-1">
+                      <Clock className="w-3.5 h-3.5" />
+                      {r.time}
+                    </span>
                   </div>
+                ))
+              ) : (
+                <div className="p-4 bg-[#090B10] border border-white/[0.04] rounded-xl text-center space-y-2">
+                  <p className="text-xs text-white/50">Напоминания о приёме препаратов пока не настроены.</p>
+                  <button
+                    type="button"
+                    onClick={() => onNavigate('reminders')}
+                    className="text-xs font-bold text-[#8B5CF6] hover:underline cursor-pointer"
+                  >
+                    + Настроить напоминания
+                  </button>
                 </div>
-                {medsState['omega-3'] ? (
-                  <span className="px-2.5 py-1 rounded-lg bg-[#3DD9C5]/10 border border-[#3DD9C5]/30 text-[#3DD9C5] text-xs font-bold flex items-center gap-1">
-                    <Check className="w-3.5 h-3.5" />
-                    Выпито
-                  </span>
-                ) : (
-                  <span className="px-2.5 py-1 rounded-lg bg-white/5 text-white/60 text-xs font-medium">
-                    Отметить
-                  </span>
-                )}
-              </div>
-
-              {/* Med 2: Магний */}
-              <div
-                onClick={() => toggleMed('magnesium')}
-                className="flex items-center justify-between p-3 bg-[#090B10] border border-white/[0.04] rounded-xl cursor-pointer hover:border-white/15 transition-all"
-              >
-                <div className="flex items-center gap-2.5">
-                  <span className="text-base">💊</span>
-                  <div>
-                    <div className="text-xs font-bold text-white">Магний B6</div>
-                    <div className="text-[10px] text-white/50">400 мг перед сном</div>
-                  </div>
-                </div>
-                {medsState['magnesium'] ? (
-                  <span className="px-2.5 py-1 rounded-lg bg-[#3DD9C5]/10 border border-[#3DD9C5]/30 text-[#3DD9C5] text-xs font-bold flex items-center gap-1">
-                    <Check className="w-3.5 h-3.5" />
-                    Выпито
-                  </span>
-                ) : (
-                  <span className="px-2.5 py-1 rounded-lg bg-[#8B5CF6]/10 border border-[#8B5CF6]/30 text-[#8B5CF6] text-xs font-bold flex items-center gap-1">
-                    <Clock className="w-3.5 h-3.5" />
-                    Через 2 часа
-                  </span>
-                )}
-              </div>
+              )}
             </div>
           </div>
 

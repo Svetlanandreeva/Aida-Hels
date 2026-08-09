@@ -245,10 +245,12 @@ export const OrganismAgeBlock: React.FC<OrganismAgeBlockProps> = ({
 
                 <div className="z-10 text-center">
                   <span className="text-3xl sm:text-5xl font-black text-white tracking-tight drop-shadow-[0_2px_12px_rgba(137,104,255,0.6)] block">
-                    {data.organismAge}
+                    {data.hasSufficientData && data.organismAge > 0 ? data.organismAge : '—'}
                   </span>
                   <span className="text-xs sm:text-sm text-cyan-300 font-extrabold uppercase tracking-wider block">
-                    {formatYearsRussian(data.organismAge).replace(/^[0-9]+\s*/, '')}
+                    {data.hasSufficientData && data.organismAge > 0
+                      ? formatYearsRussian(data.organismAge).replace(/^[0-9]+\s*/, '')
+                      : 'Нет данных'}
                   </span>
                 </div>
               </div>

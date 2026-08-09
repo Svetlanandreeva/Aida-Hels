@@ -15,21 +15,10 @@ import {
 } from './types';
 import { calculateHealthProfile } from './utils/calculateHealthProfile';
 import {
-  initialUserProfile,
   emptyUserProfile,
-  demoUserProfile,
   emptyBodySystems,
   emptyMentalPatterns,
   emptyWeeklyReport,
-  initialBodySystems,
-  initialDocuments,
-  initialAppointments,
-  initialDailyLogs,
-  initialReminders,
-  initialDiaryEntries,
-  initialMentalPatterns,
-  initialWeeklyReport,
-  initialPressureLogs,
 } from './data/initialData';
 
 import { Navigation } from './components/Navigation';
@@ -75,10 +64,6 @@ export const logSecurityEvent = async (event: string, severity: 'low' | 'high') 
   }
 };
 
-const isDemoUser = (u: UserProfile) => {
-  return Boolean((u as any)?.isDemoUser) || u?.email === 'anna.ivanova@health.ru';
-};
-
 export default function App() {
   // Navigation State
   const [currentScreen, setCurrentScreen] = useState<ScreenId>(() => {
@@ -107,20 +92,8 @@ export default function App() {
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (!parsed.isDemoUser && parsed.email !== 'anna.ivanova@health.ru' && parsed.fullName !== 'Анна Сергеевна Иванова') {
-          if (parsed.id === 'usr-1') parsed.id = `usr-${Date.now()}`;
-          if (parsed.birthDate === '1995-06-14') parsed.birthDate = '';
-          if (parsed.height === 168) parsed.height = 0;
-          if (parsed.weight === 58) parsed.weight = 0;
-          parsed.allergies = (parsed.allergies || []).filter(
-            (a: string) => a !== 'Пенициллин' && a !== 'Цветение березы' && a !== 'Арахис'
-          );
-          parsed.chronicDiagnoses = (parsed.chronicDiagnoses || []).filter(
-            (d: any) => d.name !== 'Субклинический гипотиреоз' && d.name !== 'Синдром раздраженного кишечника'
-          );
-          if (parsed.womenHealth?.partnerSyncCode === 'PARTNER-9842-RU') {
-            parsed.womenHealth = { ...parsed.womenHealth, partnerSyncCode: '', lastPeriodDate: '' };
-          }
+        if (parsed.email === 'anna.ivanova@health.ru' || parsed.fullName === 'Анна Сергеевна Иванова') {
+          return emptyUserProfile;
         }
         return parsed;
       } catch {
@@ -140,63 +113,54 @@ export default function App() {
   }, [user]);
 
   const [bodySystems, setBodySystems] = useState<BodySystem[]>(() => {
-    if (isDemoUser(user)) return initialBodySystems;
     const saved = localStorage.getItem('app_body_systems');
     if (saved) { try { return JSON.parse(saved); } catch {} }
     return emptyBodySystems;
   });
 
   const [documents, setDocuments] = useState<MedicalDocument[]>(() => {
-    if (isDemoUser(user)) return initialDocuments;
     const saved = localStorage.getItem('app_user_documents');
     if (saved) { try { return JSON.parse(saved); } catch {} }
     return [];
   });
 
   const [appointments, setAppointments] = useState<Appointment[]>(() => {
-    if (isDemoUser(user)) return initialAppointments;
     const saved = localStorage.getItem('app_user_appointments');
     if (saved) { try { return JSON.parse(saved); } catch {} }
     return [];
   });
 
   const [dailyLogs, setDailyLogs] = useState<DailyLogEntry[]>(() => {
-    if (isDemoUser(user)) return initialDailyLogs;
     const saved = localStorage.getItem('app_user_daily_logs');
     if (saved) { try { return JSON.parse(saved); } catch {} }
     return [];
   });
 
   const [reminders, setReminders] = useState<Reminder[]>(() => {
-    if (isDemoUser(user)) return initialReminders;
     const saved = localStorage.getItem('app_user_reminders');
     if (saved) { try { return JSON.parse(saved); } catch {} }
     return [];
   });
 
   const [pressureLogs, setPressureLogs] = useState<PressureLogEntry[]>(() => {
-    if (isDemoUser(user)) return initialPressureLogs;
     const saved = localStorage.getItem('app_user_pressure_logs');
     if (saved) { try { return JSON.parse(saved); } catch {} }
     return [];
   });
 
   const [diaryEntries, setDiaryEntries] = useState<DiaryEntry[]>(() => {
-    if (isDemoUser(user)) return initialDiaryEntries;
     const saved = localStorage.getItem('app_user_diary_entries');
     if (saved) { try { return JSON.parse(saved); } catch {} }
     return [];
   });
 
   const [mentalPatterns, setMentalPatterns] = useState<UserMentalPatterns>(() => {
-    if (isDemoUser(user)) return initialMentalPatterns;
     const saved = localStorage.getItem('app_user_mental_patterns');
     if (saved) { try { return JSON.parse(saved); } catch {} }
     return emptyMentalPatterns;
   });
 
   const [weeklyReport, setWeeklyReport] = useState<WeeklyMentalReport>(() => {
-    if (isDemoUser(user)) return initialWeeklyReport;
     const saved = localStorage.getItem('app_user_weekly_report');
     if (saved) { try { return JSON.parse(saved); } catch {} }
     return emptyWeeklyReport;
@@ -213,10 +177,8 @@ export default function App() {
 
   // Recalculate body systems dynamically whenever documents, user profile, or logs change
   useEffect(() => {
-    if (documents.length > 0 || isDemoUser(user)) {
-      const { bodySystems: updatedSystems } = calculateHealthProfile(user, documents, dailyLogs, pressureLogs);
-      setBodySystems(updatedSystems);
-    }
+    const { bodySystems: updatedSystems } = calculateHealthProfile(user, documents, dailyLogs, pressureLogs);
+    setBodySystems(updatedSystems);
   }, [user, documents, dailyLogs, pressureLogs]);
 
   // Auto-synchronize medications from user profile (chronicDiagnoses & psychiatricData) to reminders
@@ -279,19 +241,17 @@ export default function App() {
     }
   }, [user]);
 
-  // Save non-demo user data changes to localStorage
+  // Save user data changes to localStorage
   useEffect(() => {
-    if (!isDemoUser(user)) {
-      localStorage.setItem('app_body_systems', JSON.stringify(bodySystems));
-      localStorage.setItem('app_user_documents', JSON.stringify(documents));
-      localStorage.setItem('app_user_appointments', JSON.stringify(appointments));
-      localStorage.setItem('app_user_daily_logs', JSON.stringify(dailyLogs));
-      localStorage.setItem('app_user_reminders', JSON.stringify(reminders));
-      localStorage.setItem('app_user_pressure_logs', JSON.stringify(pressureLogs));
-      localStorage.setItem('app_user_diary_entries', JSON.stringify(diaryEntries));
-      localStorage.setItem('app_user_mental_patterns', JSON.stringify(mentalPatterns));
-      localStorage.setItem('app_user_weekly_report', JSON.stringify(weeklyReport));
-    }
+    localStorage.setItem('app_body_systems', JSON.stringify(bodySystems));
+    localStorage.setItem('app_user_documents', JSON.stringify(documents));
+    localStorage.setItem('app_user_appointments', JSON.stringify(appointments));
+    localStorage.setItem('app_user_daily_logs', JSON.stringify(dailyLogs));
+    localStorage.setItem('app_user_reminders', JSON.stringify(reminders));
+    localStorage.setItem('app_user_pressure_logs', JSON.stringify(pressureLogs));
+    localStorage.setItem('app_user_diary_entries', JSON.stringify(diaryEntries));
+    localStorage.setItem('app_user_mental_patterns', JSON.stringify(mentalPatterns));
+    localStorage.setItem('app_user_weekly_report', JSON.stringify(weeklyReport));
   }, [user, bodySystems, documents, appointments, dailyLogs, reminders, pressureLogs, diaryEntries, mentalPatterns, weeklyReport]);
 
   // Background timer for active browser notifications
@@ -402,35 +362,17 @@ export default function App() {
   // Handlers
   const handleAuthSuccess = (userData?: Partial<UserProfile>) => {
     const isNewRegistration = userData?.isQuestionnaireCompleted === false;
-    const isPrevDemo = isDemoUser(user) || user.email === 'anna.ivanova@health.ru' || user.fullName === 'Анна Сергеевна Иванова';
-
-    const baseProfile = (isPrevDemo || isNewRegistration) ? emptyUserProfile : user;
+    const baseProfile = isNewRegistration ? emptyUserProfile : user;
 
     const updatedUser: UserProfile = {
       ...emptyUserProfile,
       ...baseProfile,
       ...userData,
-      isDemoUser: false,
       isAuthenticated: true,
     };
 
-    if (!updatedUser.id || updatedUser.id === 'usr-1') {
+    if (!updatedUser.id) {
       updatedUser.id = `usr-${Date.now()}`;
-    }
-
-    if (updatedUser.fullName !== 'Анна Сергеевна Иванова' && updatedUser.email !== 'anna.ivanova@health.ru') {
-      if (updatedUser.birthDate === '1995-06-14') updatedUser.birthDate = '';
-      if (updatedUser.height === 168) updatedUser.height = 0;
-      if (updatedUser.weight === 58) updatedUser.weight = 0;
-      updatedUser.allergies = (updatedUser.allergies || []).filter(
-        (a: string) => a !== 'Пенициллин' && a !== 'Цветение березы' && a !== 'Арахис'
-      );
-      updatedUser.chronicDiagnoses = (updatedUser.chronicDiagnoses || []).filter(
-        (d: any) => d.name !== 'Субклинический гипотиреоз' && d.name !== 'Синдром раздраженного кишечника'
-      );
-      if (updatedUser.womenHealth?.partnerSyncCode === 'PARTNER-9842-RU') {
-        updatedUser.womenHealth = { ...updatedUser.womenHealth, partnerSyncCode: '', lastPeriodDate: '' };
-      }
     }
 
     setUser(updatedUser);
@@ -453,22 +395,23 @@ export default function App() {
   };
 
   const handleDemoLogin = () => {
-    const demoUser = {
-      ...demoUserProfile,
+    const guestUser: UserProfile = {
+      ...emptyUserProfile,
+      id: `usr-guest-${Date.now()}`,
+      fullName: 'Новый пользователь',
       isAuthenticated: true,
       isQuestionnaireCompleted: true,
-      isDemoUser: true,
     };
-    setUser(demoUser);
-    setBodySystems(initialBodySystems);
-    setDocuments(initialDocuments);
-    setAppointments(initialAppointments);
-    setDailyLogs(initialDailyLogs);
-    setReminders(initialReminders);
-    setPressureLogs(initialPressureLogs);
-    setDiaryEntries(initialDiaryEntries);
-    setMentalPatterns(initialMentalPatterns);
-    setWeeklyReport(initialWeeklyReport);
+    setUser(guestUser);
+    setBodySystems(emptyBodySystems);
+    setDocuments([]);
+    setAppointments([]);
+    setDailyLogs([]);
+    setReminders([]);
+    setPressureLogs([]);
+    setDiaryEntries([]);
+    setMentalPatterns(emptyMentalPatterns);
+    setWeeklyReport(emptyWeeklyReport);
     setCurrentScreen('dashboard');
   };
 
@@ -485,16 +428,16 @@ export default function App() {
     const savedSheetUrl = localStorage.getItem('app_google_sheet_url') || '';
 
     // a) Reset all local React states to empty/defaults
-    setUser(initialUserProfile);
-    setBodySystems(initialBodySystems);
+    setUser(emptyUserProfile);
+    setBodySystems(emptyBodySystems);
     setDocuments([]);
     setAppointments([]);
     setDailyLogs([]);
     setReminders([]);
     setPressureLogs([]);
     setDiaryEntries([]);
-    setMentalPatterns(initialMentalPatterns);
-    setWeeklyReport(initialWeeklyReport);
+    setMentalPatterns(emptyMentalPatterns);
+    setWeeklyReport(emptyWeeklyReport);
     setBiometricsEnabled(false);
     setUserPin('');
     setIsAppLocked(false);
