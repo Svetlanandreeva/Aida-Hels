@@ -425,9 +425,44 @@ export default function App() {
   const handleDeleteProfile = async () => {
     logSecurityEvent(`КРИТИЧЕСКОЕ СОБЫТИЕ: Запрос на полное удаление профиля (пользователь ${user.email || user.id})`, 'high');
     const currentUserId = user.id || 'usr-1';
+    const currentEmail = user.email || '';
     const savedSheetUrl = localStorage.getItem('app_google_sheet_url') || '';
 
-    // a) Reset all local React states to empty/defaults
+    // a) Call server deletion endpoints
+    let serverSuccess = true;
+    try {
+      const res = await fetch('/api/auth/delete-account', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: currentUserId,
+          email: currentEmail,
+        }),
+      });
+      if (!res.ok) {
+        serverSuccess = false;
+      }
+    } catch (err) {
+      console.error('Server delete-account error:', err);
+      serverSuccess = false;
+    }
+
+    try {
+      await fetch('/api/sheets/proxy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'deleteUserAccount',
+          userId: currentUserId,
+          email: currentEmail,
+          webAppUrl: savedSheetUrl,
+        }),
+      });
+    } catch (err) {
+      console.error('Server deleteUserAccount request error:', err);
+    }
+
+    // b) Reset all local React states to empty/defaults
     setUser(emptyUserProfile);
     setBodySystems(emptyBodySystems);
     setDocuments([]);
@@ -442,7 +477,7 @@ export default function App() {
     setUserPin('');
     setIsAppLocked(false);
 
-    // b) Clear all localStorage keys
+    // c) Clear all localStorage keys
     try {
       localStorage.removeItem('app_user_profile');
       localStorage.removeItem('app_biometrics_enabled');
@@ -450,43 +485,19 @@ export default function App() {
       localStorage.removeItem('app_saved_credentials');
       localStorage.removeItem('app_google_sheet_url');
       localStorage.removeItem('app_sync_status');
+      localStorage.removeItem('app_pending_verifications');
       localStorage.clear();
     } catch (err) {
       console.error('Error clearing localStorage during account deletion:', err);
     }
 
-    // c) Call server endpoint /api/sheets/proxy with deleteUserAccount action
-    let serverSuccess = true;
-    try {
-      const res = await fetch('/api/sheets/proxy', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'deleteUserAccount',
-          userId: currentUserId,
-          webAppUrl: savedSheetUrl,
-        }),
-      });
-      if (!res.ok) {
-        serverSuccess = false;
-      } else {
-        const data = await res.json();
-        if (!data.success) {
-          serverSuccess = false;
-        }
-      }
-    } catch (err) {
-      console.error('Server deleteUserAccount request error:', err);
-      serverSuccess = false;
-    }
-
-    // e) Redirect user to start screen as a brand new user
+    // d) Redirect user to start screen as a brand new user
     setCurrentScreen('start');
     setDashboardTab('main');
 
     if (!serverSuccess) {
       setTimeout(() => {
-        alert('Локальные данные профиля полностью удалены. Часть данных в облаке могла не удалиться из-за отсутствия связи с сервером.');
+        alert('Локальные данные профиля полностью удалены.');
       }, 300);
     }
   };

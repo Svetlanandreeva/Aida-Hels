@@ -240,14 +240,14 @@ export async function getUserByEmail(email: string): Promise<UserRecord | null> 
   } catch {}
 
   return {
-    id: r.id,
-    email: r.email,
-    fullName: r.full_name,
-    passwordHash: r.password_hash,
-    isVerified: Boolean(r.is_verified),
-    verificationCode: r.verification_code_hash,
+    id: r.id || r.ID || '',
+    email: r.email || r.EMAIL || normalized,
+    fullName: r.full_name || r.fullName || r.FULL_NAME || '',
+    passwordHash: r.password_hash || r.passwordHash || r.PASSWORD_HASH || '',
+    isVerified: Boolean(r.is_verified ?? r.isVerified),
+    verificationCode: r.verification_code_hash || r.verificationCode,
     verificationExpiresAt: r.verification_expires_at ? Number(r.verification_expires_at) : null,
-    createdAt: r.created_at,
+    createdAt: r.created_at || r.createdAt || new Date().toISOString(),
     profile: parsedProfile,
   };
 }
@@ -264,16 +264,36 @@ export async function getUserById(id: string): Promise<UserRecord | null> {
   } catch {}
 
   return {
-    id: r.id,
-    email: r.email,
-    fullName: r.full_name,
-    passwordHash: r.password_hash,
-    isVerified: Boolean(r.is_verified),
-    verificationCode: r.verification_code_hash,
+    id: r.id || r.ID || id,
+    email: r.email || r.EMAIL || '',
+    fullName: r.full_name || r.fullName || r.FULL_NAME || '',
+    passwordHash: r.password_hash || r.passwordHash || r.PASSWORD_HASH || '',
+    isVerified: Boolean(r.is_verified ?? r.isVerified),
+    verificationCode: r.verification_code_hash || r.verificationCode,
     verificationExpiresAt: r.verification_expires_at ? Number(r.verification_expires_at) : null,
-    createdAt: r.created_at,
+    createdAt: r.created_at || r.createdAt || new Date().toISOString(),
     profile: parsedProfile,
   };
+}
+
+export async function deleteUser(userId: string, email?: string): Promise<void> {
+  if (!isYdbConfigured()) return;
+  const normEmail = email ? email.trim().toLowerCase() : '';
+
+  if (userId) {
+    await runYql(`DELETE FROM users WHERE id = ${esc(userId)};`);
+    await runYql(`DELETE FROM documents WHERE user_id = ${esc(userId)};`);
+    await runYql(`DELETE FROM appointments WHERE user_id = ${esc(userId)};`);
+    await runYql(`DELETE FROM daily_logs WHERE user_id = ${esc(userId)};`);
+    await runYql(`DELETE FROM diary_entries WHERE user_id = ${esc(userId)};`);
+    await runYql(`DELETE FROM pressure_logs WHERE user_id = ${esc(userId)};`);
+    await runYql(`DELETE FROM reminders WHERE user_id = ${esc(userId)};`);
+    await runYql(`DELETE FROM ai_analyses WHERE user_id = ${esc(userId)};`);
+  }
+
+  if (normEmail) {
+    await runYql(`DELETE FROM users WHERE email = ${esc(normEmail)};`);
+  }
 }
 
 export async function createUser(user: {

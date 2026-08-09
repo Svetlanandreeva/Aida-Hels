@@ -15,6 +15,7 @@ import {
   getUserData,
   saveUserData,
   updateUserProfile,
+  deleteUser,
 } from './server/db';
 import {
   analyzeHealthWithGeminiOrFallback,
@@ -269,6 +270,33 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
+// Helper function to completely remove user account and data
+async function performDeleteUserAccount(userId: string, email?: string) {
+  const normEmail = (email || '').trim().toLowerCase();
+
+  if (normEmail) {
+    usersDb.delete(normEmail);
+    otpAttemptsDb.delete(normEmail);
+  }
+
+  for (const [key, userObj] of usersDb.entries()) {
+    if ((userId && userObj.id === userId) || (normEmail && userObj.email === normEmail)) {
+      usersDb.delete(key);
+    }
+  }
+
+  if (userId) {
+    userDataStore.delete(userId);
+  }
+  if (normEmail) {
+    userDataStore.delete(normEmail);
+  }
+
+  if (isPostgresConfigured()) {
+    await deleteUser(userId, normEmail);
+  }
+}
+
 // Login user
 app.post('/api/auth/login', async (req, res) => {
   try {
@@ -288,10 +316,13 @@ app.post('/api/auth/login', async (req, res) => {
           id: dbUser.id,
           email: dbUser.email,
           fullName: dbUser.fullName || dbUser.email.split('@')[0],
-          passwordHash: dbUser.passwordHash,
+          passwordHash: dbUser.passwordHash || '',
           isVerified: dbUser.isVerified,
           createdAt: dbUser.createdAt,
         };
+        if (user.passwordHash) {
+          usersDb.set(normEmail, user);
+        }
       }
     }
 
@@ -303,7 +334,12 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(401).json({ success: false, message: 'Пользователь с таким email не найден или неверный пароль' });
     }
 
-    // Verify password with bcrypt
+    // Verify password with bcrypt safely without throwing on missing or non-string passwordHash
+    if (!user.passwordHash || typeof user.passwordHash !== 'string' || user.passwordHash.length === 0) {
+      console.warn(`[Auth Warning] User ${normEmail} has empty or non-string passwordHash`);
+      return res.status(401).json({ success: false, message: 'Неверный логин или пароль' });
+    }
+
     const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
     if (!isPasswordValid) {
       return res.status(401).json({ success: false, message: 'Неверный логин или пароль' });
@@ -456,6 +492,73 @@ app.get('/api/auth/me', (req, res) => {
 app.post('/api/auth/logout', (req, res) => {
   res.clearCookie('session_token');
   res.json({ success: true, authenticated: false });
+});
+
+// Delete account endpoints
+app.post('/api/auth/delete-account', async (req: AuthenticatedRequest, res) => {
+  try {
+    const token = req.cookies?.session_token || req.headers.authorization?.replace('Bearer ', '');
+    let userId = req.user?.id;
+    let email = req.user?.email || req.body?.email;
+
+    if (token) {
+      try {
+        const decoded = jwt.verify(token, JWT_SECRET) as { id: string; email: string };
+        userId = userId || decoded.id;
+        email = email || decoded.email;
+      } catch {}
+    }
+
+    if (req.body?.userId) {
+      userId = req.body.userId;
+    }
+
+    if (!userId && !email) {
+      return res.status(400).json({ success: false, message: 'Не указаны данные пользователя для удаления' });
+    }
+
+    await performDeleteUserAccount(userId || '', email || '');
+    res.clearCookie('session_token');
+
+    res.json({
+      success: true,
+      message: 'Учётная запись и все персональные данные полностью удалены',
+    });
+  } catch (err: any) {
+    console.error('Delete account error:', err);
+    res.status(500).json({ success: false, message: 'Ошибка при удалении аккаунта: ' + err.message });
+  }
+});
+
+app.delete('/api/auth/delete-account', async (req: AuthenticatedRequest, res) => {
+  try {
+    const token = req.cookies?.session_token || req.headers.authorization?.replace('Bearer ', '');
+    let userId = req.user?.id;
+    let email = req.user?.email || req.body?.email;
+
+    if (token) {
+      try {
+        const decoded = jwt.verify(token, JWT_SECRET) as { id: string; email: string };
+        userId = userId || decoded.id;
+        email = email || decoded.email;
+      } catch {}
+    }
+
+    if (req.body?.userId) {
+      userId = req.body.userId;
+    }
+
+    await performDeleteUserAccount(userId || '', email || '');
+    res.clearCookie('session_token');
+
+    res.json({
+      success: true,
+      message: 'Учётная запись успешно удалена',
+    });
+  } catch (err: any) {
+    console.error('Delete account error:', err);
+    res.status(500).json({ success: false, message: 'Ошибка при удалении аккаунта: ' + err.message });
+  }
 });
 
 // ==========================================
@@ -1338,7 +1441,12 @@ app.post('/api/research/recognize', requireAuth, async (req: AuthenticatedReques
 // SAFE PROXY TO GOOGLE APPS SCRIPT (HARDCODED SERVER URL ONLY - NO CLIENT OVERRIDE)
 app.post('/api/sheets/proxy', async (req, res) => {
   try {
-    const { action, userId, payload, authToken } = req.body;
+    const { action, userId, payload, authToken, email } = req.body;
+
+    if (action === 'deleteUserAccount') {
+      await performDeleteUserAccount(userId || '', email || payload?.email || '');
+      res.clearCookie('session_token');
+    }
 
     // Hardcoded / Server configuration URL only. Client webAppUrl parameter is strictly ignored.
     const webAppUrl = process.env.GOOGLE_SHEETS_WEB_APP_URL;
