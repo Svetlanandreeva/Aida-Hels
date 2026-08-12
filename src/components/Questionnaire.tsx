@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { UserProfile, ScreenId, MedicationSchedule, PsychiatricMedication } from '../types';
 import { AutocompleteInput } from './AutocompleteInput';
 import { MedicationSchedulePicker } from './MedicationSchedulePicker';
@@ -63,21 +63,105 @@ export const Questionnaire: React.FC<QuestionnaireProps> = ({
   const [newPsychSymptom, setNewPsychSymptom] = useState('');
   const [newPsychMed, setNewPsychMed] = useState('');
 
-  // Step 1 handler
-  const handleNextFrom1 = (e: React.FormEvent) => {
+  // Server-driven onboarding state
+  const [schemaVersion, setSchemaVersion] = useState<string>('1.0.0');
+  const [puzzleRecommendations, setPuzzleRecommendations] = useState<any[]>([]);
+  const [selectedPuzzleModules, setSelectedPuzzleModules] = useState<string[]>([]);
+
+  // Fetch server-driven onboarding schema and progress
+  useEffect(() => {
+    fetch('/api/onboarding/schema')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && data.schema) {
+          setSchemaVersion(data.schema.version || '1.0.0');
+          if (data.userProgress?.puzzleRecommendations) {
+            setPuzzleRecommendations(data.userProgress.puzzleRecommendations);
+            const defaultEnabled = data.userProgress.puzzleRecommendations
+              .filter((r: any) => r.enabledByDefault)
+              .map((r: any) => r.moduleId);
+            setSelectedPuzzleModules(defaultEnabled);
+          }
+        }
+      })
+      .catch((err) => console.warn('Onboarding schema fetch info:', err.message));
+  }, []);
+
+  // Step 1 handler with backend progress saving
+  const handleNextFrom1 = async (e: React.FormEvent) => {
     e.preventDefault();
+    try {
+      await fetch('/api/onboarding/progress', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          stepId: 'step_basic_info',
+          answers: {
+            fullName: user.fullName,
+            birthDate: user.birthDate,
+            gender: user.gender,
+            heightCm: user.height,
+            weightKg: user.weight,
+          },
+        }),
+      });
+    } catch (err) {
+      console.warn('Error saving step 1 progress:', err);
+    }
     setCurrentStep('q2');
   };
 
-  // Step 2 handler
-  const handleNextFrom2 = (e: React.FormEvent) => {
+  // Step 2 handler with backend progress saving
+  const handleNextFrom2 = async (e: React.FormEvent) => {
     e.preventDefault();
+    try {
+      await fetch('/api/onboarding/progress', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          stepId: 'step_health_branches',
+          answers: {
+            gender: user.gender,
+            femaleHealthCycle: Boolean(user.womenHealth?.cycleLength),
+            isPregnantOrPlanning: Boolean(user.womenHealth?.isPregnant),
+            hasChildren: Boolean(user.hasChildren),
+          },
+        }),
+      });
+    } catch (err) {
+      console.warn('Error saving step 2 progress:', err);
+    }
     setCurrentStep('q3');
   };
 
-  // Step 3 handler
-  const handleNextFrom3 = (e: React.FormEvent) => {
+  // Step 3 handler with backend progress saving & Puzzle computation
+  const handleNextFrom3 = async (e: React.FormEvent) => {
     e.preventDefault();
+    try {
+      const res = await fetch('/api/onboarding/progress', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          stepId: 'step_health_goals',
+          answers: {
+            gender: user.gender,
+            isPregnantOrPlanning: Boolean(user.womenHealth?.isPregnant),
+            hasChildren: Boolean(user.hasChildren),
+            goals: user.healthGoals || ['blood_pressure', 'sleep_energy'],
+          },
+        }),
+      });
+      const data = await res.json();
+      if (data.onboardingState?.puzzleRecommendations) {
+        setPuzzleRecommendations(data.onboardingState.puzzleRecommendations);
+        const defaultEnabled = data.onboardingState.puzzleRecommendations
+          .filter((r: any) => r.enabledByDefault)
+          .map((r: any) => r.moduleId);
+        setSelectedPuzzleModules(defaultEnabled);
+      }
+    } catch (err) {
+      console.warn('Error saving step 3 progress:', err);
+    }
     setCurrentStep('q4');
   };
 
@@ -101,6 +185,23 @@ export const Questionnaire: React.FC<QuestionnaireProps> = ({
     }
 
     setAuthError(null);
+
+    // Call server onboarding completion endpoint
+    fetch('/api/onboarding/complete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        answers: {
+          fullName: user.fullName,
+          birthDate: user.birthDate,
+          gender: user.gender,
+          heightCm: user.height,
+          weightKg: user.weight,
+          goals: user.healthGoals || ['blood_pressure', 'sleep_energy'],
+        },
+        enabledPuzzleModuleIds: selectedPuzzleModules,
+      }),
+    }).catch((err) => console.warn('Onboarding complete fetch error:', err));
 
     // Persist registered credentials to localStorage for AuthScreen login
     localStorage.setItem(
@@ -1183,6 +1284,66 @@ export const Questionnaire: React.FC<QuestionnaireProps> = ({
                 <div>Сон: <strong className="text-gray-200">{user.psychology.sleepHours} ч/сутки</strong></div>
               </div>
             </div>
+
+            {/* Sec 3.5: RECOMMENDED PUZZLE HEALTH MODULES FROM SERVER */}
+            {puzzleRecommendations.length > 0 && (
+              <div className="bg-[#0F1115] p-4 sm:p-5 rounded-2xl border border-emerald-500/30 space-y-3 text-xs">
+                <div className="flex items-center justify-between border-b border-gray-800 pb-2">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-emerald-400" />
+                    <span className="font-bold text-gray-100 text-sm">Рекомендованный Пазл здоровья</span>
+                  </div>
+                  <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded font-mono">
+                    Schema v{schemaVersion}
+                  </span>
+                </div>
+                <p className="text-[11px] text-gray-400">
+                  На основе ваших целей сервер сформировал рекомендацию модулей. Чувствительные модули
+                  <strong> не включаются автоматически</strong> без вашего подтверждения.
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                  {puzzleRecommendations.map((mod: any) => {
+                    const isSelected = selectedPuzzleModules.includes(mod.moduleId);
+                    return (
+                      <div
+                        key={mod.moduleId}
+                        onClick={() => {
+                          if (isSelected) {
+                            setSelectedPuzzleModules(selectedPuzzleModules.filter((m) => m !== mod.moduleId));
+                          } else {
+                            setSelectedPuzzleModules([...selectedPuzzleModules, mod.moduleId]);
+                          }
+                        }}
+                        className={`p-3 rounded-xl border text-left cursor-pointer transition-all flex items-start gap-2.5 ${
+                          isSelected
+                            ? 'bg-emerald-500/10 border-emerald-500/50 text-gray-100'
+                            : 'bg-gray-900/60 border-gray-800 text-gray-400 hover:border-gray-700'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => {}}
+                          className="mt-0.5 rounded border-gray-700 text-emerald-500 focus:ring-emerald-500"
+                        />
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-bold text-xs text-gray-200">{mod.title}</span>
+                            {mod.isSensitive && (
+                              <span className="text-[9px] bg-amber-500/15 text-amber-300 border border-amber-500/30 px-1.5 py-0.2 rounded font-semibold">
+                                Чувствительный
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-gray-400 leading-tight">{mod.description}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* Sec 4: Account Credentials (Login & Password) */}
             <div className="bg-[#0F1115] p-5 rounded-2xl border border-emerald-500/30 space-y-4">

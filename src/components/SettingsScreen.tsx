@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { UserProfile, Reminder, MedicalDocument, ScreenId, MedicationSchedule, WaterTrackerState } from '../types';
 import { SecurityLockModal } from './SecurityLockModal';
 import { MedicationSchedulePicker } from './MedicationSchedulePicker';
-import { ResearchVerificationModal } from './modals/ResearchVerificationModal';
-import { analyzeMedicalDocument, RecognizedDocumentData } from '../utils/analyzeMedicalDocument';
+import { ResearchVerificationModal, StagingRecordPayload } from './modals/ResearchVerificationModal';
+import { processLabDocumentThroughStaging } from '../utils/analyzeMedicalDocument';
 import {
   Settings,
   Users,
@@ -37,6 +37,8 @@ import {
   Archive,
   History,
   Download,
+  Watch,
+  ShieldCheck,
 } from 'lucide-react';
 
 interface SettingsScreenProps {
@@ -289,7 +291,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   const [isAnalyzingFile, setIsAnalyzingFile] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [analysisProgress, setAnalysisProgress] = useState<string>('');
-  const [recognizedData, setRecognizedData] = useState<RecognizedDocumentData | null>(null);
+  const [stagingRecord, setStagingRecord] = useState<StagingRecordPayload | null>(null);
   const [isVerificationModalOpen, setIsVerificationModalOpen] = useState(false);
 
   // Partner sync & cloud backup state
@@ -557,10 +559,10 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     setAnalysisProgress('Чтение файла...');
 
     try {
-      const parsedResult = await analyzeMedicalDocument(selectedFile, docCategory, (step) => {
+      const record = await processLabDocumentThroughStaging(selectedFile, (step) => {
         setAnalysisProgress(step);
       });
-      setRecognizedData(parsedResult);
+      setStagingRecord(record);
       setIsAnalyzingFile(false);
       setShowAddDocModal(false);
       setIsVerificationModalOpen(true);
@@ -571,42 +573,28 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     }
   };
 
-  const handleConfirmSaveRecognizedDoc = (confirmed: RecognizedDocumentData) => {
-    if (!setDocuments) return;
-    const categoryLabels: Record<string, string> = {
-      lab: 'Лабораторные анализы',
-      ultrasound: 'УЗИ и МРТ',
-      instrumental: 'Инструментальная диагностика',
-      consultations: 'Консультации врачей',
-    };
+  const handleCommitStaging = async (commitParams: any) => {
+    try {
+      const res = await fetch('/api/lab/staging/commit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...commitParams,
+          stagingRecordFallback: stagingRecord,
+        }),
+      });
 
-    const newDoc: MedicalDocument = {
-      id: `doc-${Date.now()}`,
-      title: confirmed.documentType || docTitle || 'Распознанный анализ',
-      date: confirmed.researchDate || new Date().toLocaleDateString('ru-RU'),
-      category: docCategory,
-      categoryLabel: categoryLabels[docCategory] || 'Лабораторные анализы',
-      summary: `Исследование обработано ИИ. Проверено показателей: ${(confirmed.markers || confirmed.results || []).length}. Лаборатория: ${confirmed.laboratory || confirmed.laboratoryName || 'Не указана'}.`,
-      fileUrl: selectedFile ? URL.createObjectURL(selectedFile) : undefined,
-      deviations: (confirmed.markers || confirmed.results || [])
-        .filter((item) => item.status !== 'normal')
-        .map((item) => ({
-          marker: item.name || item.originalName || 'Показатель',
-          value: `${item.value ?? item.rawValue ?? ''} ${item.unit}`.trim(),
-          norm: item.normalRange || (item.min !== null || item.max !== null ? `${item.min ?? ''} - ${item.max ?? ''}` : 'Не указан'),
-          status: item.status === 'low' ? 'Ниже' : item.status === 'high' ? 'Выше' : 'Внимание',
-          explanation: item.status === 'low' ? 'Ниже референсного диапазона лаборатории.' : 'Выше референсного диапазона лаборатории.',
-        })),
-      recommendations: [
-        'Показатели успешно сохранены в историю медицинского профиля.',
-        'Обратитесь к лечащему врачу для консультации по отклонениям.',
-      ],
-    };
-
-    setDocuments((prev) => [newDoc, ...prev]);
-    setIsVerificationModalOpen(false);
-    setSelectedFile(null);
-    setDocTitle('');
+      const data = await res.json();
+      if (data.success && data.document && setDocuments) {
+        setDocuments((prev) => [data.document, ...prev]);
+      }
+    } catch (err) {
+      console.error('Commit staging error:', err);
+    } finally {
+      setIsVerificationModalOpen(false);
+      setSelectedFile(null);
+      setDocTitle('');
+    }
   };
 
   return (
@@ -673,6 +661,68 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           </button>
         </div>
       </div>
+
+      {/* WEARABLES & INTEGRATIONS BANNER */}
+      {onNavigate && (
+        <div className="bg-gradient-to-r from-[#0F172A] via-[#111C30] to-[#0F172A] border border-[#3DD9C5]/30 rounded-[24px] p-5 sm:p-6 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-[#3DD9C5]/10 border border-[#3DD9C5]/30 flex items-center justify-center text-[#3DD9C5] shrink-0">
+              <Watch className="w-6 h-6" />
+            </div>
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-extrabold text-white">Носимые устройства и Health-платформы</span>
+                <span className="px-2 py-0.5 rounded-full bg-[#3DD9C5]/20 text-[#3DD9C5] text-[10px] font-bold">
+                  Apple Health, Health Connect
+                </span>
+              </div>
+              <p className="text-xs text-gray-300">
+                Синхронизация пульса, шагов, давления и сна через 7-этапный адаптивный конвейер с отслеживанием источника (Provenance).
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => onNavigate('integrations')}
+            className="px-5 py-2.5 bg-[#3DD9C5] hover:bg-[#34c4b1] text-black font-extrabold text-xs rounded-xl shadow-lg transition-all cursor-pointer whitespace-nowrap shrink-0 flex items-center gap-2"
+          >
+            <span>Управление гаджетами</span>
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* PERMISSION LAYER & FAMILY ACCESS CARD */}
+      {(activeTab === 'all' || activeTab === 'privacy') && (
+        <div className="bg-[#0B1320] border border-rose-500/20 rounded-[24px] p-6 sm:p-8 space-y-4 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400 shrink-0">
+              <ShieldCheck className="w-6 h-6" />
+            </div>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-bold text-white">Права доступа и семейный доступ (Deny by Default)</h3>
+                <span className="px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 text-[10px] font-extrabold uppercase">
+                  Zero Trust Pipeline
+                </span>
+              </div>
+              <p className="text-xs text-gray-300">
+                6-этапный бэкенд-конвейер проверки прав. Точечная настройка 13 скоупов, защита сенситивных данных (`mental`, `cycle`, `pregnancy`, `location`) и мгновенный отзыв (Instant Revoke).
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => onNavigate && onNavigate('permissions')}
+            className="px-5 py-2.5 bg-rose-500 hover:bg-rose-600 text-white font-extrabold text-xs rounded-xl shadow-lg transition-all cursor-pointer whitespace-nowrap shrink-0 flex items-center gap-2"
+          >
+            <span>Управление семейным доступом</span>
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {/* SECTION 1: НАСТРОЙКА УВЕДОМЛЕНИЙ (NOTIFICATION SETTINGS) */}
       {(activeTab === 'all' || activeTab === 'notifications') && (
@@ -1557,10 +1607,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
       <ResearchVerificationModal
         isOpen={isVerificationModalOpen}
         onClose={() => setIsVerificationModalOpen(false)}
-        documentData={recognizedData}
+        stagingRecord={stagingRecord}
         filePreviewUrl={selectedFile ? URL.createObjectURL(selectedFile) : null}
-        fileName={selectedFile?.name || docTitle}
-        onConfirmSave={handleConfirmSaveRecognizedDoc}
+        onCommit={handleCommitStaging}
       />
 
       {/* BIOMETRICS FACE ID / PIN LOCK MODAL */}

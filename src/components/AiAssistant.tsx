@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Sparkles, Heart, RefreshCw, Stethoscope, Moon, Apple, Copy, Check, Bot } from 'lucide-react';
+import { Send, Sparkles, Heart, RefreshCw, Stethoscope, Moon, Apple, Copy, Check, Bot, Cpu, CheckCircle2, XCircle, Lock, ShieldAlert } from 'lucide-react';
 import { UserProfile, MedicalDocument, DailyLogEntry, DiaryEntry, Reminder } from '../types';
+import { AiToolsGovernanceModal } from './AiToolsGovernanceModal';
 
 interface Message {
   id: string;
@@ -9,6 +10,7 @@ interface Message {
   timestamp: string;
   botRoleId?: string;
   botName?: string;
+  stagedCandidate?: any;
 }
 
 interface AiAssistantProps {
@@ -159,14 +161,63 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
     }
   }, [messages]);
 
-  // Save activeBotId to localStorage on change
-  useEffect(() => {
+  const [isGovernanceOpen, setIsGovernanceOpen] = useState(false);
+
+  const handleConfirmCandidateInChat = async (candidateId: string, confirmationToken: string, msgId: string) => {
     try {
-      localStorage.setItem(STORAGE_KEY_BOT_ID, activeBotId);
-    } catch {
-      // ignore
+      const res = await fetch('/api/ai/candidates/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ candidateId, confirmationToken }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === msgId
+              ? {
+                  ...m,
+                  stagedCandidate: { ...m.stagedCandidate, status: 'CONFIRMED' },
+                  text: `${m.text}\n\n✅ [ПОДТВЕРЖДЕНО ЧЕЛОВЕКОМ]: Данные успешно записаны в вашу медкарту.`,
+                }
+              : m
+          )
+        );
+      } else {
+        alert('Ошибка подтверждения: ' + data.message);
+      }
+    } catch (err: any) {
+      alert('Ошибка: ' + err.message);
     }
-  }, [activeBotId]);
+  };
+
+  const handleRejectCandidateInChat = async (candidateId: string, confirmationToken: string, msgId: string) => {
+    try {
+      const res = await fetch('/api/ai/candidates/reject', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ candidateId, confirmationToken, reason: 'Отклонено в чате' }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === msgId
+              ? {
+                  ...m,
+                  stagedCandidate: { ...m.stagedCandidate, status: 'REJECTED' },
+                  text: `${m.text}\n\n❌ [ОТКЛОНЕНО ЧЕЛОВЕКОМ]: Запись сброшена и не попала в базу данных.`,
+                }
+              : m
+          )
+        );
+      } else {
+        alert('Ошибка: ' + data.message);
+      }
+    } catch (err: any) {
+      alert('Ошибка: ' + err.message);
+    }
+  };
 
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -274,6 +325,7 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
         timestamp: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
         botRoleId: activeBot.id,
         botName: data.botName || activeBot.name,
+        stagedCandidate: data.stagedCandidate,
       };
       setMessages((prev) => [...prev, aiMsg]);
     } catch (err) {
@@ -315,10 +367,14 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
         </div>
 
         <div className="flex items-center gap-2 self-end sm:self-auto">
-          <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-full">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-[10px] font-medium text-emerald-300">История сохраняется</span>
-          </div>
+          <button
+            onClick={() => setIsGovernanceOpen(true)}
+            className="px-3 py-1.5 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 rounded-xl transition-all text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+            title="Центр контроля инструментов ИИ и токенов безопасности"
+          >
+            <Cpu className="w-3.5 h-3.5 text-cyan-400" />
+            <span className="hidden sm:inline">Инструменты ИИ (Rule 15)</span>
+          </button>
 
           <button
             onClick={handleClearChat}
@@ -404,6 +460,108 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
                   </div>
                 )}
                 <p>{msg.text}</p>
+
+                {/* STAGED CANDIDATE CONFIRMATION CARD (RULE 15 & 16 ENFORCEMENT) */}
+                {msg.stagedCandidate && (
+                  <div className="mt-3 p-3.5 bg-[#0B1320] border border-amber-500/30 rounded-xl space-y-2.5 font-sans shadow-lg">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-1.5 text-amber-300 font-bold text-xs">
+                        <Lock className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Карантин CandidateRecord (Rule 16)</span>
+                      </div>
+                      <span className="text-[10px] font-mono bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded font-black border border-amber-500/30">
+                        {msg.stagedCandidate.confirmationToken || 'TOKEN_PENDING'}
+                      </span>
+                    </div>
+
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap text-[11px]">
+                        {msg.stagedCandidate.payload?.factCategory && (
+                          <span className="px-2 py-0.5 bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 rounded font-semibold uppercase text-[9px] tracking-wider">
+                            {msg.stagedCandidate.payload.factCategory === 'measurement'
+                              ? 'Замер / Vitals'
+                              : msg.stagedCandidate.payload.factCategory === 'symptom'
+                              ? 'Симптом'
+                              : msg.stagedCandidate.payload.factCategory === 'medication'
+                              ? 'Лекарство'
+                              : msg.stagedCandidate.payload.factCategory === 'cycle_event'
+                              ? 'Женский цикл'
+                              : 'Health Fact'}
+                          </span>
+                        )}
+                        <span className="text-gray-300 bg-gray-800 px-2 py-0.5 rounded text-[10px]">
+                          Субъект: <strong className="text-white">{msg.stagedCandidate.payload?.subject?.name || 'Я (владелец)'}</strong>
+                        </span>
+                        <span className="text-gray-300 bg-gray-800 px-2 py-0.5 rounded text-[10px]">
+                          Дата: <strong className="text-cyan-300">{msg.stagedCandidate.payload?.dateResolution?.raw || 'сегодня'}</strong>
+                        </span>
+                      </div>
+
+                      <p className="text-xs text-white font-bold pt-1">{msg.stagedCandidate.title}</p>
+                      <p className="text-[11px] text-gray-400 leading-relaxed">{msg.stagedCandidate.description}</p>
+                    </div>
+
+                    {/* Schema Validation Indicator */}
+                    {msg.stagedCandidate.payload?.schemaValidation && (
+                      <div className={`p-2 rounded-lg text-[10px] flex items-center justify-between gap-2 border ${
+                        msg.stagedCandidate.payload.schemaValidation.isValid
+                          ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300'
+                          : 'bg-amber-950/40 border-amber-500/30 text-amber-300'
+                      }`}>
+                        <span className="flex items-center gap-1 font-semibold">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                          {msg.stagedCandidate.payload.schemaValidation.statusText || 'Валидация схемы пройдена'}
+                        </span>
+                        <span className="font-mono text-[9px] opacity-80">SCHEMA_OK</span>
+                      </div>
+                    )}
+
+                    {msg.stagedCandidate.status === 'STAGED' ? (
+                      <div className="flex items-center gap-2 pt-1">
+                        <button
+                          onClick={() =>
+                            handleConfirmCandidateInChat(
+                              msg.stagedCandidate.id,
+                              msg.stagedCandidate.confirmationToken,
+                              msg.id
+                            )
+                          }
+                          className="px-3.5 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold text-[11px] rounded-lg shadow-md transition-all cursor-pointer flex items-center gap-1.5"
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>Подтвердить запись</span>
+                        </button>
+
+                        <button
+                          onClick={() =>
+                            handleRejectCandidateInChat(
+                              msg.stagedCandidate.id,
+                              msg.stagedCandidate.confirmationToken,
+                              msg.id
+                            )
+                          }
+                          className="px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 text-[11px] font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1"
+                        >
+                          <XCircle className="w-3.5 h-3.5" />
+                          <span>Сбросить</span>
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="text-[11px] font-bold pt-1">
+                        {msg.stagedCandidate.status === 'CONFIRMED' ? (
+                          <span className="text-emerald-400 flex items-center gap-1">
+                            <CheckCircle2 className="w-3.5 h-3.5" /> Подтверждено и написано в каноническую медкарту
+                          </span>
+                        ) : (
+                          <span className="text-rose-400 flex items-center gap-1">
+                            <XCircle className="w-3.5 h-3.5" /> Запись отклонена и не попала в базу данных
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <span
                   className={`block text-[10px] text-right mt-1 ${
                     isUser ? 'text-slate-800 font-medium' : 'text-gray-500'
@@ -463,6 +621,8 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
           </button>
         </form>
       </div>
+
+      <AiToolsGovernanceModal isOpen={isGovernanceOpen} onClose={() => setIsGovernanceOpen(false)} />
     </div>
   );
 };

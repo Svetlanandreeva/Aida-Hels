@@ -14,10 +14,14 @@ export type ScreenId =
   | 'body_map'
   | 'reminders'
   | 'mental_diary'
-  | 'pressure_diary';
+  | 'pressure_diary'
+  | 'timeline'
+  | 'integrations'
+  | 'permissions';
 
 export interface PressureLogEntry {
   id: string;
+  subject_profile_id?: string;
   timestamp: string; // ISO string e.g. "2026-08-01T08:30:00"
   date: string; // YYYY-MM-DD
   displayDate: string; // e.g. "01 Авг" or "01.08"
@@ -36,6 +40,7 @@ export type ReminderFrequency = 'daily' | 'once' | 'weekly' | 'weekdays';
 
 export interface Reminder {
   id: string;
+  subject_profile_id?: string;
   title: string;
   category: ReminderCategory;
   time: string; // HH:MM e.g. "08:00"
@@ -68,6 +73,7 @@ export interface WaterTrackerState {
 export interface QuestionnaireSnapshot {
   survey_id: string;
   user_id: string;
+  subject_profile_id?: string;
   survey_version: string;
   started_at: string;
   completed_at: string;
@@ -171,6 +177,7 @@ export interface UserProfile {
 
 export interface MedicalDocument {
   id: string;
+  subject_profile_id?: string;
   title: string;
   date: string;
   category: 'lab' | 'ultrasound' | 'instrumental' | 'consultations';
@@ -196,6 +203,7 @@ export interface MedicalDocument {
 
 export interface Appointment {
   id: string;
+  subject_profile_id?: string;
   specialty: string;
   doctorName: string;
   clinic: string;
@@ -332,6 +340,7 @@ export interface StructuredHealthAnalysis {
 
 export interface DailyLogEntry {
   date: string; // e.g., '27.07'
+  subject_profile_id?: string;
   energy: number;
   sleep: number;
   stress: number;
@@ -451,6 +460,7 @@ export interface DiaryAIAnalysis {
 export interface DiaryEntry {
   id: string;
   user_id: string;
+  subject_profile_id?: string;
   created_at: string; // ISO string
   event_datetime: string; // YYYY-MM-DDTHH:mm or ISO
   entry_type: 'quick' | 'full';
@@ -578,6 +588,22 @@ export interface MedicationIntakeAudit {
   source: string;
   user_id: string;
   note?: string;
+}
+
+// ==========================================
+// PUZZLE / USER MODULE CONFIG TYPES
+// ==========================================
+
+export interface UserModuleConfigItem {
+  moduleId: string;
+  title: string;
+  category?: 'core' | 'sensitive' | 'ai' | 'medications' | 'specialized' | 'analytics';
+  enabled: boolean;
+  show_on_home: boolean;
+  order: number;
+  allow_ai_analytics: boolean;
+  notifications: boolean;
+  module_settings?: Record<string, any>;
 }
 
 

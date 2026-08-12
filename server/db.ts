@@ -1,5 +1,6 @@
 import * as ydbModule from 'ydb-sdk';
 import dotenv from 'dotenv';
+import { CLINICAL_YQL_TABLE_DEFS } from './schema';
 
 dotenv.config();
 
@@ -193,6 +194,7 @@ export async function ensureSchema(): Promise<boolean> {
       updated_at Utf8,
       PRIMARY KEY (user_id)
     );`,
+    ...CLINICAL_YQL_TABLE_DEFS,
   ];
 
   const driver = await getYdbDriver();

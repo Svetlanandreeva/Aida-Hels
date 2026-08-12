@@ -258,15 +258,10 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess, onDemoLo
     setInfoMessage(null);
 
     try {
-      const savedSheetUrl = localStorage.getItem('app_google_sheet_url') || '';
-      const res = await fetch('/api/sheets/proxy', {
+      const res = await fetch('/api/auth/send-code', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'sendVerificationCode',
-          payload: { email: normEmail },
-          webAppUrl: savedSheetUrl,
-        }),
+        body: JSON.stringify({ email: normEmail }),
       });
       const data = await res.json();
       const sentCode = data?.data?.code || Math.floor(100000 + Math.random() * 900000).toString();

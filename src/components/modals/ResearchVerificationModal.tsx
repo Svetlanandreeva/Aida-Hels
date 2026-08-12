@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   FileCheck2,
   AlertTriangle,
@@ -16,422 +16,743 @@ import {
   User,
   Sparkles,
   Plus,
+  Fingerprint,
+  FileWarning,
+  Eye,
+  Check,
+  RefreshCw,
+  Copy,
+  ChevronRight,
+  ShieldAlert,
+  Sliders,
 } from 'lucide-react';
 
-export interface RecognizedMarker {
-  category: string;
+export interface StagedAnalyte {
+  id: string;
+  analyteCode: string;
   originalName: string;
   normalizedName: string;
-  value: number | string;
+  value: number | string | null;
   valueText: string;
   unit: string;
-  referenceMin?: number;
-  referenceMax?: number;
-  referenceText: string;
+  min: number | null;
+  max: number | null;
+  normalRange: string;
   status: 'low' | 'normal' | 'high' | 'critical' | 'unknown';
-  sourcePage?: number;
-  confidence: number; // 0 to 1
+  confidence: number;
+  originalRawLine?: string;
+  isCorrected?: boolean;
 }
 
-export interface RecognizedDocumentData {
-  documentType: string;
-  laboratoryName: string;
+export interface StagingRecordPayload {
+  stagingId: string;
+  sourceHash: string;
+  sourceFileName: string;
+  mimeType: string;
+  fileSize: number;
+  uploadedAt: string;
+  status: 'staging' | 'quarantined' | 'committed' | 'discarded';
+  quarantineReason?: string;
+
+  documentCategory: string;
+  documentTitle: string;
   researchDate: string;
-  patientName?: string;
-  rawText?: string;
-  overallConfidence: number;
+  laboratoryName: string;
+
+  patientNameOnDoc: string;
+  suggestedProfileId: string;
+  suggestedProfileName: string;
+  isOwnerMatch: boolean;
+  availableProfiles: { id: string; name: string; relation: string }[];
+
+  analytes: StagedAnalyte[];
   warnings: string[];
-  results: RecognizedMarker[];
+
+  isDuplicate: boolean;
+  duplicateInfo?: {
+    existingDocId: string;
+    existingDocTitle: string;
+    existingDocDate: string;
+    existingProfileName?: string;
+    matchedAnalytesCount: number;
+  };
+
+  aiExplanation?: string;
 }
 
 interface ResearchVerificationModalProps {
   isOpen: boolean;
   onClose: () => void;
-  documentData: RecognizedDocumentData | null;
+  stagingRecord: StagingRecordPayload | null;
   filePreviewUrl?: string | null;
-  fileName?: string;
-  onConfirmSave: (confirmedData: RecognizedDocumentData) => void;
-  onDeleteDoc?: () => void;
+  onCommit: (commitParams: {
+    stagingId: string;
+    targetProfileId: string;
+    mode: 'commit_to_history' | 'explain_only_no_save';
+    duplicateAction: 'overwrite' | 'skip' | 'create_duplicate';
+    correctedAnalytes: StagedAnalyte[];
+    documentMetadata: {
+      documentTitle: string;
+      researchDate: string;
+      laboratoryName: string;
+    };
+  }) => Promise<void>;
 }
 
 export const ResearchVerificationModal: React.FC<ResearchVerificationModalProps> = ({
   isOpen,
   onClose,
-  documentData,
+  stagingRecord,
   filePreviewUrl,
-  fileName,
-  onConfirmSave,
-  onDeleteDoc,
+  onCommit,
 }) => {
-  if (!isOpen || !documentData) return null;
+  if (!isOpen || !stagingRecord) return null;
 
-  const [docType, setDocType] = useState(documentData.documentType || 'Общий анализ крови');
-  const [labName, setLabName] = useState(documentData.laboratoryName || 'Медицинская лаборатория');
-  const [researchDate, setResearchDate] = useState(documentData.researchDate || new Date().toISOString().split('T')[0]);
-  const [results, setResults] = useState<RecognizedMarker[]>(documentData.results || []);
-  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  // Local editable form state
+  const [docTitle, setDocTitle] = useState(stagingRecord.documentTitle || 'Лабораторный анализ');
+  const [labName, setLabName] = useState(stagingRecord.laboratoryName || 'Медицинская лаборатория');
+  const [researchDate, setResearchDate] = useState(
+    stagingRecord.researchDate || new Date().toISOString().split('T')[0]
+  );
+  const [selectedProfileId, setSelectedProfileId] = useState(
+    stagingRecord.suggestedProfileId || 'sp-primary'
+  );
+  const [saveMode, setSaveMode] = useState<'commit_to_history' | 'explain_only_no_save'>(
+    'commit_to_history'
+  );
+  const [duplicateAction, setDuplicateAction] = useState<'overwrite' | 'skip' | 'create_duplicate'>(
+    'create_duplicate'
+  );
 
-  const handleUpdateMarker = (index: number, field: keyof RecognizedMarker, val: any) => {
-    setResults((prev) => {
-      const updated = [...prev];
-      updated[index] = { ...updated[index], [field]: val };
-      return updated;
-    });
+  const [analytes, setAnalytes] = useState<StagedAnalyte[]>(stagingRecord.analytes || []);
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [explanationResult, setExplanationResult] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (stagingRecord) {
+      setDocTitle(stagingRecord.documentTitle || 'Лабораторный анализ');
+      setLabName(stagingRecord.laboratoryName || 'Медицинская лаборатория');
+      setResearchDate(stagingRecord.researchDate || new Date().toISOString().split('T')[0]);
+      setSelectedProfileId(stagingRecord.suggestedProfileId || 'sp-primary');
+      setAnalytes(stagingRecord.analytes || []);
+      setExplanationResult(null);
+    }
+  }, [stagingRecord]);
+
+  const handleUpdateAnalyte = (id: string, field: keyof StagedAnalyte, val: any) => {
+    setAnalytes((prev) =>
+      prev.map((a) => {
+        if (a.id === id) {
+          return {
+            ...a,
+            [field]: val,
+            isCorrected: true,
+          };
+        }
+        return a;
+      })
+    );
   };
 
-  const handleRemoveMarker = (index: number) => {
-    setResults((prev) => prev.filter((_, i) => i !== index));
+  const handleRemoveAnalyte = (id: string) => {
+    setAnalytes((prev) => prev.filter((a) => a.id !== id));
   };
 
-  const handleAddMarker = () => {
-    setResults((prev) => [
+  const handleAddAnalyte = () => {
+    const newId = `an_manual_${Date.now()}`;
+    setAnalytes((prev) => [
       ...prev,
       {
-        category: 'Пользовательский',
+        id: newId,
+        analyteCode: 'custom',
         originalName: 'Новый показатель',
-        normalizedName: 'custom',
+        normalizedName: 'Новый показатель',
         value: 0,
         valueText: '0',
         unit: 'ед',
-        referenceText: '0 - 100',
+        min: 0,
+        max: 100,
+        normalRange: '0 - 100',
         status: 'normal',
         confidence: 1.0,
-        lowConfidence: false,
+        isCorrected: true,
       },
     ]);
+    setEditingId(newId);
   };
 
-  const handleSave = () => {
-    onConfirmSave({
-      ...documentData,
-      documentType: docType,
-      laboratoryName: labName,
-      researchDate: researchDate,
-      results: results,
-    });
-    onClose();
+  const handleFinalSubmit = async () => {
+    setIsSubmitting(true);
+    try {
+      await onCommit({
+        stagingId: stagingRecord.stagingId,
+        targetProfileId: selectedProfileId,
+        mode: saveMode,
+        duplicateAction,
+        correctedAnalytes: analytes,
+        documentMetadata: {
+          documentTitle: docTitle,
+          researchDate,
+          laboratoryName: labName,
+        },
+      });
+      onClose();
+    } catch (err) {
+      console.error('Commit error:', err);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const renderStatusBadge = (status: RecognizedMarker['status']) => {
+  const isQuarantined = stagingRecord.status === 'quarantined';
+
+  const renderStatusBadge = (status: StagedAnalyte['status']) => {
     switch (status) {
       case 'normal':
         return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-[#34F5A4]/15 border border-[#34F5A4]/30 text-[#34F5A4] text-xs font-bold rounded-lg whitespace-nowrap">
-            <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[11px] font-bold rounded-lg whitespace-nowrap">
+            <CheckCircle2 className="w-3 h-3" />
             <span>В норме</span>
           </span>
         );
       case 'low':
         return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-[#4DEBFF]/15 border border-[#4DEBFF]/30 text-[#4DEBFF] text-xs font-bold rounded-lg whitespace-nowrap">
-            <ArrowDown className="w-3.5 h-3.5 shrink-0" />
-            <span>Ниже диапазона</span>
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-sky-500/15 border border-sky-500/30 text-sky-300 text-[11px] font-bold rounded-lg whitespace-nowrap">
+            <ArrowDown className="w-3 h-3" />
+            <span>Ниже</span>
           </span>
         );
       case 'high':
         return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-[#FF8C42]/15 border border-[#FF8C42]/30 text-[#FF8C42] text-xs font-bold rounded-lg whitespace-nowrap">
-            <ArrowUp className="w-3.5 h-3.5 shrink-0" />
-            <span>Выше диапазона</span>
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-500/15 border border-amber-500/30 text-amber-300 text-[11px] font-bold rounded-lg whitespace-nowrap">
+            <ArrowUp className="w-3 h-3" />
+            <span>Выше</span>
           </span>
         );
       case 'critical':
         return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-[#FF5A5A]/15 border border-[#FF5A5A]/30 text-[#FF5A5A] text-xs font-bold rounded-lg whitespace-nowrap">
-            <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-rose-500/20 border border-rose-500/40 text-rose-300 text-[11px] font-bold rounded-lg whitespace-nowrap">
+            <AlertTriangle className="w-3 h-3" />
             <span>Критическое</span>
           </span>
         );
-      case 'unknown':
       default:
         return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-gray-500/15 border border-gray-500/30 text-gray-400 text-xs font-bold rounded-lg whitespace-nowrap">
-            <HelpCircle className="w-3.5 h-3.5 shrink-0" />
-            <span>Не определено</span>
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-gray-500/15 border border-gray-500/30 text-gray-400 text-[11px] font-bold rounded-lg whitespace-nowrap">
+            <HelpCircle className="w-3 h-3" />
+            <span>Неизвестно</span>
           </span>
         );
     }
   };
 
+  const renderConfidenceBadge = (confidence: number, isCorrected?: boolean) => {
+    if (isCorrected) {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-500/15 text-purple-300 border border-purple-500/30 text-[10px] font-semibold rounded-md">
+          <Edit2 className="w-2.5 h-2.5" />
+          <span>Исправлено</span>
+        </span>
+      );
+    }
+    const percent = Math.round(confidence * 100);
+    if (percent >= 85) {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-semibold rounded-md">
+          <span>{percent}% OCR</span>
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-500/15 text-amber-300 border border-amber-500/30 text-[10px] font-semibold rounded-md">
+        <AlertTriangle className="w-2.5 h-2.5" />
+        <span>{percent}% (Проверьте)</span>
+      </span>
+    );
+  };
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-md overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/85 backdrop-blur-md overflow-y-auto">
       <div className="relative w-full max-w-5xl bg-[#0B1320] border border-white/10 rounded-2xl sm:rounded-3xl shadow-2xl text-gray-100 flex flex-col max-h-[92vh] overflow-hidden my-auto">
-        
-        {/* HEADER */}
-        <div className="p-4 sm:p-6 border-b border-white/10 flex items-center justify-between bg-[#101A28]">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-[#34F5A4]/10 border border-[#34F5A4]/20 text-[#34F5A4] flex items-center justify-center shrink-0">
-              <FileCheck2 className="w-5 h-5" />
+        {/* HEADER PIPELINE INDICATOR */}
+        <div className="p-4 sm:p-6 border-b border-white/10 bg-gradient-to-r from-[#0F172A] via-[#111C30] to-[#0F172A]">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2.5 rounded-2xl bg-[#3DD9C5]/10 border border-[#3DD9C5]/30 text-[#3DD9C5]">
+                <FileCheck2 className="w-6 h-6" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 text-xs font-bold text-[#3DD9C5] uppercase tracking-wider">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Staging Pipeline Обработки Документов</span>
+                </div>
+                <h2 className="text-lg sm:text-xl font-extrabold text-white mt-0.5">
+                  Верификация & Подготовка к занесению
+                </h2>
+              </div>
             </div>
-            <div>
-              <h2 className="text-lg sm:text-xl font-extrabold text-white">Экран проверки распознанных данных</h2>
-              <p className="text-xs text-white/60">
-                ИИ извлёк показатели из документа. Пожалуйста, проверьте и подтвердите их перед сохранением.
-              </p>
-            </div>
+
+            <button
+              onClick={onClose}
+              className="p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
           </div>
-          <button
-            onClick={onClose}
-            className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 text-white/70 flex items-center justify-center cursor-pointer transition-colors"
-          >
-            <X className="w-4 h-4" />
-          </button>
+
+          {/* PIPELINE BREADCRUMBS STEPS */}
+          <div className="mt-4 pt-3 border-t border-white/5 overflow-x-auto flex items-center gap-1 text-[10px] sm:text-xs font-semibold text-gray-400 no-scrollbar whitespace-nowrap">
+            {[
+              'Upload',
+              'Validation',
+              'OCR/Parser',
+              'Classify',
+              'Владелец',
+              'Extract',
+              'Normalize',
+              'Confidence',
+              'Dedupe',
+              'Preview',
+              'Correction',
+              'Commit',
+            ].map((stepName, idx) => (
+              <React.Fragment key={stepName}>
+                <span
+                  className={`px-2 py-0.5 rounded-md ${
+                    idx <= 9
+                      ? 'bg-[#3DD9C5]/15 text-[#3DD9C5] border border-[#3DD9C5]/30'
+                      : idx === 10
+                      ? 'bg-amber-400/20 text-amber-300 border border-amber-400/40 animate-pulse'
+                      : 'bg-white/5 text-gray-500'
+                  }`}
+                >
+                  {stepName}
+                </span>
+                {idx < 11 && <ChevronRight className="w-3 h-3 text-gray-600 shrink-0" />}
+              </React.Fragment>
+            ))}
+          </div>
         </div>
 
-        {/* CONTENT */}
-        <div className="p-4 sm:p-6 overflow-y-auto space-y-6 flex-1 text-xs sm:text-sm">
-          
-          {/* Document Meta Row */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-[#101A28] p-4 rounded-2xl border border-white/[0.06]">
+        {/* MODAL BODY */}
+        <div className="p-4 sm:p-6 overflow-y-auto space-y-6 flex-1 text-sm">
+          {/* QUARANTINE WARNING IF QUARANTINED */}
+          {isQuarantined && (
+            <div className="p-4 bg-rose-500/15 border border-rose-500/30 rounded-2xl flex items-start gap-3">
+              <ShieldAlert className="w-6 h-6 text-rose-400 shrink-0 mt-0.5" />
+              <div>
+                <h4 className="font-bold text-rose-200">Файл помещён на карантин (Quarantine)</h4>
+                <p className="text-xs text-rose-300 mt-1">{stagingRecord.quarantineReason}</p>
+                <p className="text-xs text-gray-400 mt-2">
+                  Пожалуйста, выберите четкий медицинский скан в формате PDF, JPG или PNG размером до 15 МБ.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* STEP 1: OWNER MATCHING & MODE SWITCHER */}
+          {!isQuarantined && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {/* OWNER IDENTIFICATION ("Это ваши анализы?") */}
+              <div className="p-4 rounded-2xl bg-[#111827] border border-white/10 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-xs font-bold text-gray-300">
+                    <User className="w-4 h-4 text-[#3DD9C5]" />
+                    <span>Владелец исследования («Это ваши анализы?»)</span>
+                  </div>
+                  {stagingRecord.isOwnerMatch ? (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                      Владелец подтвержден
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                      Уточните профиль
+                    </span>
+                  )}
+                </div>
+
+                {stagingRecord.patientNameOnDoc && (
+                  <p className="text-xs text-gray-300 bg-white/5 p-2 rounded-xl border border-white/5">
+                    На бланке найден пациент: <strong className="text-white">{stagingRecord.patientNameOnDoc}</strong>
+                  </p>
+                )}
+
+                <div className="space-y-1">
+                  <label className="text-xs text-gray-400 font-medium">Сохранить в медкарту профиля:</label>
+                  <select
+                    value={selectedProfileId}
+                    onChange={(e) => setSelectedProfileId(e.target.value)}
+                    className="w-full bg-[#1F2937] border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-[#3DD9C5]"
+                  >
+                    {stagingRecord.availableProfiles?.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} ({p.relation === 'self' ? 'Основной пользователь' : p.relation})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* MODE SWITCHER ("Только расшифровать, не сохранять") */}
+              <div className="p-4 rounded-2xl bg-[#111827] border border-white/10 space-y-3">
+                <div className="flex items-center gap-2 text-xs font-bold text-gray-300">
+                  <Sliders className="w-4 h-4 text-purple-400" />
+                  <span>Режим сохранения / Расшифровки</span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setSaveMode('commit_to_history')}
+                    className={`p-2.5 rounded-xl border text-xs font-bold text-left transition-all cursor-pointer ${
+                      saveMode === 'commit_to_history'
+                        ? 'bg-[#3DD9C5]/15 border-[#3DD9C5] text-[#3DD9C5]'
+                        : 'bg-white/5 border-white/10 text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <Save className="w-3.5 h-3.5" />
+                      <span>Внести в историю</span>
+                    </div>
+                    <p className="text-[10px] font-normal text-gray-400 mt-1">
+                      Сохранить все аналиты в графики и динамику здоровья
+                    </p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSaveMode('explain_only_no_save')}
+                    className={`p-2.5 rounded-xl border text-xs font-bold text-left transition-all cursor-pointer ${
+                      saveMode === 'explain_only_no_save'
+                        ? 'bg-purple-500/20 border-purple-400 text-purple-300'
+                        : 'bg-white/5 border-white/10 text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>Только расшифровать</span>
+                    </div>
+                    <p className="text-[10px] font-normal text-gray-400 mt-1">
+                      Разобрать ИИ без записи в базу данных
+                    </p>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* DUPLICATE FLOW WARNING BANNER */}
+          {stagingRecord.isDuplicate && (
+            <div className="p-4 bg-amber-500/15 border border-amber-500/30 rounded-2xl space-y-3">
+              <div className="flex items-start gap-3">
+                <Copy className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+                <div>
+                  <h4 className="font-bold text-amber-200">Обнаружен дубликат исследования (Duplicate Flow)</h4>
+                  <p className="text-xs text-amber-300/80 mt-0.5">
+                    Найден сохраненный анализ со схожими данными («{stagingRecord.duplicateInfo?.existingDocTitle}» за {stagingRecord.duplicateInfo?.existingDocDate}).
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setDuplicateAction('create_duplicate')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
+                    duplicateAction === 'create_duplicate'
+                      ? 'bg-amber-400 text-black border-amber-400'
+                      : 'bg-white/5 border-white/10 text-gray-300'
+                  }`}
+                >
+                  Создать отдельный дубликат
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setDuplicateAction('overwrite')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
+                    duplicateAction === 'overwrite'
+                      ? 'bg-rose-500 text-white border-rose-500'
+                      : 'bg-white/5 border-white/10 text-gray-300'
+                  }`}
+                >
+                  Заменить существующий
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setDuplicateAction('skip')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
+                    duplicateAction === 'skip'
+                      ? 'bg-gray-700 text-white border-gray-600'
+                      : 'bg-white/5 border-white/10 text-gray-300'
+                  }`}
+                >
+                  Пропустить загрузку
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* EDITABLE DOCUMENT METADATA */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-[#111827]/60 p-4 rounded-2xl border border-white/5">
             <div>
-              <label className="text-[11px] font-semibold text-white/50 block mb-1 flex items-center gap-1">
-                <FileCheck2 className="w-3.5 h-3.5 text-[#34F5A4]" /> Тип исследования
-              </label>
+              <label className="text-[11px] text-gray-400 font-semibold block mb-1">Название анализа</label>
               <input
                 type="text"
-                value={docType}
-                onChange={(e) => setDocType(e.target.value)}
-                className="w-full bg-[#0B1320] border border-white/10 rounded-xl px-3 py-1.5 text-white font-medium focus:outline-none focus:border-[#34F5A4]"
+                value={docTitle}
+                onChange={(e) => setDocTitle(e.target.value)}
+                className="w-full bg-[#1F2937] border border-white/10 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-[#3DD9C5]"
               />
             </div>
             <div>
-              <label className="text-[11px] font-semibold text-white/50 block mb-1 flex items-center gap-1">
-                <Building className="w-3.5 h-3.5 text-[#4DEBFF]" /> Лаборатория
-              </label>
+              <label className="text-[11px] text-gray-400 font-semibold block mb-1">Лаборатория</label>
               <input
                 type="text"
                 value={labName}
                 onChange={(e) => setLabName(e.target.value)}
-                className="w-full bg-[#0B1320] border border-white/10 rounded-xl px-3 py-1.5 text-white font-medium focus:outline-none focus:border-[#4DEBFF]"
+                className="w-full bg-[#1F2937] border border-white/10 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-[#3DD9C5]"
               />
             </div>
             <div>
-              <label className="text-[11px] font-semibold text-white/50 block mb-1 flex items-center gap-1">
-                <Calendar className="w-3.5 h-3.5 text-[#8E74FF]" /> Дата исследования
-              </label>
+              <label className="text-[11px] text-gray-400 font-semibold block mb-1">Дата исследования</label>
               <input
                 type="date"
                 value={researchDate}
                 onChange={(e) => setResearchDate(e.target.value)}
-                className="w-full bg-[#0B1320] border border-white/10 rounded-xl px-3 py-1.5 text-white font-medium focus:outline-none focus:border-[#8E74FF]"
+                className="w-full bg-[#1F2937] border border-white/10 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-[#3DD9C5]"
               />
             </div>
           </div>
 
-          {/* Warnings List if confidence is lower or missing fields */}
-          {documentData.warnings && documentData.warnings.length > 0 && (
-            <div className="bg-[#FF8C42]/10 border border-[#FF8C42]/30 p-3.5 rounded-2xl flex items-start gap-3 text-[#FF8C42]">
-              <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
-              <div className="space-y-1">
-                <span className="font-bold block text-xs">Предупреждения системы распознавания:</span>
-                <ul className="list-disc list-inside text-xs space-y-0.5 opacity-90">
-                  {documentData.warnings.map((w, idx) => (
-                    <li key={idx}>{w}</li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-          )}
-
-          {/* PREVIEW IMAGE / PDF ACCORDION */}
-          {filePreviewUrl && (
-            <div className="bg-[#101A28] p-3 rounded-2xl border border-white/[0.06] flex items-center gap-4">
-              <div className="w-16 h-16 rounded-xl overflow-hidden bg-black/40 shrink-0 border border-white/10 flex items-center justify-center">
-                <img src={filePreviewUrl} alt="Preview" className="w-full h-full object-cover" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <span className="font-bold text-white block text-xs truncate">{fileName || 'Скан/фото бланка'}</span>
-                <span className="text-[11px] text-[#34F5A4] block mt-0.5">Сохранено в защищённый Google Drive</span>
-              </div>
-            </div>
-          )}
-
-          {/* TABLE OF RECOGNIZED MARKERS */}
-          <div className="space-y-2">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h3 className="font-extrabold text-white text-sm sm:text-base flex items-center gap-2">
-                <span>Извлечённые показатели ({results.length})</span>
-                <span className="text-[11px] text-white/50 font-normal hidden sm:inline">
-                  (нажмите на ячейку для ручной корректировки)
+          {/* EXTRACTED ANALYTES INTERACTIVE TABLE (PREVIEW & USER CORRECTION) */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <FileCheck2 className="w-4 h-4 text-[#3DD9C5]" />
+                <h3 className="font-bold text-white text-base">
+                  Извлеченные аналиты ({analytes.length})
+                </h3>
+                <span className="text-xs text-gray-400 font-normal">
+                  (1 строка = 1 показатель)
                 </span>
-              </h3>
+              </div>
+
               <button
-                onClick={handleAddMarker}
-                className="px-3 py-1.5 bg-[#34F5A4]/10 hover:bg-[#34F5A4]/20 text-[#34F5A4] border border-[#34F5A4]/30 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+                type="button"
+                onClick={handleAddAnalyte}
+                className="inline-flex items-center gap-1 px-3 py-1.5 bg-[#3DD9C5]/10 hover:bg-[#3DD9C5]/20 text-[#3DD9C5] border border-[#3DD9C5]/30 rounded-xl text-xs font-bold transition-all cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>Добавить показатель</span>
               </button>
             </div>
 
-            <div className="overflow-x-auto rounded-2xl border border-white/10 bg-[#0B1320]">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-[#101A28] text-white/60 text-[11px] font-bold uppercase tracking-wider border-b border-white/10">
-                    <th className="p-3 sm:p-4">Показатель</th>
-                    <th className="p-3 sm:p-4">Значение</th>
-                    <th className="p-3 sm:p-4">Ед. изм.</th>
-                    <th className="p-3 sm:p-4">Референс лаборатории</th>
-                    <th className="p-3 sm:p-4">Статус</th>
-                    <th className="p-3 sm:p-4 text-center">Уверенность</th>
-                    <th className="p-3 sm:p-4 text-right">Действия</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/[0.06] text-xs">
-                  {results.map((item, idx) => {
-                    const isLowConfidence = item.confidence < 0.75;
-                    return (
-                      <tr
-                        key={idx}
-                        className={`transition-colors ${
-                          isLowConfidence ? 'bg-[#FF8C42]/10 hover:bg-[#FF8C42]/15' : 'hover:bg-white/[0.02]'
-                        }`}
-                      >
-                        {/* Показатель */}
-                        <td className="p-3 sm:p-4">
-                          <input
-                            type="text"
-                            value={item.originalName}
-                            onChange={(e) => handleUpdateMarker(idx, 'originalName', e.target.value)}
-                            className="bg-transparent border-b border-transparent focus:border-[#34F5A4] text-white font-bold w-full focus:outline-none"
-                          />
-                          <span className="text-[10px] text-white/40 block mt-0.5 font-mono">
-                            {item.normalizedName || 'custom'}
-                          </span>
-                        </td>
+            {analytes.length === 0 ? (
+              <div className="py-8 text-center bg-white/[0.02] border border-dashed border-white/10 rounded-2xl text-gray-400 text-xs">
+                Показатели не найдены. Вы можете добавить их вручную.
+              </div>
+            ) : (
+              <div className="overflow-x-auto border border-white/10 rounded-2xl bg-[#111827]">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="border-b border-white/10 bg-white/[0.03] text-gray-400 font-semibold">
+                      <th className="p-3">Показатель</th>
+                      <th className="p-3">Значение</th>
+                      <th className="p-3">Ед. изм.</th>
+                      <th className="p-3">Норма (референс)</th>
+                      <th className="p-3">Статус</th>
+                      <th className="p-3">OCR Confidence</th>
+                      <th className="p-3 text-right">Действия</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5 text-gray-200">
+                    {analytes.map((item) => {
+                      const isEditing = editingId === item.id;
+                      return (
+                        <tr key={item.id} className="hover:bg-white/[0.02] transition-colors">
+                          <td className="p-3 font-medium">
+                            {isEditing ? (
+                              <input
+                                type="text"
+                                value={item.originalName}
+                                onChange={(e) => handleUpdateAnalyte(item.id, 'originalName', e.target.value)}
+                                className="w-full bg-[#1F2937] border border-white/20 rounded px-2 py-1 text-xs text-white"
+                              />
+                            ) : (
+                              <div>
+                                <span className="text-white font-semibold">{item.originalName}</span>
+                                {item.normalizedName && item.normalizedName !== item.originalName && (
+                                  <span className="block text-[10px] text-gray-400">({item.normalizedName})</span>
+                                )}
+                              </div>
+                            )}
+                          </td>
 
-                        {/* Значение */}
-                        <td className="p-3 sm:p-4">
-                          <input
-                            type="text"
-                            value={item.valueText || String(item.value)}
-                            onChange={(e) => {
-                              const v = e.target.value;
-                              handleUpdateMarker(idx, 'valueText', v);
-                              handleUpdateMarker(idx, 'value', parseFloat(v) || v);
-                            }}
-                            className="bg-transparent border-b border-transparent focus:border-[#34F5A4] text-white font-black text-sm w-full focus:outline-none"
-                          />
-                        </td>
+                          <td className="p-3">
+                            {isEditing ? (
+                              <input
+                                type="text"
+                                value={item.valueText || String(item.value ?? '')}
+                                onChange={(e) => {
+                                  const raw = e.target.value;
+                                  const parsed = parseFloat(raw.replace(',', '.'));
+                                  handleUpdateAnalyte(item.id, 'valueText', raw);
+                                  handleUpdateAnalyte(item.id, 'value', isNaN(parsed) ? null : parsed);
+                                }}
+                                className="w-20 bg-[#1F2937] border border-white/20 rounded px-2 py-1 text-xs text-white"
+                              />
+                            ) : (
+                              <span className="font-bold text-white">
+                                {item.valueText || (item.value !== null ? item.value : '—')}
+                              </span>
+                            )}
+                          </td>
 
-                        {/* Единица */}
-                        <td className="p-3 sm:p-4">
-                          <input
-                            type="text"
-                            value={item.unit}
-                            onChange={(e) => handleUpdateMarker(idx, 'unit', e.target.value)}
-                            className="bg-transparent border-b border-transparent focus:border-[#34F5A4] text-white/80 w-full focus:outline-none"
-                          />
-                        </td>
+                          <td className="p-3">
+                            {isEditing ? (
+                              <input
+                                type="text"
+                                value={item.unit}
+                                onChange={(e) => handleUpdateAnalyte(item.id, 'unit', e.target.value)}
+                                className="w-16 bg-[#1F2937] border border-white/20 rounded px-2 py-1 text-xs text-white"
+                              />
+                            ) : (
+                              <span className="text-gray-400">{item.unit || '—'}</span>
+                            )}
+                          </td>
 
-                        {/* Референс */}
-                        <td className="p-3 sm:p-4">
-                          <input
-                            type="text"
-                            value={item.referenceText}
-                            onChange={(e) => handleUpdateMarker(idx, 'referenceText', e.target.value)}
-                            className="bg-transparent border-b border-transparent focus:border-[#34F5A4] text-white/80 w-full focus:outline-none"
-                          />
-                        </td>
+                          <td className="p-3">
+                            {isEditing ? (
+                              <input
+                                type="text"
+                                value={item.normalRange}
+                                onChange={(e) => handleUpdateAnalyte(item.id, 'normalRange', e.target.value)}
+                                className="w-28 bg-[#1F2937] border border-white/20 rounded px-2 py-1 text-xs text-white"
+                              />
+                            ) : (
+                              <span className="text-gray-400">{item.normalRange || '—'}</span>
+                            )}
+                          </td>
 
-                        {/* Статус */}
-                        <td className="p-3 sm:p-4">
-                          <select
-                            value={item.status}
-                            onChange={(e) => handleUpdateMarker(idx, 'status', e.target.value)}
-                            className="bg-[#101A28] border border-white/10 text-xs rounded-lg px-2 py-1 text-white focus:outline-none"
-                          >
-                            <option value="normal">В норме</option>
-                            <option value="low">Ниже диапазона</option>
-                            <option value="high">Выше диапазона</option>
-                            <option value="critical">Критическое</option>
-                            <option value="unknown">Не определено</option>
-                          </select>
-                          <div className="mt-1">{renderStatusBadge(item.status)}</div>
-                        </td>
+                          <td className="p-3">
+                            {isEditing ? (
+                              <select
+                                value={item.status}
+                                onChange={(e) => handleUpdateAnalyte(item.id, 'status', e.target.value)}
+                                className="bg-[#1F2937] border border-white/20 rounded px-1 py-1 text-xs text-white"
+                              >
+                                <option value="normal">В норме</option>
+                                <option value="low">Ниже</option>
+                                <option value="high">Выше</option>
+                                <option value="critical">Критическое</option>
+                                <option value="unknown">Неизвестно</option>
+                              </select>
+                            ) : (
+                              renderStatusBadge(item.status)
+                            )}
+                          </td>
 
-                        {/* Уверенность */}
-                        <td className="p-3 sm:p-4 text-center">
-                          <span
-                            className={`font-mono text-xs font-bold px-2 py-0.5 rounded-full ${
-                              isLowConfidence
-                                ? 'bg-[#FF8C42]/20 text-[#FF8C42] border border-[#FF8C42]/40'
-                                : 'bg-[#34F5A4]/10 text-[#34F5A4]'
-                            }`}
-                          >
-                            {Math.round(item.confidence * 100)}%
-                          </span>
-                          {isLowConfidence && (
-                            <span className="block text-[10px] text-[#FF8C42] font-semibold mt-1">
-                              Проверьте значение
-                            </span>
-                          )}
-                        </td>
+                          <td className="p-3">{renderConfidenceBadge(item.confidence, item.isCorrected)}</td>
 
-                        {/* Действия */}
-                        <td className="p-3 sm:p-4 text-right">
-                          <button
-                            onClick={() => handleRemoveMarker(idx)}
-                            className="p-1.5 text-white/40 hover:text-[#FF5A5A] hover:bg-[#FF5A5A]/10 rounded-lg transition-colors cursor-pointer"
-                            title="Удалить показатель"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                          <td className="p-3 text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <button
+                                type="button"
+                                onClick={() => setEditingId(isEditing ? null : item.id)}
+                                className="p-1.5 text-gray-400 hover:text-white rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
+                                title={isEditing ? 'Готово' : 'Редактировать'}
+                              >
+                                {isEditing ? <Check className="w-4 h-4 text-[#3DD9C5]" /> : <Edit2 className="w-3.5 h-3.5" />}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveAnalyte(item.id)}
+                                className="p-1.5 text-rose-400 hover:text-rose-300 rounded-lg hover:bg-rose-500/10 transition-colors cursor-pointer"
+                                title="Удалить показатель"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
 
-          {/* Neutral Wording & Disclaimer */}
-          <div className="bg-[#101A28] p-4 rounded-2xl border border-white/[0.06] space-y-2 text-xs text-white/70">
-            <div className="flex items-center gap-2 text-[#34F5A4] font-bold">
-              <ShieldCheck className="w-4 h-4" />
-              <span>Политика деликатной интерпретации</span>
+          {/* FOOTER METADATA: FINGERPRINT & FILE PREVIEW */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-white/[0.02] border border-white/5 rounded-2xl text-xs text-gray-400">
+            <div className="flex items-center gap-2">
+              <Fingerprint className="w-4 h-4 text-[#3DD9C5]" />
+              <span>
+                Source Fingerprint (SHA-256):{' '}
+                <code className="text-gray-300 font-mono text-[10px]">
+                  {stagingRecord.sourceHash?.slice(0, 16)}...
+                </code>
+              </span>
             </div>
-            <p className="leading-relaxed">
-              Автоматическое распознавание создано для структурирования результатов лабораторных бланков. Все показатели сравниваются только с собственными референсными диапазонами указанной лаборатории.
-            </p>
-            <p className="text-white/50 text-[11px] italic pt-1 border-t border-white/[0.06]">
-              «Автоматическое распознавание может содержать ошибки. Проверяйте данные по оригиналу документа. Интерпретация не заменяет консультацию врача.»
-            </p>
+
+            {filePreviewUrl && (
+              <a
+                href={filePreviewUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="text-[#3DD9C5] hover:underline flex items-center gap-1"
+              >
+                <Eye className="w-3.5 h-3.5" />
+                <span>Открыть исходный скан</span>
+              </a>
+            )}
           </div>
         </div>
 
-        {/* FOOTER ACTIONS */}
-        <div className="p-4 sm:p-6 border-t border-white/10 bg-[#101A28] flex flex-wrap items-center justify-between gap-3">
-          <button
-            onClick={() => {
-              if (onDeleteDoc) onDeleteDoc();
-              onClose();
-            }}
-            className="px-4 py-2.5 bg-red-500/10 hover:bg-red-500/20 text-[#FF5A5A] border border-red-500/20 font-bold text-xs rounded-xl transition-all flex items-center gap-2 cursor-pointer"
-          >
-            <Trash2 className="w-4 h-4" />
-            <span>Удалить документ</span>
-          </button>
+        {/* MODAL FOOTER */}
+        <div className="p-4 sm:p-6 border-t border-white/10 bg-[#0A101C] flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="text-xs text-gray-400 flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4 text-emerald-400" />
+            <span>
+              {saveMode === 'commit_to_history'
+                ? 'До нажатия кнопки ни один показатель не сохранен в историю.'
+                : 'Режим расшифровки без записи в медицинскую карту.'}
+            </span>
+          </div>
 
-          <div className="flex items-center gap-3 ml-auto">
+          <div className="flex items-center gap-2.5 w-full sm:w-auto">
             <button
+              type="button"
               onClick={onClose}
-              className="px-4 py-2.5 bg-white/5 hover:bg-white/10 text-white font-bold text-xs rounded-xl transition-all cursor-pointer"
+              disabled={isSubmitting}
+              className="flex-1 sm:flex-none px-4 py-2.5 bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10 rounded-xl text-xs font-semibold transition-all cursor-pointer"
             >
               Отмена
             </button>
+
             <button
-              onClick={handleSave}
-              className="px-5 py-2.5 bg-[#34F5A4] hover:bg-[#2ce093] text-[#050A12] font-extrabold text-xs rounded-xl shadow-lg shadow-[#34F5A4]/20 transition-all flex items-center gap-2 cursor-pointer"
+              type="button"
+              onClick={handleFinalSubmit}
+              disabled={isSubmitting || isQuarantined}
+              className="flex-1 sm:flex-none px-6 py-2.5 bg-[#3DD9C5] hover:bg-[#34c4b1] text-black font-extrabold rounded-xl text-xs transition-all shadow-md cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
             >
-              <Save className="w-4 h-4" />
-              <span>Подтвердить и сохранить</span>
+              {isSubmitting ? (
+                <RefreshCw className="w-4 h-4 animate-spin" />
+              ) : (
+                <Check className="w-4 h-4" />
+              )}
+              <span>
+                {saveMode === 'commit_to_history' ? 'Подтвердить и внести в медкарту' : 'Распознать без сохранения'}
+              </span>
             </button>
           </div>
         </div>
-
       </div>
     </div>
   );
 };
+
+export default ResearchVerificationModal;

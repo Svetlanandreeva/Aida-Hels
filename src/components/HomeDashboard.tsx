@@ -21,6 +21,7 @@ import {
   Settings,
   RefreshCw,
   Calendar,
+  Sliders,
 } from 'lucide-react';
 
 import {
@@ -36,10 +37,13 @@ import {
   PressureLogEntry,
   UserMentalPatterns,
   StructuredHealthAnalysis,
+  UserModuleConfigItem,
 } from '../types';
 import { calculateHealthProfile } from '../utils/calculateHealthProfile';
+import { calculateOrganismAge, formatYearsRussian } from '../utils/calculateOrganismAge';
 import { StateConnectionsSection } from './dashboard/StateConnectionsSection';
 import { RecommendedNextTestsSection } from './dashboard/RecommendedNextTestsSection';
+import { PuzzleConfigModal } from './modals/PuzzleConfigModal';
 
 export interface HomeDashboardProps {
   user: UserProfile;
@@ -78,7 +82,79 @@ export default function HomeDashboard({
   // Collapsible state for extra detailed sections
   const [isAttentionOpen, setIsAttentionOpen] = useState(false);
 
+  // Puzzle / User Module Configuration State
+  const defaultPuzzleModules: UserModuleConfigItem[] = React.useMemo(
+    () => [
+      { moduleId: 'energy', title: 'Энергия', category: 'core', enabled: true, show_on_home: true, order: 1, allow_ai_analytics: true, notifications: true },
+      { moduleId: 'sleep', title: 'Сон', category: 'core', enabled: true, show_on_home: true, order: 2, allow_ai_analytics: true, notifications: true },
+      { moduleId: 'pressure', title: 'Давление', category: 'core', enabled: true, show_on_home: true, order: 3, allow_ai_analytics: true, notifications: true },
+      { moduleId: 'mental', title: 'Настроение', category: 'sensitive', enabled: true, show_on_home: true, order: 4, allow_ai_analytics: false, notifications: true },
+      { moduleId: 'aida_insights', title: 'ИИ-обзор состояния Аида', category: 'ai', enabled: true, show_on_home: true, order: 5, allow_ai_analytics: true, notifications: true },
+      { moduleId: 'medications', title: 'Приём препаратов', category: 'medications', enabled: true, show_on_home: true, order: 6, allow_ai_analytics: true, notifications: true },
+      { moduleId: 'female_health', title: 'Женское здоровье', category: 'specialized', enabled: user.gender === 'female', show_on_home: user.gender === 'female', order: 7, allow_ai_analytics: true, notifications: true },
+      { moduleId: 'family_pediatrics', title: 'Детские и семейные профили', category: 'specialized', enabled: Boolean((user as any).hasChildren || ((user as any).familyMembers && (user as any).familyMembers.length > 0)), show_on_home: Boolean((user as any).hasChildren || ((user as any).familyMembers && (user as any).familyMembers.length > 0)), order: 8, allow_ai_analytics: true, notifications: true },
+      { moduleId: 'dental_suite', title: 'Стоматологическая карта', category: 'specialized', enabled: false, show_on_home: false, order: 9, allow_ai_analytics: true, notifications: false },
+      { moduleId: 'extended_analysis', title: 'Расширенный медицинский анализ', category: 'analytics', enabled: true, show_on_home: true, order: 10, allow_ai_analytics: true, notifications: false },
+    ],
+    [user.gender, (user as any).hasChildren, (user as any).familyMembers]
+  );
+
+  const [puzzleConfig, setPuzzleConfig] = useState<UserModuleConfigItem[]>(defaultPuzzleModules);
+  const [isPuzzleModalOpen, setIsPuzzleModalOpen] = useState(false);
+  const [homePayload, setHomePayload] = useState<any>(null);
+
+  // Load user module config and Home API aggregated payload from backend
+  React.useEffect(() => {
+    fetch('/api/puzzle/config')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && Array.isArray(data.config) && data.config.length > 0) {
+          setPuzzleConfig(data.config);
+        }
+      })
+      .catch((err) => console.warn('Puzzle config fetch info:', err.message));
+
+    fetch('/profiles/self/home')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success) {
+          setHomePayload(data);
+        }
+      })
+      .catch((err) => console.warn('Home payload fetch info:', err.message));
+  }, []);
+
+  const handleSavePuzzleConfig = async (newConfig: UserModuleConfigItem[]) => {
+    try {
+      const res = await fetch('/api/puzzle/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ config: newConfig }),
+      });
+      const data = await res.json();
+      if (data.success && Array.isArray(data.config)) {
+        setPuzzleConfig(data.config);
+      } else {
+        setPuzzleConfig(newConfig);
+      }
+    } catch (err) {
+      console.warn('Error saving puzzle config:', err);
+      setPuzzleConfig(newConfig);
+    }
+  };
+
+  const activeHomeModules = React.useMemo(() => {
+    return puzzleConfig
+      .filter((m) => m.enabled && m.show_on_home)
+      .sort((a, b) => (a.order || 0) - (b.order || 0));
+  }, [puzzleConfig]);
+
   const healthProfile = calculateHealthProfile(user, documents, dailyLogs, pressureLogs);
+  const organismAgeData = calculateOrganismAge(user, documents, pressureLogs, dailyLogs);
+
+  const ringDashOffset = healthProfile.overallHealthScore > 0
+    ? 722 - Math.round((722 * healthProfile.overallHealthScore) / 100)
+    : 722;
 
   // Active ring metrics navigation tooltip state
   const [hoveredRingItem, setHoveredRingItem] = useState<string | null>(null);
@@ -150,6 +226,206 @@ export default function HomeDashboard({
 
   const activeMedReminders = reminders.filter((r) => r.isEnabled);
 
+  // Dynamic card renderer by module ID
+  const renderMetricCard = (moduleItem: UserModuleConfigItem) => {
+    switch (moduleItem.moduleId) {
+      case 'energy':
+        return (
+          <div
+            key={moduleItem.moduleId}
+            onClick={() => onNavigate('daily_checkin')}
+            className="bg-[#111827] border border-white/[0.06] hover:border-[#3DD9C5]/50 rounded-2xl p-3 flex flex-col justify-between h-[96px] transition-all cursor-pointer group shadow-sm"
+          >
+            <div className="space-y-1">
+              <div className="text-xs font-semibold text-white/70 flex items-center gap-1.5">
+                <Zap className="w-3.5 h-3.5 text-[#3DD9C5] shrink-0" />
+                <span className="truncate">Энергия</span>
+              </div>
+              <span className={`inline-block text-[10px] font-bold px-1.5 py-0.5 rounded-md w-fit ${
+                energyVal === '—' 
+                  ? 'text-amber-400 bg-amber-400/10 border border-amber-400/20' 
+                  : 'text-[#3DD9C5] bg-[#3DD9C5]/10 border border-[#3DD9C5]/20'
+              }`}>
+                {energyStatus}
+              </span>
+            </div>
+            {energyVal === '—' ? (
+              <div className="text-xs font-bold text-[#3DD9C5] flex items-center gap-1 group-hover:underline">
+                + Чек-ин
+              </div>
+            ) : (
+              <div className="text-xl font-black text-white tracking-tight">{energyVal}</div>
+            )}
+          </div>
+        );
+
+      case 'sleep':
+        return (
+          <div
+            key={moduleItem.moduleId}
+            onClick={() => onNavigate('mental_diary')}
+            className="bg-[#111827] border border-white/[0.06] hover:border-[#8B5CF6]/50 rounded-2xl p-3 flex flex-col justify-between h-[96px] transition-all cursor-pointer group shadow-sm"
+          >
+            <div className="space-y-1">
+              <div className="text-xs font-semibold text-white/70 flex items-center gap-1.5">
+                <Moon className="w-3.5 h-3.5 text-[#8B5CF6] shrink-0" />
+                <span className="truncate">Сон</span>
+              </div>
+              <span className={`inline-block text-[10px] font-bold px-1.5 py-0.5 rounded-md w-fit ${
+                sleepVal === '—' 
+                  ? 'text-amber-400 bg-amber-400/10 border border-amber-400/20' 
+                  : 'text-white/70 bg-white/5 border border-white/10'
+              }`}>
+                {sleepStatus}
+              </span>
+            </div>
+            {sleepVal === '—' ? (
+              <div className="text-xs font-bold text-[#8B5CF6] flex items-center gap-1 group-hover:underline">
+                + Внести сон
+              </div>
+            ) : (
+              <div className="text-lg font-black text-white tracking-tight">{sleepVal}</div>
+            )}
+          </div>
+        );
+
+      case 'pressure':
+        return (
+          <div
+            key={moduleItem.moduleId}
+            onClick={() => onNavigate('pressure_diary')}
+            className="bg-[#111827] border border-white/[0.06] hover:border-rose-400/50 rounded-2xl p-3 flex flex-col justify-between h-[96px] transition-all cursor-pointer group shadow-sm"
+          >
+            <div className="space-y-1">
+              <div className="text-xs font-semibold text-white/70 flex items-center gap-1.5">
+                <Heart className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                <span className="truncate">Давление</span>
+              </div>
+              <span className={`inline-block text-[10px] font-bold px-1.5 py-0.5 rounded-md w-fit ${
+                pressureVal === '—' 
+                  ? 'text-amber-400 bg-amber-400/10 border border-amber-400/20' 
+                  : 'text-[#3DD9C5] bg-[#3DD9C5]/10 border border-[#3DD9C5]/20'
+              }`}>
+                {pressureStatus}
+              </span>
+            </div>
+            {pressureVal === '—' ? (
+              <div className="text-xs font-bold text-rose-400 flex items-center gap-1 group-hover:underline">
+                + Замерить
+              </div>
+            ) : (
+              <div className="text-lg font-black text-white tracking-tight">{pressureVal}</div>
+            )}
+          </div>
+        );
+
+      case 'mental':
+        return (
+          <div
+            key={moduleItem.moduleId}
+            onClick={() => onNavigate('mental_diary')}
+            className="bg-[#111827] border border-white/[0.06] hover:border-amber-300/50 rounded-2xl p-3 flex flex-col justify-between h-[96px] transition-all cursor-pointer group shadow-sm"
+          >
+            <div className="space-y-1">
+              <div className="text-xs font-semibold text-white/70 flex items-center gap-1.5">
+                <Smile className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                <span className="truncate">Настроение</span>
+              </div>
+              <span className={`inline-block text-[10px] font-bold px-1.5 py-0.5 rounded-md w-fit ${
+                moodVal === '—' 
+                  ? 'text-amber-400 bg-amber-400/10 border border-amber-400/20' 
+                  : 'text-[#3DD9C5] bg-[#3DD9C5]/10 border border-[#3DD9C5]/20'
+              }`}>
+                {moodStatus}
+              </span>
+            </div>
+            {moodVal === '—' ? (
+              <div className="text-xs font-bold text-amber-300 flex items-center gap-1 group-hover:underline">
+                + Дневник
+              </div>
+            ) : (
+              <div className="text-lg font-black text-white tracking-tight truncate">{moodVal}</div>
+            )}
+          </div>
+        );
+
+      case 'female_health':
+        return (
+          <div
+            key={moduleItem.moduleId}
+            onClick={() => onNavigate('daily_checkin')}
+            className="bg-[#111827] border border-pink-500/30 hover:border-pink-500/60 rounded-2xl p-3 flex flex-col justify-between h-[96px] transition-all cursor-pointer group shadow-sm"
+          >
+            <div className="space-y-1">
+              <div className="text-xs font-semibold text-pink-300 flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5 text-pink-400 shrink-0" />
+                <span className="truncate">Женское здоровье</span>
+              </div>
+              <span className="inline-block text-[10px] font-bold text-pink-300 bg-pink-500/10 border border-pink-500/20 px-1.5 py-0.5 rounded-md w-fit">
+                {(user.womenHealth as any)?.isPregnant ? 'Беременность' : 'Цикл'}
+              </span>
+            </div>
+            <div className="text-xs font-bold text-white tracking-tight truncate">
+              {user.womenHealth?.cycleLength ? `${user.womenHealth.cycleLength} дн. цикл` : 'Календарь здоровья'}
+            </div>
+          </div>
+        );
+
+      case 'family_pediatrics':
+        return (
+          <div
+            key={moduleItem.moduleId}
+            onClick={() => onNavigate('profile')}
+            className="bg-[#111827] border border-cyan-500/30 hover:border-cyan-500/60 rounded-2xl p-3 flex flex-col justify-between h-[96px] transition-all cursor-pointer group shadow-sm"
+          >
+            <div className="space-y-1">
+              <div className="text-xs font-semibold text-cyan-300 flex items-center gap-1.5">
+                <Dna className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                <span className="truncate">Педиатрия</span>
+              </div>
+              <span className="inline-block text-[10px] font-bold text-cyan-300 bg-cyan-500/10 border border-cyan-500/20 px-1.5 py-0.5 rounded-md w-fit">
+                Профиль ребёнка
+              </span>
+            </div>
+            <div className="text-xs font-bold text-white tracking-tight truncate">
+              Дети & Семья
+            </div>
+          </div>
+        );
+
+      case 'dental_suite':
+        return (
+          <div
+            key={moduleItem.moduleId}
+            onClick={() => onNavigate('profile')}
+            className="bg-[#111827] border border-indigo-500/30 hover:border-indigo-500/60 rounded-2xl p-3 flex flex-col justify-between h-[96px] transition-all cursor-pointer group shadow-sm"
+          >
+            <div className="space-y-1">
+              <div className="text-xs font-semibold text-indigo-300 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                <span className="truncate">Стоматология</span>
+              </div>
+              <span className="inline-block text-[10px] font-bold text-indigo-300 bg-indigo-500/10 border border-indigo-500/20 px-1.5 py-0.5 rounded-md w-fit">
+                Карта зубов
+              </span>
+            </div>
+            <div className="text-xs font-bold text-white tracking-tight truncate">
+              Стоматолог
+            </div>
+          </div>
+        );
+
+      default:
+        return null;
+    }
+  };
+
+  const metricModules = React.useMemo(() => {
+    return activeHomeModules.filter((m) =>
+      ['energy', 'sleep', 'pressure', 'mental', 'female_health', 'family_pediatrics', 'dental_suite'].includes(m.moduleId)
+    );
+  }, [activeHomeModules]);
+
   return (
     <div className="w-full bg-[#090B10] min-h-screen py-4 px-3 sm:px-6 text-white font-sans antialiased">
       {/* RESPONSIVE CONTAINER: Centered mobile max-w-[420px], expanding to max-w-4xl/6xl on desktop */}
@@ -166,6 +442,16 @@ export default function HomeDashboard({
           </div>
 
           <div className="flex items-center gap-2">
+            {/* PUZZLE CONFIG BUTTON */}
+            <button
+              onClick={() => setIsPuzzleModalOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#111827] border border-[#8B5CF6]/40 hover:border-[#8B5CF6] text-[#8B5CF6] hover:bg-[#8B5CF6]/10 text-xs font-semibold transition-all cursor-pointer shadow-sm active:scale-95 whitespace-nowrap"
+              title="Настройка Пазла здоровья"
+            >
+              <Sliders className="w-3.5 h-3.5 shrink-0" />
+              <span className="hidden sm:inline">Пазл</span>
+            </button>
+
             {/* REFRESH AI ANALYSIS BUTTON */}
             <button
               onClick={() => fetchHealthAnalysis?.()}
@@ -253,7 +539,7 @@ export default function HomeDashboard({
                   strokeLinecap="round"
                   fill="none"
                   strokeDasharray="722"
-                  strokeDashoffset="231" // 68% filled
+                  strokeDashoffset={ringDashOffset}
                   className="transition-all duration-1000 ease-out"
                 />
                 <defs>
@@ -268,7 +554,7 @@ export default function HomeDashboard({
               <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-6 py-4 pointer-events-none z-10">
                 {/* Big Stat Number (42px) */}
                 <div className="text-[42px] font-black text-white tracking-tight leading-none">
-                  68%
+                  {healthProfile.overallHealthScore > 0 ? `${healthProfile.overallHealthScore}%` : '—'}
                 </div>
                 
                 <div className="text-[12px] font-medium text-white/60 mt-1">
@@ -276,20 +562,44 @@ export default function HomeDashboard({
                 </div>
 
                 {/* Status Badge */}
-                <div className="mt-1.5 inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-[#3DD9C5]/15 border border-[#3DD9C5]/30 text-[#3DD9C5] text-[11px] font-bold">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#3DD9C5] animate-pulse" />
-                  Хорошее
+                <div className={`mt-1.5 inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full text-[11px] font-bold ${
+                  healthProfile.overallHealthScore > 0
+                    ? healthProfile.overallHealthScore >= 80
+                      ? 'bg-[#3DD9C5]/15 border border-[#3DD9C5]/30 text-[#3DD9C5]'
+                      : healthProfile.overallHealthScore >= 60
+                      ? 'bg-teal-500/15 border border-teal-500/30 text-teal-300'
+                      : 'bg-amber-500/15 border border-amber-500/30 text-amber-300'
+                    : 'bg-white/10 border border-white/20 text-gray-400'
+                }`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${
+                    healthProfile.overallHealthScore > 0 ? 'bg-[#3DD9C5] animate-pulse' : 'bg-gray-400'
+                  }`} />
+                  {healthProfile.overallHealthScore > 0
+                    ? healthProfile.overallHealthScore >= 80
+                      ? 'Хорошее'
+                      : healthProfile.overallHealthScore >= 60
+                      ? 'Удовлетворительное'
+                      : 'Требует внимания'
+                    : 'Нет данных'}
                 </div>
 
                 {/* Organism Age vs Passport Age */}
                 <div className="mt-2.5 pt-2 border-t border-white/10 w-[130px] space-y-0.5">
                   <div className="text-[11px] flex items-center justify-between text-white/70">
                     <span className="text-white/50 text-[10px]">Организм</span>
-                    <span className="font-extrabold text-white text-[11px]">29.8 года</span>
+                    <span className="font-extrabold text-white text-[11px]">
+                      {organismAgeData.hasSufficientData && organismAgeData.organismAge > 0
+                        ? `${organismAgeData.organismAge} ${formatYearsRussian(organismAgeData.organismAge).replace(/^[0-9]+\s*/, '')}`
+                        : '—'}
+                    </span>
                   </div>
                   <div className="text-[10px] flex items-center justify-between text-white/40">
                     <span>Паспорт</span>
-                    <span className="font-medium text-white/60 text-[10px]">28 лет</span>
+                    <span className="font-medium text-white/60 text-[10px]">
+                      {user?.birthDate && user.birthDate.length >= 4 && organismAgeData.passportAge > 0
+                        ? `${organismAgeData.passportAge} лет`
+                        : '—'}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -409,205 +719,149 @@ export default function HomeDashboard({
             </div>
           </div>
 
-          {/* RIGHT COLUMN: 4 COMPACT METRICS CARDS + AIDA INSIGHT BLOCK */}
+          {/* RIGHT COLUMN: DYNAMIC METRICS CARDS + AIDA INSIGHT BLOCK */}
           <div className="md:col-span-7 lg:col-span-7 space-y-4 flex flex-col justify-between">
-            {/* 4 COMPACT CARDS (2x2 GRID) */}
-            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              {/* Card 1: Энергия */}
-              <div
-                onClick={() => onNavigate('daily_checkin')}
-                className="bg-[#111827] border border-white/[0.06] hover:border-white/20 rounded-2xl p-3 flex flex-col justify-between h-[96px] transition-all cursor-pointer group shadow-sm"
-              >
-                <div className="space-y-1">
-                  <div className="text-xs font-semibold text-white/70 flex items-center gap-1.5">
-                    <Zap className="w-3.5 h-3.5 text-[#3DD9C5] shrink-0" />
-                    <span className="truncate">Энергия</span>
-                  </div>
-                  <span className="inline-block text-[10px] font-bold text-[#3DD9C5] bg-[#3DD9C5]/10 border border-[#3DD9C5]/20 px-1.5 py-0.5 rounded-md w-fit">
-                    {energyStatus}
-                  </span>
-                </div>
-                <div className="text-xl font-black text-white tracking-tight">
-                  {energyVal}
-                </div>
+            {/* DYNAMIC COMPACT METRIC CARDS (GRID BASED ON USER PUZZLE CONFIG) */}
+            {metricModules.length > 0 && (
+              <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                {metricModules.map((m) => renderMetricCard(m))}
               </div>
+            )}
 
-              {/* Card 2: Сон */}
-              <div
-                onClick={() => onNavigate('mental_diary')}
-                className="bg-[#111827] border border-white/[0.06] hover:border-white/20 rounded-2xl p-3 flex flex-col justify-between h-[96px] transition-all cursor-pointer group shadow-sm"
-              >
-                <div className="space-y-1">
-                  <div className="text-xs font-semibold text-white/70 flex items-center gap-1.5">
-                    <Moon className="w-3.5 h-3.5 text-[#8B5CF6] shrink-0" />
-                    <span className="truncate">Сон</span>
+            {/* AIDA INSIGHT BLOCK (IF ENABLED IN PUZZLE CONFIG) */}
+            {activeHomeModules.some((m) => m.moduleId === 'aida_insights') && (
+              <div className="bg-[#111827] border border-white/[0.06] rounded-2xl p-4 sm:p-5 space-y-3.5 flex-1 flex flex-col justify-between shadow-lg">
+                <div className="flex items-start gap-3.5">
+                  {/* Aida Avatar */}
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-[#8B5CF6] to-[#3DD9C5] text-[#090B10] flex items-center justify-center font-black shrink-0 shadow-md">
+                    <Sparkles className="w-5 h-5 text-[#090B10]" />
                   </div>
-                  <span className="inline-block text-[10px] font-bold text-white/70 bg-white/5 border border-white/10 px-1.5 py-0.5 rounded-md w-fit">
-                    {sleepStatus}
-                  </span>
-                </div>
-                <div className="text-lg font-black text-white tracking-tight">
-                  {sleepVal}
-                </div>
-              </div>
 
-              {/* Card 3: Давление */}
-              <div
-                onClick={() => onNavigate('pressure_diary')}
-                className="bg-[#111827] border border-white/[0.06] hover:border-white/20 rounded-2xl p-3 flex flex-col justify-between h-[96px] transition-all cursor-pointer group shadow-sm"
-              >
-                <div className="space-y-1">
-                  <div className="text-xs font-semibold text-white/70 flex items-center gap-1.5">
-                    <Heart className="w-3.5 h-3.5 text-rose-400 shrink-0" />
-                    <span className="truncate">Давление</span>
+                  {/* Aida Text Content */}
+                  <div className="flex-1 space-y-2">
+                    <div className="text-xs sm:text-sm font-bold text-white leading-tight">
+                      {insights.title}
+                    </div>
+                    <ul className="text-xs sm:text-sm text-white/70 space-y-1.5 font-medium">
+                      {insights.bullets.map((b, idx) => (
+                        <li key={idx} className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-[#8B5CF6] shrink-0" />
+                          <span>{b}</span>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
-                  <span className="inline-block text-[10px] font-bold text-[#3DD9C5] bg-[#3DD9C5]/10 border border-[#3DD9C5]/20 px-1.5 py-0.5 rounded-md w-fit">
-                    {pressureStatus}
-                  </span>
                 </div>
-                <div className="text-lg font-black text-white tracking-tight">
-                  {pressureVal}
-                </div>
+
+                {/* Action Button */}
+                <button
+                  type="button"
+                  onClick={() => onNavigate('ai_chat')}
+                  className="w-full py-2.5 bg-white/5 hover:bg-[#8B5CF6]/15 border border-white/10 hover:border-[#8B5CF6]/30 text-xs sm:text-sm font-bold text-white hover:text-[#8B5CF6] rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 mt-2"
+                >
+                  <span>Задать вопрос Аиде в чате</span>
+                  <ChevronRight className="w-4 h-4" />
+                </button>
               </div>
-
-              {/* Card 4: Настроение */}
-              <div
-                onClick={() => onNavigate('mental_diary')}
-                className="bg-[#111827] border border-white/[0.06] hover:border-white/20 rounded-2xl p-3 flex flex-col justify-between h-[96px] transition-all cursor-pointer group shadow-sm"
-              >
-                <div className="space-y-1">
-                  <div className="text-xs font-semibold text-white/70 flex items-center gap-1.5">
-                    <Smile className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-                    <span className="truncate">Настроение</span>
-                  </div>
-                  <span className="inline-block text-[10px] font-bold text-[#3DD9C5] bg-[#3DD9C5]/10 border border-[#3DD9C5]/20 px-1.5 py-0.5 rounded-md w-fit">
-                    {moodStatus}
-                  </span>
-                </div>
-                <div className="text-lg font-black text-white tracking-tight truncate">
-                  {moodVal}
-                </div>
-              </div>
-            </div>
-
-            {/* AIDA INSIGHT BLOCK */}
-            <div className="bg-[#111827] border border-white/[0.06] rounded-2xl p-4 sm:p-5 space-y-3.5 flex-1 flex flex-col justify-between shadow-lg">
-              <div className="flex items-start gap-3.5">
-                {/* Aida Avatar */}
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-[#8B5CF6] to-[#3DD9C5] text-[#090B10] flex items-center justify-center font-black shrink-0 shadow-md">
-                  <Sparkles className="w-5 h-5 text-[#090B10]" />
-                </div>
-
-                {/* Aida Text Content */}
-                <div className="flex-1 space-y-2">
-                  <div className="text-xs sm:text-sm font-bold text-white leading-tight">
-                    {insights.title}
-                  </div>
-                  <ul className="text-xs sm:text-sm text-white/70 space-y-1.5 font-medium">
-                    {insights.bullets.map((b, idx) => (
-                      <li key={idx} className="flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-[#8B5CF6] shrink-0" />
-                        <span>{b}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-
-              {/* Action Button */}
-              <button
-                type="button"
-                onClick={() => onNavigate('ai_chat')}
-                className="w-full py-2.5 bg-white/5 hover:bg-[#8B5CF6]/15 border border-white/10 hover:border-[#8B5CF6]/30 text-xs sm:text-sm font-bold text-white hover:text-[#8B5CF6] rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 mt-2"
-              >
-                <span>Задать вопрос Аиде в чате</span>
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
+            )}
           </div>
         </div>
 
         {/* SECOND ROW (GRID ON DESKTOP): MEDICATIONS & EXTENDED MEDICAL SECTIONS */}
         <div className="grid grid-cols-1 md:grid-cols-12 gap-5 lg:gap-6 items-start pt-1">
           
-          {/* LEFT COLUMN: MEDICATIONS BLOCK */}
-          <div className="md:col-span-5 lg:col-span-5 bg-[#111827] border border-white/[0.06] rounded-2xl p-4 sm:p-5 space-y-3 shadow-lg">
-            <div className="flex items-center justify-between border-b border-white/[0.06] pb-2.5">
-              <span className="text-xs sm:text-sm font-bold text-white flex items-center gap-2">
-                <Pill className="w-4 h-4 text-[#8B5CF6]" />
-                Приём препаратов
-              </span>
-              <span className="text-[10px] sm:text-xs text-white/50 font-medium">Сегодня</span>
-            </div>
+          {/* LEFT COLUMN: MEDICATIONS BLOCK (IF ENABLED IN PUZZLE) */}
+          {activeHomeModules.some((m) => m.moduleId === 'medications') ? (
+            <div className="md:col-span-5 lg:col-span-5 bg-[#111827] border border-white/[0.06] rounded-2xl p-4 sm:p-5 space-y-3 shadow-lg">
+              <div className="flex items-center justify-between border-b border-white/[0.06] pb-2.5">
+                <span className="text-xs sm:text-sm font-bold text-white flex items-center gap-2">
+                  <Pill className="w-4 h-4 text-[#8B5CF6]" />
+                  Приём препаратов
+                </span>
+                <span className="text-[10px] sm:text-xs text-white/50 font-medium">Сегодня</span>
+              </div>
 
-            <div className="space-y-2.5">
-              {activeMedReminders.length > 0 ? (
-                activeMedReminders.map((r) => (
-                  <div
-                    key={r.id}
-                    className="flex items-center justify-between p-3 bg-[#090B10] border border-white/[0.04] rounded-xl transition-all"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <span className="text-base">💊</span>
-                      <div>
-                        <div className="text-xs font-bold text-white">{r.title}</div>
-                        <div className="text-[10px] text-white/50">{r.time} • {r.dosage || 'По графику'}</div>
+              <div className="space-y-2.5">
+                {activeMedReminders.length > 0 ? (
+                  activeMedReminders.map((r) => (
+                    <div
+                      key={r.id}
+                      className="flex items-center justify-between p-3 bg-[#090B10] border border-white/[0.04] rounded-xl transition-all"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <span className="text-base">💊</span>
+                        <div>
+                          <div className="text-xs font-bold text-white">{r.title}</div>
+                          <div className="text-[10px] text-white/50">{r.time} • {r.dosage || 'По графику'}</div>
+                        </div>
                       </div>
+                      <span className="px-2.5 py-1 rounded-lg bg-[#3DD9C5]/10 border border-[#3DD9C5]/30 text-[#3DD9C5] text-xs font-bold flex items-center gap-1">
+                        <Clock className="w-3.5 h-3.5" />
+                        {r.time}
+                      </span>
                     </div>
-                    <span className="px-2.5 py-1 rounded-lg bg-[#3DD9C5]/10 border border-[#3DD9C5]/30 text-[#3DD9C5] text-xs font-bold flex items-center gap-1">
-                      <Clock className="w-3.5 h-3.5" />
-                      {r.time}
-                    </span>
+                  ))
+                ) : (
+                  <div className="p-4 bg-[#090B10] border border-white/[0.04] rounded-xl text-center space-y-2">
+                    <p className="text-xs text-white/50">Напоминания о приёме препаратов пока не настроены.</p>
+                    <button
+                      type="button"
+                      onClick={() => onNavigate('reminders')}
+                      className="text-xs font-bold text-[#8B5CF6] hover:underline cursor-pointer"
+                    >
+                      + Настроить напоминания
+                    </button>
                   </div>
-                ))
-              ) : (
-                <div className="p-4 bg-[#090B10] border border-white/[0.04] rounded-xl text-center space-y-2">
-                  <p className="text-xs text-white/50">Напоминания о приёме препаратов пока не настроены.</p>
-                  <button
-                    type="button"
-                    onClick={() => onNavigate('reminders')}
-                    className="text-xs font-bold text-[#8B5CF6] hover:underline cursor-pointer"
-                  >
-                    + Настроить напоминания
-                  </button>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="md:col-span-5 lg:col-span-5" />
+          )}
+
+          {/* RIGHT COLUMN: COLLAPSIBLE EXTENDED HEALTH SECTIONS (IF ENABLED IN PUZZLE) */}
+          {activeHomeModules.some((m) => m.moduleId === 'extended_analysis') && (
+            <div className="md:col-span-7 lg:col-span-7 space-y-3">
+              <button
+                type="button"
+                onClick={() => setIsAttentionOpen(!isAttentionOpen)}
+                className="w-full py-3 bg-[#111827] border border-white/[0.06] rounded-xl text-xs sm:text-sm font-bold text-white/80 hover:text-white flex items-center justify-between px-4 cursor-pointer transition-colors shadow-md"
+              >
+                <span>Расширенный медицинский анализ и рекомендации</span>
+                <ChevronDown className={`w-4 h-4 transition-transform ${isAttentionOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {isAttentionOpen && (
+                <div className="space-y-3.5 animate-fadeIn">
+                  {/* State Connections Section */}
+                  <StateConnectionsSection
+                    connections={healthProfile.stateConnections}
+                    onOpenDoctorReport={onOpenDoctorReport}
+                  />
+
+                  {/* Recommended Next Tests */}
+                  <RecommendedNextTestsSection
+                    recommendedTests={healthProfile.recommendedNextTests}
+                    onNavigateToLab={() => {
+                      onNavigate('dashboard');
+                      setActiveTab('lab');
+                    }}
+                  />
                 </div>
               )}
             </div>
-          </div>
-
-          {/* RIGHT COLUMN: COLLAPSIBLE EXTENDED HEALTH SECTIONS */}
-          <div className="md:col-span-7 lg:col-span-7 space-y-3">
-            <button
-              type="button"
-              onClick={() => setIsAttentionOpen(!isAttentionOpen)}
-              className="w-full py-3 bg-[#111827] border border-white/[0.06] rounded-xl text-xs sm:text-sm font-bold text-white/80 hover:text-white flex items-center justify-between px-4 cursor-pointer transition-colors shadow-md"
-            >
-              <span>Расширенный медицинский анализ и рекомендации</span>
-              <ChevronDown className={`w-4 h-4 transition-transform ${isAttentionOpen ? 'rotate-180' : ''}`} />
-            </button>
-
-            {isAttentionOpen && (
-              <div className="space-y-3.5 animate-fadeIn">
-                {/* State Connections Section */}
-                <StateConnectionsSection
-                  connections={healthProfile.stateConnections}
-                  onOpenDoctorReport={onOpenDoctorReport}
-                />
-
-                {/* Recommended Next Tests */}
-                <RecommendedNextTestsSection
-                  recommendedTests={healthProfile.recommendedNextTests}
-                  onNavigateToLab={() => {
-                    onNavigate('dashboard');
-                    setActiveTab('lab');
-                  }}
-                />
-              </div>
-            )}
-          </div>
+          )}
         </div>
 
       </div>
+
+      {/* PUZZLE / USER MODULE CONFIGURATION MODAL */}
+      <PuzzleConfigModal
+        isOpen={isPuzzleModalOpen}
+        onClose={() => setIsPuzzleModalOpen(false)}
+        config={puzzleConfig}
+        onSave={handleSavePuzzleConfig}
+      />
     </div>
   );
 }

@@ -192,47 +192,55 @@ export const DailyCheckin: React.FC<DailyCheckinProps> = ({ logs, setLogs, onOpe
         </div>
 
         <div className="h-72 w-full pt-2">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={logs}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
-              <XAxis dataKey="date" stroke="#9ca3af" fontSize={11} />
-              <YAxis domain={[0, 10]} stroke="#9ca3af" fontSize={11} />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: '#14171C',
-                  borderRadius: '12px',
-                  border: '1px solid #374151',
-                  color: '#f3f4f6',
-                  fontSize: '12px',
-                }}
-              />
-              <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
-              <Line
-                type="monotone"
-                dataKey="energy"
-                name="Энергия"
-                stroke="#10b981"
-                strokeWidth={3}
-                dot={{ r: 4 }}
-              />
-              <Line
-                type="monotone"
-                dataKey="sleep"
-                name="Сон (ч)"
-                stroke="#14b8a6"
-                strokeWidth={2}
-                dot={{ r: 3 }}
-              />
-              <Line
-                type="monotone"
-                dataKey="stress"
-                name="Стресс"
-                stroke="#f59e0b"
-                strokeWidth={2}
-                dot={{ r: 3 }}
-              />
-            </LineChart>
-          </ResponsiveContainer>
+          {logs.length > 0 ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={logs}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
+                <XAxis dataKey="date" stroke="#9ca3af" fontSize={11} />
+                <YAxis domain={[0, 10]} stroke="#9ca3af" fontSize={11} />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: '#14171C',
+                    borderRadius: '12px',
+                    border: '1px solid #374151',
+                    color: '#f3f4f6',
+                    fontSize: '12px',
+                  }}
+                />
+                <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
+                <Line
+                  type="monotone"
+                  dataKey="energy"
+                  name="Энергия"
+                  stroke="#10b981"
+                  strokeWidth={3}
+                  dot={{ r: 4 }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="sleep"
+                  name="Сон (ч)"
+                  stroke="#14b8a6"
+                  strokeWidth={2}
+                  dot={{ r: 3 }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="stress"
+                  name="Стресс"
+                  stroke="#f59e0b"
+                  strokeWidth={2}
+                  dot={{ r: 3 }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-full flex flex-col items-center justify-center text-center p-6 bg-[#090B10] border border-white/[0.04] rounded-2xl space-y-2">
+              <TrendingUp className="w-8 h-8 text-white/20" />
+              <p className="text-sm font-bold text-white/70">Записи ежедневного опроса отсутствуют</p>
+              <p className="text-xs text-white/40">Заполните форму выше, чтобы зафиксировать первые данные динамики самочувствия</p>
+            </div>
+          )}
         </div>
       </div>
     </div>

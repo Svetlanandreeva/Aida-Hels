@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { analyzeMedicalDocument } from '../utils/analyzeMedicalDocument';
+import { processLabDocumentThroughStaging } from '../utils/analyzeMedicalDocument';
 import {
   UserProfile,
   DashboardTab,
@@ -62,7 +62,7 @@ import {
 } from 'recharts';
 import {
   ResearchVerificationModal,
-  RecognizedDocumentData,
+  StagingRecordPayload,
 } from './modals/ResearchVerificationModal';
 import { RedFlagBanner } from './dashboard/RedFlagBanner';
 import { OverallAiSummaryCard } from './dashboard/OverallAiSummaryCard';
@@ -245,16 +245,16 @@ export const Dashboard: React.FC<DashboardProps> = ({
     return { metricsTrendData: result, hasEnoughChartData: true };
   }, [diaryEntries, dailyLogs, pressureLogs, chartPeriod]);
 
-  // Real Document Upload & Verification State
+  // Real Document Upload & Staging Verification State
   const [uploadStatusStep, setUploadStatusStep] = useState('Загружаем документ...');
   const [selectedFilePreview, setSelectedFilePreview] = useState<string | null>(null);
   const [selectedFileName, setSelectedFileName] = useState<string>('');
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [lastFailedFile, setLastFailedFile] = useState<File | null>(null);
   const [isVerificationModalOpen, setIsVerificationModalOpen] = useState(false);
-  const [recognizedData, setRecognizedData] = useState<RecognizedDocumentData | null>(null);
+  const [stagingRecord, setStagingRecord] = useState<StagingRecordPayload | null>(null);
 
-  // Real OCR & Gemini Recognition Upload Handler
+  // Staging Pipeline Upload Handler
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement> | { target: { files: File[] } }) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -264,26 +264,25 @@ export const Dashboard: React.FC<DashboardProps> = ({
     setLastFailedFile(null);
     setIsUploading(true);
     setUploadProgress(10);
-    setUploadStatusStep('Проверка формата и чтение файла...');
+    setUploadStatusStep('Проверка формата, размер (макс 15МБ) и хеширование...');
 
     try {
-      // Create local preview URL for image files
       if (file.type.startsWith('image/')) {
         setSelectedFilePreview(URL.createObjectURL(file));
       } else {
         setSelectedFilePreview(null);
       }
 
-      const parsedResult = await analyzeMedicalDocument(file, 'lab', (step, percent) => {
+      const record = await processLabDocumentThroughStaging(file, (step, percent) => {
         setUploadStatusStep(step);
         setUploadProgress(percent);
       });
 
-      setRecognizedData(parsedResult);
+      setStagingRecord(record);
       setIsVerificationModalOpen(true);
     } catch (err: any) {
-      console.error('Document analysis error:', err);
-      const errMsg = err?.message || 'Не удалось распознать медицинский документ';
+      console.error('Document staging error:', err);
+      const errMsg = err?.message || 'Не удалось сопоставить документ в пайплайне';
       setUploadError(errMsg);
       setLastFailedFile(file);
     } finally {
@@ -298,53 +297,24 @@ export const Dashboard: React.FC<DashboardProps> = ({
     }
   };
 
-  // Confirm and save user verified data
-  const handleConfirmSaveRecognizedDoc = async (confirmed: RecognizedDocumentData) => {
-    // 1. Create frontend document entry
-    const allMarkersMapped = confirmed.results.map((item) => ({
-      marker: item.originalName || item.normalizedName || 'Показатель',
-      value: `${item.value !== null && item.value !== undefined ? item.value : item.valueText || ''} ${item.unit || ''}`.trim(),
-      norm: item.referenceText || `${item.referenceMin !== undefined ? item.referenceMin : ''} - ${item.referenceMax !== undefined ? item.referenceMax : ''}`,
-      status: (item.status === 'low' ? 'Ниже' : item.status === 'high' ? 'Выше' : item.status === 'critical' ? 'Внимание' : 'В норме') as 'Выше' | 'Ниже' | 'Внимание' | 'В норме',
-      explanation: item.status === 'low' ? 'Ниже референсного диапазона лаборатории.' : item.status === 'high' ? 'Выше референсного диапазона лаборатории.' : 'В норме.',
-    }));
-
-    const newDoc: MedicalDocument = {
-      id: `doc-${Date.now()}`,
-      title: confirmed.documentType || 'Распознанный анализ',
-      date: confirmed.researchDate || new Date().toLocaleDateString('ru-RU'),
-      category: 'lab',
-      categoryLabel: confirmed.documentType || 'Лабораторные анализы',
-      summary: `Исследование проанализировано. Проверено показателей: ${confirmed.results.length}. Лаборатория: ${confirmed.laboratoryName || 'Медицинская лаборатория'}.`,
-      deviations: allMarkersMapped.filter((item) => item.status !== 'В норме'),
-      allMarkers: allMarkersMapped,
-      recommendations: [
-        'Показатели успешно сохранены в историю исследований.',
-        'Для полной интерпретации обратитесь к лечащему врачу.',
-      ],
-    };
-
-    setDocuments((prev) => [newDoc, ...prev]);
-
-    // 2. Persist to Google Sheets / Google Apps Script via proxy
+  // Commit verified staging record to backend canonical history
+  const handleCommitStaging = async (commitParams: any) => {
     try {
-      await fetch('/api/sheets/proxy', {
+      const res = await fetch('/api/lab/staging/commit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'saveRecognizedDocument',
-          userId: user.id || 'usr-1',
-          payload: {
-            document_id: newDoc.id,
-            document_type: confirmed.documentType,
-            laboratory_name: confirmed.laboratoryName,
-            research_date: confirmed.researchDate,
-            results: confirmed.results,
-          },
+          ...commitParams,
+          stagingRecordFallback: stagingRecord,
         }),
       });
+
+      const data = await res.json();
+      if (data.success && data.document) {
+        setDocuments((prev) => [data.document, ...prev]);
+      }
     } catch (err) {
-      console.error('Sheets sync error:', err);
+      console.error('Commit staging error:', err);
     }
   };
 
@@ -499,14 +469,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
           )}
 
-          {/* Research Document Verification Modal */}
+          {/* Research Document Staging & Verification Modal */}
           <ResearchVerificationModal
             isOpen={isVerificationModalOpen}
             onClose={() => setIsVerificationModalOpen(false)}
-            documentData={recognizedData}
+            stagingRecord={stagingRecord}
             filePreviewUrl={selectedFilePreview}
-            fileName={selectedFileName}
-            onConfirmSave={handleConfirmSaveRecognizedDoc}
+            onCommit={handleCommitStaging}
           />
 
           {/* Category Filters */}

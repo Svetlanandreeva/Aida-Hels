@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   ScreenId,
   DashboardTab,
@@ -14,6 +14,16 @@ import {
   PressureLogEntry,
 } from './types';
 import { calculateHealthProfile } from './utils/calculateHealthProfile';
+import {
+  SubjectProfile,
+  loadSubjectProfiles,
+  saveSubjectProfiles,
+  getPrimarySubjectProfileId,
+  getStoredActiveSubjectProfileId,
+  saveStoredActiveSubjectProfileId,
+  filterBySubjectProfile,
+  getSubjectUserProfile,
+} from './utils/subjectProfiles';
 import {
   emptyUserProfile,
   emptyBodySystems,
@@ -34,6 +44,9 @@ import { BodyMap } from './components/BodyMap';
 import { RemindersScreen } from './components/RemindersScreen';
 import { MentalDiaryScreen } from './components/MentalDiaryScreen';
 import { PressureDiary } from './components/PressureDiary';
+import { TimelineScreen } from './components/TimelineScreen';
+import { WearablesIntegrationsScreen } from './components/WearablesIntegrationsScreen';
+import { PermissionSettingsScreen } from './components/PermissionSettingsScreen';
 
 import { SecurityLockModal } from './components/SecurityLockModal';
 import { checkAndTriggerReminders } from './services/notificationService';
@@ -175,11 +188,146 @@ export default function App() {
   });
   const [isAppLocked, setIsAppLocked] = useState<boolean>(false);
 
-  // Recalculate body systems dynamically whenever documents, user profile, or logs change
+  // Subject Profiles & Context State
+  const accountId = user?.id || 'usr-1';
+  const primarySubjectProfileId = useMemo(() => getPrimarySubjectProfileId(accountId), [accountId]);
+
+  const [subjectProfiles, setSubjectProfiles] = useState<SubjectProfile[]>(() => {
+    return loadSubjectProfiles(user);
+  });
+
+  const [activeSubjectProfileId, setActiveSubjectProfileId] = useState<string>(() => {
+    return getStoredActiveSubjectProfileId(accountId);
+  });
+
+  // Sync subject profiles if account user profile updates
   useEffect(() => {
-    const { bodySystems: updatedSystems } = calculateHealthProfile(user, documents, dailyLogs, pressureLogs);
+    if (!user) return;
+    const updatedProfiles = loadSubjectProfiles(user);
+    setSubjectProfiles(updatedProfiles);
+    saveSubjectProfiles(user.id || 'usr-1', updatedProfiles);
+  }, [user.id, user.fullName, user.birthDate, user.gender, user.height, user.weight, user.bloodType, user.allergies]);
+
+  const handleSelectSubjectProfile = (profileId: string) => {
+    setActiveSubjectProfileId(profileId);
+    saveStoredActiveSubjectProfileId(user.id || 'usr-1', profileId);
+  };
+
+  const handleAddSubjectProfile = (newProfileData: Omit<SubjectProfile, 'id' | 'accountId'>) => {
+    const newId = `sp-${newProfileData.type}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    const createdProfile: SubjectProfile = {
+      ...newProfileData,
+      id: newId,
+      accountId: user.id || 'usr-1',
+    };
+    const updatedProfiles = [...subjectProfiles, createdProfile];
+    setSubjectProfiles(updatedProfiles);
+    saveSubjectProfiles(user.id || 'usr-1', updatedProfiles);
+
+    setActiveSubjectProfileId(newId);
+    saveStoredActiveSubjectProfileId(user.id || 'usr-1', newId);
+  };
+
+  const handleDeleteSubjectProfile = (profileId: string) => {
+    if (profileId === primarySubjectProfileId) return;
+    const updatedProfiles = subjectProfiles.filter((p) => p.id !== profileId);
+    setSubjectProfiles(updatedProfiles);
+    saveSubjectProfiles(user.id || 'usr-1', updatedProfiles);
+
+    if (activeSubjectProfileId === profileId) {
+      setActiveSubjectProfileId(primarySubjectProfileId);
+      saveStoredActiveSubjectProfileId(user.id || 'usr-1', primarySubjectProfileId);
+    }
+  };
+
+  // Active Subject & Scoped Medical Collections
+  const activeSubjectProfile = useMemo(() => {
+    return (
+      subjectProfiles.find((p) => p.id === activeSubjectProfileId) ||
+      subjectProfiles[0] || {
+        id: primarySubjectProfileId,
+        accountId,
+        type: 'self' as const,
+        fullName: user.fullName || 'Я',
+        relationship: 'Я',
+      }
+    );
+  }, [subjectProfiles, activeSubjectProfileId, primarySubjectProfileId, accountId, user.fullName]);
+
+  const activeUserForSubject = useMemo(() => {
+    return getSubjectUserProfile(user, activeSubjectProfile);
+  }, [user, activeSubjectProfile]);
+
+  const activeDocuments = useMemo(() => {
+    return filterBySubjectProfile(documents, activeSubjectProfileId, primarySubjectProfileId);
+  }, [documents, activeSubjectProfileId, primarySubjectProfileId]);
+
+  const activeAppointments = useMemo(() => {
+    return filterBySubjectProfile(appointments, activeSubjectProfileId, primarySubjectProfileId);
+  }, [appointments, activeSubjectProfileId, primarySubjectProfileId]);
+
+  const activeDailyLogs = useMemo(() => {
+    return filterBySubjectProfile(dailyLogs, activeSubjectProfileId, primarySubjectProfileId);
+  }, [dailyLogs, activeSubjectProfileId, primarySubjectProfileId]);
+
+  const activePressureLogs = useMemo(() => {
+    return filterBySubjectProfile(pressureLogs, activeSubjectProfileId, primarySubjectProfileId);
+  }, [pressureLogs, activeSubjectProfileId, primarySubjectProfileId]);
+
+  const activeReminders = useMemo(() => {
+    return filterBySubjectProfile(reminders, activeSubjectProfileId, primarySubjectProfileId);
+  }, [reminders, activeSubjectProfileId, primarySubjectProfileId]);
+
+  const activeDiaryEntries = useMemo(() => {
+    return filterBySubjectProfile(diaryEntries, activeSubjectProfileId, primarySubjectProfileId);
+  }, [diaryEntries, activeSubjectProfileId, primarySubjectProfileId]);
+
+  // Wrappers to ensure newly added records are tagged with subject_profile_id
+  const handleSetDocuments: React.Dispatch<React.SetStateAction<MedicalDocument[]>> = (value) => {
+    setDocuments((prev) => {
+      const next = typeof value === 'function' ? value(prev) : value;
+      return next.map((item) => (item.subject_profile_id ? item : { ...item, subject_profile_id: activeSubjectProfileId }));
+    });
+  };
+
+  const handleSetAppointments: React.Dispatch<React.SetStateAction<Appointment[]>> = (value) => {
+    setAppointments((prev) => {
+      const next = typeof value === 'function' ? value(prev) : value;
+      return next.map((item) => (item.subject_profile_id ? item : { ...item, subject_profile_id: activeSubjectProfileId }));
+    });
+  };
+
+  const handleSetDailyLogs: React.Dispatch<React.SetStateAction<DailyLogEntry[]>> = (value) => {
+    setDailyLogs((prev) => {
+      const next = typeof value === 'function' ? value(prev) : value;
+      return next.map((item) => (item.subject_profile_id ? item : { ...item, subject_profile_id: activeSubjectProfileId }));
+    });
+  };
+
+  const handleSetPressureLogs: React.Dispatch<React.SetStateAction<PressureLogEntry[]>> = (value) => {
+    setPressureLogs((prev) => {
+      const next = typeof value === 'function' ? value(prev) : value;
+      return next.map((item) => (item.subject_profile_id ? item : { ...item, subject_profile_id: activeSubjectProfileId }));
+    });
+  };
+
+  const handleSetReminders: React.Dispatch<React.SetStateAction<Reminder[]>> = (value) => {
+    setReminders((prev) => {
+      const next = typeof value === 'function' ? value(prev) : value;
+      return next.map((item) => (item.subject_profile_id ? item : { ...item, subject_profile_id: activeSubjectProfileId }));
+    });
+  };
+
+  // Recalculate body systems dynamically using active subject profile data
+  useEffect(() => {
+    const { bodySystems: updatedSystems } = calculateHealthProfile(
+      activeUserForSubject,
+      activeDocuments,
+      activeDailyLogs,
+      activePressureLogs
+    );
     setBodySystems(updatedSystems);
-  }, [user, documents, dailyLogs, pressureLogs]);
+  }, [activeUserForSubject, activeDocuments, activeDailyLogs, activePressureLogs]);
 
   // Auto-synchronize medications from user profile (chronicDiagnoses & psychiatricData) to reminders
   useEffect(() => {
@@ -274,6 +422,7 @@ export default function App() {
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       user_id: user.id || 'usr-1',
+      subject_profile_id: activeSubjectProfileId,
       event_datetime: entryData.event_datetime || new Date().toISOString(),
       entry_type: entryData.entry_type || 'full',
       state_score: entryData.state_score ?? 7,
@@ -298,7 +447,7 @@ export default function App() {
       const res = await fetch('/api/mental-diary/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ entries: diaryEntries, newEntry }),
+        body: JSON.stringify({ entries: activeDiaryEntries, newEntry, subjectProfileId: activeSubjectProfileId }),
       });
       if (res.ok) {
         const data = await res.json();
@@ -447,21 +596,6 @@ export default function App() {
       serverSuccess = false;
     }
 
-    try {
-      await fetch('/api/sheets/proxy', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'deleteUserAccount',
-          userId: currentUserId,
-          email: currentEmail,
-          webAppUrl: savedSheetUrl,
-        }),
-      });
-    } catch (err) {
-      console.error('Server deleteUserAccount request error:', err);
-    }
-
     // b) Reset all local React states to empty/defaults
     setUser(emptyUserProfile);
     setBodySystems(emptyBodySystems);
@@ -514,9 +648,14 @@ export default function App() {
           user={user}
           onLogout={handleLogout}
           onOpenTutorial={() => setIsOnboardingOpen(true)}
-          activeRemindersCount={reminders.filter((r) => r.isEnabled).length}
-          reminders={reminders}
-          documents={documents}
+          activeRemindersCount={activeReminders.filter((r) => r.isEnabled).length}
+          reminders={activeReminders}
+          documents={activeDocuments}
+          subjectProfiles={subjectProfiles}
+          activeSubjectProfileId={activeSubjectProfileId}
+          onSelectSubjectProfile={handleSelectSubjectProfile}
+          onAddSubjectProfile={handleAddSubjectProfile}
+          onDeleteSubjectProfile={handleDeleteSubjectProfile}
           onRefreshAnalysis={() => {
             // Trigger navigation back to dashboard or trigger refresh
             if (currentScreen !== 'dashboard') {
@@ -574,19 +713,19 @@ export default function App() {
           <Dashboard
             activeTab={dashboardTab}
             setActiveTab={setDashboardTab}
-            user={user}
-            documents={documents}
-            setDocuments={setDocuments}
-            appointments={appointments}
-            setAppointments={setAppointments}
+            user={activeUserForSubject}
+            documents={activeDocuments}
+            setDocuments={handleSetDocuments}
+            appointments={activeAppointments}
+            setAppointments={handleSetAppointments}
             bodySystems={bodySystems}
             onNavigate={(screen) => setCurrentScreen(screen)}
             onOpenDoctorReport={() => setIsDoctorReportOpen(true)}
-            reminders={reminders}
-            setReminders={setReminders}
-            dailyLogs={dailyLogs}
-            diaryEntries={diaryEntries}
-            pressureLogs={pressureLogs}
+            reminders={activeReminders}
+            setReminders={handleSetReminders}
+            dailyLogs={activeDailyLogs}
+            diaryEntries={activeDiaryEntries}
+            pressureLogs={activePressureLogs}
             mentalPatterns={mentalPatterns}
           />
         )}
@@ -594,7 +733,7 @@ export default function App() {
         {/* SCREEN 7: ANAMNESIS & PROFILE (READ-ONLY) */}
         {currentScreen === 'profile' && (
           <MedicalProfile
-            user={user}
+            user={activeUserForSubject}
             onOpenDoctorReport={() => setIsDoctorReportOpen(true)}
             onEditQuestionnaire={() => setCurrentScreen('q1')}
           />
@@ -634,18 +773,18 @@ export default function App() {
         {/* SCREEN 9: AI CHAT ASSISTANT */}
         {currentScreen === 'ai_chat' && (
           <AiAssistant
-            user={user}
-            documents={documents}
-            dailyLogs={dailyLogs}
-            diaryEntries={diaryEntries}
-            reminders={reminders}
-            pressureLogs={pressureLogs}
+            user={activeUserForSubject}
+            documents={activeDocuments}
+            dailyLogs={activeDailyLogs}
+            diaryEntries={activeDiaryEntries}
+            reminders={activeReminders}
+            pressureLogs={activePressureLogs}
           />
         )}
 
         {/* SCREEN 10: DAILY CHECK-IN & RECHARTS DYNAMICS */}
         {currentScreen === 'daily_checkin' && (
-          <DailyCheckin logs={dailyLogs} setLogs={setDailyLogs} />
+          <DailyCheckin logs={activeDailyLogs} setLogs={handleSetDailyLogs} />
         )}
 
         {/* SCREEN 11: BODY MAP (10 SYSTEMS) & ORGANISM AGE */}
@@ -654,10 +793,10 @@ export default function App() {
             systems={bodySystems}
             onSelectSystem={(system) => setSelectedSystemDetail(system)}
             onOpenOverviewModal={() => setIsOverviewModalOpen(true)}
-            user={user}
-            documents={documents}
-            pressureLogs={pressureLogs}
-            dailyLogs={dailyLogs}
+            user={activeUserForSubject}
+            documents={activeDocuments}
+            pressureLogs={activePressureLogs}
+            dailyLogs={activeDailyLogs}
             onNavigate={(screen) => setCurrentScreen(screen)}
           />
         )}
@@ -665,8 +804,8 @@ export default function App() {
         {/* SCREEN 12: REMINDERS & MEDICATION SCHEDULE */}
         {currentScreen === 'reminders' && (
           <RemindersScreen
-            reminders={reminders}
-            setReminders={setReminders}
+            reminders={activeReminders}
+            setReminders={handleSetReminders}
             onNavigateToCheckin={() => setCurrentScreen('daily_checkin')}
             onNavigateToAppointments={() => {
               setCurrentScreen('dashboard');
@@ -678,8 +817,8 @@ export default function App() {
         {/* SCREEN 13: MENTAL STATE DIARY */}
         {currentScreen === 'mental_diary' && (
           <MentalDiaryScreen
-            user={user}
-            entries={diaryEntries}
+            user={activeUserForSubject}
+            entries={activeDiaryEntries}
             patterns={mentalPatterns}
             weeklyReport={weeklyReport}
             onAddEntry={handleAddDiaryEntry}
@@ -695,9 +834,37 @@ export default function App() {
         {/* SCREEN 14: PRESSURE & PULSE DIARY */}
         {currentScreen === 'pressure_diary' && (
           <PressureDiary
-            entries={pressureLogs}
-            setEntries={setPressureLogs}
+            entries={activePressureLogs}
+            setEntries={handleSetPressureLogs}
             onNavigateBack={() => {
+              setCurrentScreen('dashboard');
+              setDashboardTab('main');
+            }}
+          />
+        )}
+
+        {/* SCREEN 15: AGGREGATED HEALTH TIMELINE */}
+        {currentScreen === 'timeline' && (
+          <TimelineScreen
+            onNavigate={(screen) => setCurrentScreen(screen)}
+            activeSubjectProfileId={activeSubjectProfileId}
+          />
+        )}
+
+        {/* SCREEN 16: WEARABLES & HEALTH PLATFORMS INTEGRATION HUB */}
+        {currentScreen === 'integrations' && (
+          <WearablesIntegrationsScreen
+            onBackToDashboard={() => {
+              setCurrentScreen('dashboard');
+              setDashboardTab('main');
+            }}
+          />
+        )}
+
+        {/* SCREEN 17: PERMISSION LAYER & FAMILY SECURITY HUB */}
+        {currentScreen === 'permissions' && (
+          <PermissionSettingsScreen
+            onBackToDashboard={() => {
               setCurrentScreen('dashboard');
               setDashboardTab('main');
             }}
@@ -726,8 +893,8 @@ export default function App() {
       <DoctorReportModal
         isOpen={isDoctorReportOpen}
         onClose={() => setIsDoctorReportOpen(false)}
-        user={user}
-        documents={documents}
+        user={activeUserForSubject}
+        documents={activeDocuments}
         systems={bodySystems}
       />
 

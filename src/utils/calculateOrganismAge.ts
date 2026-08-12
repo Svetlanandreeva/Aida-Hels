@@ -89,10 +89,10 @@ export function calculateOrganismAge(
   dailyLogs: DailyLogEntry[] = []
 ): OrganismAgeResult {
   // 1. Calculate Passport (Chronological) Age
-  let passportAge = 28; // default baseline
+  let passportAge = 0;
   if (user?.birthDate && user.birthDate.length >= 4) {
     const birthYear = parseInt(user.birthDate.substring(0, 4), 10);
-    if (!isNaN(birthYear) && birthYear > 1920 && birthYear < 2025) {
+    if (!isNaN(birthYear) && birthYear > 1920 && birthYear <= new Date().getFullYear()) {
       const currentYear = new Date().getFullYear();
       passportAge = currentYear - birthYear;
     }

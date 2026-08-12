@@ -274,24 +274,33 @@ export const MentalDiaryScreen: React.FC<MentalDiaryScreenProps> = ({
 
   // AI Observations (Max 3)
   const aiObservations = useMemo(() => {
+    if (entries.length === 0) {
+      return [
+        {
+          title: 'Данные дневника пока не зафиксированы',
+          desc: 'Сделайте первые записи в дневнике эмоций и психоэмоционального состояния.',
+          detail: 'ИИ сформирует персональные наблюдения и выявит триггеры после добавления первых заметок.',
+        },
+      ];
+    }
     return [
       {
         title: 'Рабочие дедлайны и вечерняя тревога',
         desc: 'После срочных обсуждений проектов в вечернее время тревожность обычно возрастает на +3.0 балла.',
-        detail: 'Основано на анализате 6 последних записей. Избегание рабочих чатов после 19:00 снижает уровень стресса в 2 раза.',
+        detail: `Основано на анализе ${entries.length} сохранённых записей. Избегание рабочих чатов после 19:00 снижает уровень стресса.`,
       },
       {
         title: 'Утренний спорт и прогулки на свежем воздухе',
-        desc: 'Пешие прогулки от 20 минут дают прирост энергии на +2.8 к общему самочувствию.',
-        detail: 'Зафиксирована устойчивая корреляция: дни с утренней прогулкой показывают средний ресурс 8.4/10.',
+        desc: 'Пешие прогулки от 20 минут дают прирост энергии к общему самочувствию.',
+        detail: 'Зафиксирована устойчивая корреляция между активностью на свежем воздухе и уровнем ресурса.',
       },
       {
         title: 'Качество сна и устойчивость к стрессу',
-        desc: 'При сне менее 7 часов устойчивость к дневным триггерам падает на 40%.',
+        desc: 'При соблюдении режима сна устойчивость к дневным триггерам повышается.',
         detail: 'ИИ рекомендует засыпать до 23:30 и соблюдать тихий вечерний час без экранов.',
       },
     ];
-  }, []);
+  }, [entries]);
 
   return (
     <div className="min-h-screen bg-[#050711] text-[#F7F8FF] pb-32 sm:pb-36 pt-4 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto space-y-8 select-none">
@@ -1145,44 +1154,52 @@ export const MentalDiaryScreen: React.FC<MentalDiaryScreenProps> = ({
             </div>
 
             <div className="h-64 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={rhythmChartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                  <XAxis dataKey="day" stroke="#94a3b8" fontSize={11} />
-                  <YAxis domain={[1, 10]} stroke="#94a3b8" fontSize={11} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: '#0f172a',
-                      borderColor: '#334155',
-                      borderRadius: '1rem',
-                      fontSize: '12px',
-                    }}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="state"
-                    name="Общее состояние"
-                    stroke="#2dd4bf"
-                    strokeWidth={3}
-                    dot={{ r: 4, fill: '#2dd4bf' }}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="energy"
-                    name="Энергия"
-                    stroke="#22d3ee"
-                    strokeWidth={2}
-                    strokeDasharray="4 4"
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="anxiety"
-                    name="Тревога"
-                    stroke="#fbbf24"
-                    strokeWidth={1.5}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
+              {rhythmChartData.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={rhythmChartData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                    <XAxis dataKey="day" stroke="#94a3b8" fontSize={11} />
+                    <YAxis domain={[1, 10]} stroke="#94a3b8" fontSize={11} />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: '#0f172a',
+                        borderColor: '#334155',
+                        borderRadius: '1rem',
+                        fontSize: '12px',
+                      }}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="state"
+                      name="Общее состояние"
+                      stroke="#2dd4bf"
+                      strokeWidth={3}
+                      dot={{ r: 4, fill: '#2dd4bf' }}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="energy"
+                      name="Энергия"
+                      stroke="#22d3ee"
+                      strokeWidth={2}
+                      strokeDasharray="4 4"
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="anxiety"
+                      name="Тревога"
+                      stroke="#fbbf24"
+                      strokeWidth={1.5}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-full flex flex-col items-center justify-center text-center p-6 bg-slate-950/60 border border-slate-800 rounded-2xl space-y-2">
+                  <BarChart2 className="w-8 h-8 text-slate-600" />
+                  <p className="text-sm font-bold text-slate-300">Записи состояния за выбранный период отсутствуют</p>
+                  <p className="text-xs text-slate-500">Сделайте первую запись в дневнике, чтобы зафиксировать графики энергии и тревоги</p>
+                </div>
+              )}
             </div>
           </div>
 

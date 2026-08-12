@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ScreenId, DashboardTab, UserProfile, Reminder, MedicalDocument } from '../types';
+import { SubjectProfile, SubjectProfileType } from '../utils/subjectProfiles';
+import { SubjectProfileSwitcher } from './SubjectProfileSwitcher';
 import {
   Heart,
   LayoutDashboard,
@@ -23,6 +25,9 @@ import {
   UserRound,
   PersonStanding,
   RefreshCw,
+  Calendar,
+  Watch,
+  ShieldCheck,
 } from 'lucide-react';
 
 interface NavigationProps {
@@ -38,6 +43,11 @@ interface NavigationProps {
   documents?: MedicalDocument[];
   onRefreshAnalysis?: () => void;
   isLoadingAnalysis?: boolean;
+  subjectProfiles?: SubjectProfile[];
+  activeSubjectProfileId?: string;
+  onSelectSubjectProfile?: (subjectProfileId: string) => void;
+  onAddSubjectProfile?: (newProfile: Omit<SubjectProfile, 'id' | 'accountId'>) => void;
+  onDeleteSubjectProfile?: (subjectProfileId: string) => void;
 }
 
 export const Navigation: React.FC<NavigationProps> = ({
@@ -53,6 +63,11 @@ export const Navigation: React.FC<NavigationProps> = ({
   documents = [],
   onRefreshAnalysis,
   isLoadingAnalysis = false,
+  subjectProfiles = [],
+  activeSubjectProfileId = '',
+  onSelectSubjectProfile,
+  onAddSubjectProfile,
+  onDeleteSubjectProfile,
 }) => {
   const [showBellDropdown, setShowBellDropdown] = useState(false);
   const [dismissedNotifIds, setDismissedNotifIds] = useState<string[]>([]);
@@ -173,8 +188,55 @@ export const Navigation: React.FC<NavigationProps> = ({
 
 
 
+          {/* CENTER/SUBJECT SWITCHER */}
+          {subjectProfiles && subjectProfiles.length > 0 && onSelectSubjectProfile && (
+            <div className="mx-2 shrink-0">
+              <SubjectProfileSwitcher
+                profiles={subjectProfiles}
+                activeSubjectProfileId={activeSubjectProfileId}
+                onSelectProfile={onSelectSubjectProfile}
+                onAddProfile={onAddSubjectProfile || (() => {})}
+                onDeleteProfile={onDeleteSubjectProfile || (() => {})}
+                accountEmail={user?.email}
+                accountFullName={user?.fullName}
+              />
+            </div>
+          )}
+
           {/* RIGHT: REFRESH AI ANALYSIS + SETTINGS + NOTIFICATIONS + USER AVATAR */}
           <div className="flex items-center gap-1.5 sm:gap-2.5">
+            {/* WEARABLES & INTEGRATIONS BUTTON */}
+            <button
+              onClick={() => setCurrentScreen('integrations')}
+              className={`px-2.5 py-2 sm:px-3 sm:py-2.5 rounded-2xl bg-[#111827] border transition-all cursor-pointer min-h-[40px] flex items-center justify-center gap-1.5 ${
+                currentScreen === 'integrations'
+                  ? 'border-[#3DD9C5] text-[#3DD9C5] shadow-[0_0_12px_rgba(61,217,197,0.2)]'
+                  : 'border-white/[0.06] text-white/80 hover:text-white hover:border-[#3DD9C5]/40 hover:bg-[#151d2e]'
+              }`}
+              title="Интеграции и носимые устройства (Apple Health, Health Connect, Garmin, Oura)"
+            >
+              <Watch className="w-4 h-4 text-[#3DD9C5]" />
+              <span className="text-xs font-semibold text-white/90 hidden md:inline">
+                Гаджеты
+              </span>
+            </button>
+
+            {/* TIMELINE BUTTON */}
+            <button
+              onClick={() => setCurrentScreen('timeline')}
+              className={`px-2.5 py-2 sm:px-3 sm:py-2.5 rounded-2xl bg-[#111827] border transition-all cursor-pointer min-h-[40px] flex items-center justify-center gap-1.5 ${
+                currentScreen === 'timeline'
+                  ? 'border-[#3DD9C5] text-[#3DD9C5] shadow-[0_0_12px_rgba(61,217,197,0.2)]'
+                  : 'border-white/[0.06] text-white/80 hover:text-white hover:border-[#3DD9C5]/40 hover:bg-[#151d2e]'
+              }`}
+              title="История здоровья (Timeline)"
+            >
+              <Calendar className="w-4 h-4 text-[#3DD9C5]" />
+              <span className="text-xs font-semibold text-white/90 hidden md:inline">
+                История
+              </span>
+            </button>
+
             {/* REFRESH AI ANALYSIS BUTTON */}
             <button
               onClick={() => onRefreshAnalysis?.()}
@@ -190,6 +252,19 @@ export const Navigation: React.FC<NavigationProps> = ({
               <span className="text-xs font-semibold text-white/90 hidden md:inline">
                 {isLoadingAnalysis ? 'Обновляем...' : 'Обновить анализ'}
               </span>
+            </button>
+
+            {/* PERMISSIONS & ZERO TRUST SECURITY BUTTON */}
+            <button
+              onClick={() => setCurrentScreen('permissions')}
+              className={`p-2 sm:p-2.5 rounded-2xl bg-[#111827] border transition-all cursor-pointer min-h-[40px] min-w-[40px] flex items-center justify-center ${
+                currentScreen === 'permissions'
+                  ? 'border-rose-500 text-rose-400 shadow-[0_0_12px_rgba(244,63,94,0.3)]'
+                  : 'border-white/[0.06] text-white/70 hover:text-white hover:border-white/20'
+              }`}
+              title="Центр прав доступа и семейной безопасности (Deny by Default)"
+            >
+              <ShieldCheck className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
             </button>
 
             {/* SETTINGS BUTTON */}

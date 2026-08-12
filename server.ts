@@ -28,6 +28,25 @@ import {
   generateSmartHealthAdvice,
 } from './server/chatAnalyzer';
 import { sanitizeText, calculateAgeInYears } from './server/sanitizerService';
+import { canonicalDataLayer } from './server/canonicalDataLayer';
+import { aiContextBuilder } from './server/aiContextBuilder';
+import { wearablesService } from './server/wearablesService';
+import { authService } from './server/authService';
+import { onboardingService, BASE_ONBOARDING_SCHEMA } from './server/onboardingService';
+import { puzzleService } from './server/puzzleService';
+import { homeApiService } from './server/homeApiService';
+import { timelineService } from './server/timelineService';
+import { labStagingService } from './server/labStagingService';
+import { integrationsService } from './server/integrationsService';
+import { permissionService } from './server/permissionService';
+import { requirePermission } from './server/permissionMiddleware';
+import { aiToolsService } from './server/aiToolsService';
+import { healthFactCandidateService } from './server/healthFactCandidateService';
+import { auditProvenanceService } from './server/auditProvenanceService';
+import { familyDoctorSharingService, calculateAgeAtDate } from './server/familyDoctorSharingService';
+import { safetyEmergencyService } from './server/safetyEmergencyService';
+import { dentalService } from './server/dentalService';
+import { v1ApiRouter } from './server/v1ApiContractRouter';
 import {
   isYandexCloudConfigured,
   recognizeWithYandexCloudVision,
@@ -180,6 +199,11 @@ function requireConsent(req: AuthenticatedRequest, res: express.Response, next: 
 }
 
 // ==========================================
+// API V1 CONTRACT ROUTER (Requirement 22)
+// ==========================================
+app.use('/api/v1', v1ApiRouter);
+
+// ==========================================
 // AUTHENTICATION API ROUTES
 // ==========================================
 
@@ -238,12 +262,14 @@ app.post('/api/auth/register', async (req, res) => {
 
     usersDb.set(normEmail, newUser);
 
-    // Issue JWT session token in httpOnly cookie
-    const token = jwt.sign(
-      { id: newUser.id, email: newUser.email, fullName: newUser.fullName },
-      JWT_SECRET,
-      { expiresIn: '7d' }
-    );
+    // Create session via AuthService
+    const session = authService.createSession(newUser.id, {
+      ip: req.ip || '',
+      userAgent: (req.headers['user-agent'] as string) || '',
+      email: newUser.email,
+      fullName: newUser.fullName,
+    });
+    const token = session.token;
 
     res.cookie('session_token', token, {
       httpOnly: true,
@@ -270,6 +296,28 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
+// Send verification code endpoint
+app.post('/api/auth/send-code', async (req, res) => {
+  try {
+    const { email } = req.body;
+    const normEmail = (email || '').trim().toLowerCase();
+    if (!normEmail || !normEmail.includes('@')) {
+      return res.status(400).json({ success: false, message: 'Укажите корректный адрес электронной почты' });
+    }
+
+    const rawCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const verificationCodeHash = crypto.createHash('sha256').update(rawCode).digest('hex');
+
+    res.json({
+      success: true,
+      data: { code: rawCode, email: normEmail, hash: verificationCodeHash },
+      message: 'Код подтверждения сгенерирован защищённым сервером',
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: 'Ошибка отправки кода: ' + err.message });
+  }
+});
+
 // Helper function to completely remove user account and data
 async function performDeleteUserAccount(userId: string, email?: string) {
   const normEmail = (email || '').trim().toLowerCase();
@@ -292,9 +340,7 @@ async function performDeleteUserAccount(userId: string, email?: string) {
     userDataStore.delete(normEmail);
   }
 
-  if (isPostgresConfigured()) {
-    await deleteUser(userId, normEmail);
-  }
+  await canonicalDataLayer.deleteUserData(userId, normEmail);
 }
 
 // Login user
@@ -348,12 +394,14 @@ app.post('/api/auth/login', async (req, res) => {
     // Mark as verified upon successful login
     user.isVerified = true;
 
-    // Issue JWT session token in httpOnly cookie
-    const token = jwt.sign(
-      { id: user.id, email: user.email, fullName: user.fullName },
-      JWT_SECRET,
-      { expiresIn: '7d' }
-    );
+    // Create session via AuthService
+    const session = authService.createSession(user.id, {
+      ip: req.ip || '',
+      userAgent: (req.headers['user-agent'] as string) || '',
+      email: user.email,
+      fullName: user.fullName,
+    });
+    const token = session.token;
 
     res.cookie('session_token', token, {
       httpOnly: true,
@@ -494,6 +542,124 @@ app.post('/api/auth/logout', (req, res) => {
   res.json({ success: true, authenticated: false });
 });
 
+// GET /session with account, active profile, available profiles, onboarding status & feature flags
+const handleGetSession = async (req: express.Request, res: express.Response) => {
+  const token = req.cookies?.session_token || req.headers.authorization?.replace('Bearer ', '');
+  if (!token) {
+    return res.status(401).json({
+      authenticated: false,
+      account: null,
+      activeProfile: null,
+      availableProfiles: [],
+      onboardingStatus: { isCompleted: false, currentStep: 'unauthenticated', completedSteps: [] },
+      featureFlags: { enableAIInsights: true, enableWearables: true, enableDentalSuite: true, enableCloudSync: true, enableMFA: false },
+      activeSessions: [],
+    });
+  }
+
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET) as { id: string; email: string; fullName?: string };
+    const activeSubjectId = (req.query.subject_profile_id as string) || undefined;
+    const sessionResponse = await authService.buildSessionResponse(decoded.id, token, activeSubjectId);
+    res.json(sessionResponse);
+  } catch (err: any) {
+    res.status(401).json({ authenticated: false, message: 'Недействительный сеанс: ' + err.message });
+  }
+};
+
+app.get('/session', handleGetSession);
+app.get('/api/session', handleGetSession);
+
+// Password recovery request
+app.post('/api/auth/recovery/request', async (req, res) => {
+  try {
+    const { emailOrPhone } = req.body;
+    const norm = (emailOrPhone || '').trim().toLowerCase();
+    if (!norm) {
+      return res.status(400).json({ success: false, message: 'Укажите email или номер телефона' });
+    }
+
+    const { code, expiresAt } = authService.requestRecovery(norm);
+    res.json({
+      success: true,
+      data: { code, expiresAt },
+      message: 'Код восстановления сформирован сервером',
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: 'Ошибка запроса восстановления: ' + err.message });
+  }
+});
+
+// Password recovery confirm
+app.post('/api/auth/recovery/confirm', async (req, res) => {
+  try {
+    const { emailOrPhone, code, newPassword } = req.body;
+    const norm = (emailOrPhone || '').trim().toLowerCase();
+
+    if (!norm || !code || !newPassword || newPassword.length < 4) {
+      return res.status(400).json({ success: false, message: 'Укажите корректный код и новый пароль (не менее 4 символов)' });
+    }
+
+    await authService.confirmRecovery(norm, code, newPassword);
+
+    // Update password in usersDb
+    const newHash = await bcrypt.hash(newPassword, 12);
+    const user = usersDb.get(norm);
+    if (user) {
+      user.passwordHash = newHash;
+    }
+
+    res.json({
+      success: true,
+      message: 'Пароль успешно изменён. Войдите с новым паролем.',
+    });
+  } catch (err: any) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+});
+
+// Revoke sessions / trusted devices for lost-device scenario
+const handleRevokeSessions = async (req: AuthenticatedRequest, res: express.Response) => {
+  try {
+    const userId = req.user!.id;
+    const { sessionIdToRevoke, revokeAllExceptCurrent } = req.body || {};
+    const currentToken = req.cookies?.session_token || req.headers.authorization?.replace('Bearer ', '');
+
+    if (sessionIdToRevoke) {
+      const revoked = authService.revokeSession(userId, sessionIdToRevoke);
+      return res.json({ success: revoked, message: revoked ? 'Сессия устройства отозвана' : 'Сессия не найдена' });
+    }
+
+    let currentSessionId: string | undefined;
+    if (currentToken) {
+      try {
+        const decoded = jwt.verify(currentToken, JWT_SECRET) as any;
+        currentSessionId = decoded.sessionId;
+      } catch {}
+    }
+
+    const revokedCount = authService.revokeAllSessions(
+      userId,
+      revokeAllExceptCurrent ? currentSessionId : undefined
+    );
+
+    if (!revokeAllExceptCurrent) {
+      res.clearCookie('session_token');
+    }
+
+    res.json({
+      success: true,
+      revokedCount,
+      message: `Успешно отозвано активных устройств: ${revokedCount}`,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: 'Ошибка отзыва сессий: ' + err.message });
+  }
+};
+
+app.post('/api/auth/revoke-sessions', requireAuth, handleRevokeSessions);
+app.post('/api/auth/devices/revoke', requireAuth, handleRevokeSessions);
+
 // Delete account endpoints
 app.post('/api/auth/delete-account', async (req: AuthenticatedRequest, res) => {
   try {
@@ -601,57 +767,577 @@ app.get('/api/security/logs', (req, res) => {
 });
 
 // ==========================================
+// 14. PERMISSION LAYER & DENY-BY-DEFAULT ACCESS ENGINE
+// ==========================================
+
+// 1. Get all issued & received family grants for current user
+app.get('/api/permissions/grants', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const issuedGrants = permissionService.getGrantsByOwner(userId);
+    const receivedGrants = permissionService.getGrantsByGrantee(userId);
+
+    return res.json({
+      success: true,
+      issuedGrants,
+      receivedGrants,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err?.message });
+  }
+});
+
+// 2. Create invitation for an adult relative or family member
+app.post('/api/permissions/invitation/create', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const {
+      granteeName,
+      granteeEmailOrPhone,
+      relationship,
+      isAdult,
+      allowedScopes,
+      explicitSensitiveScopes,
+    } = req.body || {};
+
+    if (!granteeName || !relationship) {
+      return res.status(400).json({ success: false, error: 'Имя и тип родственной связи обязательны' });
+    }
+
+    const grant = permissionService.createInvitation({
+      ownerUserId: userId,
+      granteeName: sanitizeText(granteeName),
+      granteeEmailOrPhone: granteeEmailOrPhone ? sanitizeText(granteeEmailOrPhone) : undefined,
+      relationship: sanitizeText(relationship),
+      isAdult: Boolean(isAdult),
+      allowedScopes: Array.isArray(allowedScopes) ? allowedScopes : ['emergency_card', 'medications'],
+      explicitSensitiveScopes: Array.isArray(explicitSensitiveScopes) ? explicitSensitiveScopes : [],
+    });
+
+    return res.json({
+      success: true,
+      grant,
+      message: grant.isAdult
+        ? `Приглашение создано. Передайте код приглашения родственнику: ${grant.invitationCode}`
+        : 'Семейное разрешение успешно создано',
+    });
+  } catch (err: any) {
+    return res.status(400).json({ success: false, error: err?.message });
+  }
+});
+
+// 3. Accept invitation code with consent
+app.post('/api/permissions/invitation/accept', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const userName = req.user?.fullName || 'Родственник';
+    const { invitationCode } = req.body || {};
+
+    if (!invitationCode) {
+      return res.status(400).json({ success: false, error: 'Укажите код приглашения (INV-XXXXXX)' });
+    }
+
+    const updatedGrant = permissionService.acceptInvitation(invitationCode, userId, userName);
+
+    return res.json({
+      success: true,
+      grant: updatedGrant,
+      message: 'Приглашение успешно подтверждено! Семейный доступ активирован с учетом установленных скоупов.',
+    });
+  } catch (err: any) {
+    return res.status(400).json({ success: false, error: err?.message });
+  }
+});
+
+// 4. Instant Revoke: Revoke access immediately
+app.post('/api/permissions/grants/revoke', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const { grantId } = req.body || {};
+
+    if (!grantId) {
+      return res.status(400).json({ success: false, error: 'Идентификатор grantId обязателен' });
+    }
+
+    const success = permissionService.revokeGrant(userId, grantId);
+
+    return res.json({
+      success,
+      message: success
+        ? 'Права доступа немедленно отозваны (Instant Revoke). Повторные запросы будут заблокированы.'
+        : 'Разрешение не найдено или уже отозвано',
+    });
+  } catch (err: any) {
+    return res.status(400).json({ success: false, error: err?.message });
+  }
+});
+
+// 5. Update grant scopes & sensitive scopes
+app.post('/api/permissions/grants/update', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const { grantId, allowedScopes, explicitSensitiveScopes } = req.body || {};
+
+    if (!grantId) {
+      return res.status(400).json({ success: false, error: 'Идентификатор grantId обязателен' });
+    }
+
+    const updatedGrant = permissionService.updateGrantScopes(
+      userId,
+      grantId,
+      Array.isArray(allowedScopes) ? allowedScopes : [],
+      Array.isArray(explicitSensitiveScopes) ? explicitSensitiveScopes : []
+    );
+
+    return res.json({
+      success: true,
+      grant: updatedGrant,
+      message: 'Настройки семейного доступа успешно обновлены',
+    });
+  } catch (err: any) {
+    return res.status(400).json({ success: false, error: err?.message });
+  }
+});
+
+// 6. Audit Log Endpoint
+app.get('/api/permissions/audit-log', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const auditLogs = permissionService.getAuditLogs(userId);
+
+    return res.json({
+      success: true,
+      auditLogs,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err?.message });
+  }
+});
+
+// ==========================================
+// SERVER-DRIVEN VERSIONED ONBOARDING SCHEMA & PROGRESS
+// ==========================================
+
+// Get versioned onboarding schema + user's current progress
+app.get('/api/onboarding/schema', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const userData = await canonicalDataLayer.getUserData(userId);
+    const onboardingState = userData?.onboardingState || {
+      version: BASE_ONBOARDING_SCHEMA.version,
+      completedSteps: [],
+      answers: {},
+      isCompleted: false,
+      puzzleRecommendations: [],
+    };
+
+    res.json({
+      success: true,
+      schema: BASE_ONBOARDING_SCHEMA,
+      userProgress: onboardingState,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: 'Ошибка получения схемы онбординга: ' + err.message });
+  }
+});
+
+// Save progress step by step
+app.post('/api/onboarding/progress', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const { stepId, answers } = req.body || {};
+
+    if (!stepId) {
+      return res.status(400).json({ success: false, message: 'Идентификатор шага (stepId) обязателен' });
+    }
+
+    const result = await onboardingService.saveStepProgress(userId, stepId, answers || {});
+    res.json(result);
+  } catch (err: any) {
+    console.error('Error saving onboarding progress:', err);
+    res.status(500).json({ success: false, message: 'Ошибка сохранения прогресса онбординга: ' + err.message });
+  }
+});
+
+// Complete onboarding and finalize Puzzle recommendations
+app.post('/api/onboarding/complete', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const { enabledPuzzleModuleIds, answers } = req.body || {};
+
+    const userData = await canonicalDataLayer.getUserData(userId);
+    const currentOnboarding = userData?.onboardingState || {};
+    const finalAnswers = { ...(currentOnboarding.answers || {}), ...(answers || {}) };
+
+    const recommendations = onboardingService.computePuzzleRecommendations(finalAnswers);
+    const updatedPuzzleRecommendations = recommendations.map((r) => ({
+      ...r,
+      enabled: enabledPuzzleModuleIds ? enabledPuzzleModuleIds.includes(r.moduleId) : r.enabledByDefault,
+    }));
+
+    const updatedProfile = {
+      ...(userData?.profile || {}),
+      fullName: finalAnswers.fullName || userData?.profile?.fullName,
+      birthDate: finalAnswers.birthDate || userData?.profile?.birthDate,
+      gender: finalAnswers.gender || userData?.profile?.gender,
+      heightCm: finalAnswers.heightCm ? Number(finalAnswers.heightCm) : userData?.profile?.heightCm,
+      weightKg: finalAnswers.weightKg ? Number(finalAnswers.weightKg) : userData?.profile?.weightKg,
+      isQuestionnaireCompleted: true,
+      updatedAt: new Date().toISOString(),
+    };
+
+    const finalOnboardingState = {
+      ...currentOnboarding,
+      answers: finalAnswers,
+      isCompleted: true,
+      puzzleRecommendations: updatedPuzzleRecommendations,
+      completedAt: new Date().toISOString(),
+    };
+
+    const updatedUserData = await canonicalDataLayer.saveUserData(userId, {
+      profile: updatedProfile,
+      onboardingState: finalOnboardingState,
+    });
+
+    res.json({
+      success: true,
+      message: 'Онбординг успешно завершён. Конфигурация Пазла здоровья сохранена.',
+      data: updatedUserData,
+    });
+  } catch (err: any) {
+    console.error('Error completing onboarding:', err);
+    res.status(500).json({ success: false, message: 'Ошибка завершения онбординга: ' + err.message });
+  }
+});
+
+// ==========================================
+// PUZZLE / USER MODULE CONFIG ENDPOINTS
+// ==========================================
+
+// Get user puzzle module configuration
+const handleGetPuzzleConfig = async (req: AuthenticatedRequest, res: express.Response) => {
+  try {
+    const userId = req.user!.id;
+    const config = await puzzleService.getUserPuzzleConfig(userId);
+    res.json({
+      success: true,
+      userId,
+      config,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: 'Ошибка получения конфигурации Пазла: ' + err.message });
+  }
+};
+
+app.get('/api/puzzle/config', requireAuth, handleGetPuzzleConfig);
+app.get('/api/user/module-config', requireAuth, handleGetPuzzleConfig);
+
+// Update user puzzle module configuration
+const handleUpdatePuzzleConfig = async (req: AuthenticatedRequest, res: express.Response) => {
+  try {
+    const userId = req.user!.id;
+    const { config, modules } = req.body || {};
+    const payloadConfig = Array.isArray(config) ? config : Array.isArray(modules) ? modules : [];
+
+    const updatedConfig = await puzzleService.updateUserPuzzleConfig(userId, payloadConfig);
+    res.json({
+      success: true,
+      message: 'Конфигурация модулей Пазла успешно обновлена',
+      config: updatedConfig,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: 'Ошибка обновления конфигурации Пазла: ' + err.message });
+  }
+};
+
+app.post('/api/puzzle/config', requireAuth, handleUpdatePuzzleConfig);
+app.put('/api/puzzle/config', requireAuth, handleUpdatePuzzleConfig);
+app.post('/api/user/module-config', requireAuth, handleUpdatePuzzleConfig);
+app.put('/api/user/module-config', requireAuth, handleUpdatePuzzleConfig);
+
+// ==========================================
+// AGGREGATED HOME API ENDPOINTS (GET /profiles/:id/home)
+// ==========================================
+
+const handleGetHomePayload = async (req: express.Request, res: express.Response) => {
+  try {
+    let userId = 'default_user';
+    const token = req.cookies?.session_token || req.headers.authorization?.replace('Bearer ', '');
+    if (token) {
+      try {
+        const decoded = jwt.verify(token, JWT_SECRET) as { id: string };
+        userId = decoded.id;
+      } catch {
+        // Fallback to params or default
+      }
+    }
+
+    const requestedProfileId = req.params.id || (req.query.profileId as string) || (req.query.subject_profile_id as string);
+    if (requestedProfileId && requestedProfileId !== 'self' && requestedProfileId !== 'me') {
+      userId = requestedProfileId;
+    }
+
+    const homePayload = await homeApiService.getHomePayload(userId, requestedProfileId);
+    res.json({ success: true, ...homePayload });
+  } catch (error: any) {
+    console.error('Home API Error:', error);
+    res.status(500).json({ success: false, message: 'Failed to build home payload: ' + error.message });
+  }
+};
+
+app.get('/profiles/:id/home', handleGetHomePayload);
+app.get('/api/profiles/:id/home', handleGetHomePayload);
+app.get('/api/home', handleGetHomePayload);
+
+// ==========================================
+// UNIFIED HEALTH TIMELINE API ENDPOINTS (GET /profiles/:id/timeline)
+// ==========================================
+
+const handleGetTimeline = async (req: express.Request, res: express.Response) => {
+  try {
+    let userId = 'default_user';
+    const token = req.cookies?.session_token || req.headers.authorization?.replace('Bearer ', '');
+    if (token) {
+      try {
+        const decoded = jwt.verify(token, JWT_SECRET) as { id: string };
+        userId = decoded.id;
+      } catch {
+        // Fallback to params or default
+      }
+    }
+
+    const requestedProfileId = req.params.id || (req.query.profileId as string) || (req.query.subject_profile_id as string);
+    if (requestedProfileId && requestedProfileId !== 'self' && requestedProfileId !== 'me') {
+      userId = requestedProfileId;
+    }
+
+    const { from, to, types, cursor, limit } = req.query;
+
+    const timelinePayload = await timelineService.getTimeline(userId, {
+      from: from as string,
+      to: to as string,
+      types: typeof types === 'string' ? types.split(',') : (types as string[]),
+      cursor: cursor as string,
+      limit: limit ? parseInt(limit as string, 10) : 20,
+    });
+
+    res.json({ success: true, ...timelinePayload });
+  } catch (error: any) {
+    console.error('Timeline API Error:', error);
+    res.status(500).json({ success: false, message: 'Failed to retrieve health timeline: ' + error.message });
+  }
+};
+
+app.get('/profiles/:id/timeline', handleGetTimeline);
+app.get('/api/profiles/:id/timeline', handleGetTimeline);
+app.get('/api/timeline', handleGetTimeline);
+
+// ==========================================
 // PERSISTENT DATA STORAGE ENDPOINTS
 // ==========================================
 
-// Get user health data from persistent storage
+// Get user health data from persistent storage (Canonical Data Layer)
 app.get('/api/user/data', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user!.id;
-    let data: any = null;
+    const subjectProfileId = req.query.subject_profile_id as string | undefined;
 
-    if (isPostgresConfigured()) {
-      data = await getUserData(userId);
-    }
-    if (!data || Object.keys(data).length === 0) {
-      data = userDataStore.get(userId) || {};
-    }
+    const data = subjectProfileId
+      ? await canonicalDataLayer.getSubjectHealthData(userId, subjectProfileId)
+      : await canonicalDataLayer.getUserData(userId);
 
-    res.json({ success: true, userId, data });
+    res.json({ success: true, userId, subjectProfileId, data });
   } catch (err: any) {
     res.status(500).json({ success: false, message: 'Ошибка загрузки данных: ' + err.message });
   }
 });
 
-// Save user health data to persistent storage (Requires Consent check)
+// Save user health data to persistent storage (Canonical Data Layer - Requires Consent check)
 app.post('/api/user/data', requireAuth, requireConsent, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user!.id;
     const payload = req.body || {};
 
-    const currentData = (isPostgresConfigured() ? await getUserData(userId) : userDataStore.get(userId)) || {};
-    const updatedData = {
-      ...currentData,
-      profile: payload.profile !== undefined ? payload.profile : currentData.profile,
-      documents: payload.documents !== undefined ? payload.documents : currentData.documents,
-      appointments: payload.appointments !== undefined ? payload.appointments : currentData.appointments,
-      dailyLogs: payload.dailyLogs !== undefined ? payload.dailyLogs : currentData.dailyLogs,
-      diaryEntries: payload.diaryEntries !== undefined ? payload.diaryEntries : currentData.diaryEntries,
-      pressureLogs: payload.pressureLogs !== undefined ? payload.pressureLogs : currentData.pressureLogs,
-      reminders: payload.reminders !== undefined ? payload.reminders : currentData.reminders,
-      aiAnalysis: payload.aiAnalysis !== undefined ? payload.aiAnalysis : currentData.aiAnalysis,
-      updatedAt: new Date().toISOString(),
-    };
-
-    if (isPostgresConfigured()) {
-      await saveUserData(userId, updatedData);
-    }
+    const updatedData = await canonicalDataLayer.saveUserData(userId, payload);
     userDataStore.set(userId, updatedData);
 
-    res.json({ success: true, userId, message: 'Данные успешно сохранены на сервере' });
+    res.json({ success: true, userId, data: updatedData, message: 'Данные успешно сохранены в канонический слой хранения' });
   } catch (err: any) {
     console.error('Error saving user data:', err);
     res.status(500).json({ success: false, message: 'Ошибка сохранения данных: ' + err.message });
+  }
+});
+
+// Wearable device data ingestion route (Wearables -> Backend Canonical Layer -> Storage)
+app.post('/api/wearables/ingest', requireAuth, requireConsent, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const payload = req.body || {};
+
+    const updatedData = await wearablesService.processWearableData(userId, payload);
+    res.json({ success: true, userId, data: updatedData, message: 'Данные с гаджета успешно внесены в историю здоровья' });
+  } catch (err: any) {
+    console.error('Error ingesting wearable telemetry:', err);
+    res.status(400).json({ success: false, message: 'Ошибка обработки телеметрии гаджета: ' + err.message });
+  }
+});
+
+// ==========================================
+// INTEGRATION PROVIDERS, SOURCES & WEARABLE PIPELINE ENDPOINTS
+// ==========================================
+
+// 1. Get Integration Capability Registry
+app.get('/api/integrations/providers', requireAuth, (req, res) => {
+  try {
+    const providers = integrationsService.getProvidersRegistry();
+    return res.json({ success: true, providers });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err?.message });
+  }
+});
+
+// 2. Get Connected Sources for Current User
+app.get('/api/integrations/connected-sources', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user?.id || 'default_user';
+    const sources = await integrationsService.getConnectedSources(userId);
+    return res.json({ success: true, sources });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err?.message });
+  }
+});
+
+// 3. Get Connected Devices for Current User
+app.get('/api/integrations/devices', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user?.id || 'default_user';
+    const devices = await integrationsService.getConnectedDevices(userId);
+    return res.json({ success: true, devices });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err?.message });
+  }
+});
+
+// 4. Connect Integration Source & Device
+app.post('/api/integrations/connect', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user?.id || 'default_user';
+    const { providerId } = req.body;
+    if (!providerId) {
+      return res.status(400).json({ success: false, error: 'Идентификатор провайдера обязателен (providerId)' });
+    }
+
+    const result = await integrationsService.connectSource(userId, providerId);
+    return res.json({ success: true, ...result });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err?.message });
+  }
+});
+
+// 5. Disconnect Integration Source
+app.post('/api/integrations/disconnect', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user?.id || 'default_user';
+    const { sourceId } = req.body;
+    if (!sourceId) {
+      return res.status(400).json({ success: false, error: 'Идентификатор подключенного источника обязателен (sourceId)' });
+    }
+
+    const success = await integrationsService.disconnectSource(userId, sourceId);
+    return res.json({ success });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err?.message });
+  }
+});
+
+// 6. Execute 7-Stage Batch Adapter Pipeline
+app.post('/api/integrations/sync-batch', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user?.id || 'default_user';
+    const { providerId, samples } = req.body;
+
+    if (!providerId || !Array.isArray(samples)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Необходим providerId и массив элементов samples',
+      });
+    }
+
+    const result = await integrationsService.executeAdapterPipeline(userId, providerId, samples);
+    return res.json(result);
+  } catch (err: any) {
+    console.error('Integrations Batch Sync Error:', err);
+    return res.status(500).json({ success: false, error: err?.message });
+  }
+});
+
+// 7. Simulate Live Sample Batch (For UI Testing & Demonstration)
+app.post('/api/integrations/simulate-sample', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user?.id || 'default_user';
+    const { providerId } = req.body;
+
+    const pId = providerId || 'apple_health';
+    const now = new Date();
+
+    let sampleBatch: any[] = [];
+
+    if (pId === 'oura') {
+      sampleBatch = [
+        { type: 'vendor_sleep_score', value: 88, scaleMax: 100, scoreName: 'Oura Sleep Score', timestamp: now.toISOString() },
+        { type: 'wrist_temperature', value: 0.2, unit: '°C', baselineDeviationDegreesC: 0.2, timestamp: now.toISOString() },
+        { type: 'hrv', value: 58, unit: 'ms', timestamp: now.toISOString() },
+        { type: 'resting_heart_rate', value: 52, unit: 'bpm', timestamp: now.toISOString() },
+        { type: 'cycle_record', value: 14, cycleDay: 14, cyclePhase: 'ovulation', flowLevel: 'light', timestamp: now.toISOString() },
+      ];
+    } else if (pId === 'fitbit') {
+      sampleBatch = [
+        { type: 'steps', value: 8420, unit: 'steps', activeCalories: 410, distanceMeters: 6200, timestamp: now.toISOString() },
+        { type: 'vendor_sleep_score', value: 82, scaleMax: 100, scoreName: 'Fitbit Sleep Index', timestamp: now.toISOString() },
+        { type: 'hrv', value: 46, unit: 'ms', timestamp: now.toISOString() },
+        { type: 'resting_heart_rate', value: 59, unit: 'bpm', timestamp: now.toISOString() },
+      ];
+    } else if (pId === 'garmin') {
+      sampleBatch = [
+        { type: 'vendor_sleep_score', value: 79, scaleMax: 100, scoreName: 'Garmin Sleep Score', timestamp: now.toISOString() },
+        { type: 'vo2_max', value: 48, unit: 'mL/kg/min', timestamp: now.toISOString() },
+        { type: 'respiratory_rate', value: 14, unit: 'breaths/min', timestamp: now.toISOString() },
+        { type: 'workout', value: 520, activityType: 'running', durationSeconds: 2100, avgHeartRate: 148, maxHeartRate: 172, distanceMeters: 7500, timestamp: now.toISOString() },
+      ];
+    } else if (pId === 'withings') {
+      sampleBatch = [
+        { type: 'weight', value: 72.4, unit: 'kg', timestamp: now.toISOString() },
+        { type: 'body_composition', value: 18.5, fatPercentage: 18.5, fatMassKg: 13.4, muscleMassKg: 54.2, boneMassKg: 3.2, waterPercentage: 58.2, timestamp: now.toISOString() },
+        { type: 'blood_pressure', systolic: 118, diastolic: 76, pulse: 64, value: 118, unit: 'mmHg', timestamp: now.toISOString() },
+      ];
+    } else if (pId === 'health_connect') {
+      sampleBatch = [
+        { type: 'steps', value: 9200, unit: 'steps', timestamp: now.toISOString() },
+        { type: 'heart_rate', value: 72, unit: 'bpm', timestamp: now.toISOString() },
+        { type: 'resting_heart_rate', value: 56, unit: 'bpm', timestamp: now.toISOString() },
+        { type: 'glucose', value: 5.4, unit: 'mmol/L', timestamp: now.toISOString() },
+        { type: 'basal_temperature', value: 36.6, unit: '°C', timestamp: now.toISOString() },
+        { type: 'respiratory_rate', value: 15, unit: 'breaths/min', timestamp: now.toISOString() },
+      ];
+    } else {
+      // Default: apple_health
+      sampleBatch = [
+        { type: 'heart_rate', value: 68, unit: 'bpm', timestamp: now.toISOString() },
+        { type: 'resting_heart_rate', value: 54, unit: 'bpm', timestamp: now.toISOString() },
+        { type: 'steps', value: 7850, unit: 'steps', timestamp: now.toISOString() },
+        { type: 'sleep_session', value: 7.8, durationMinutes: 468, deepSleepMinutes: 112, remSleepMinutes: 98, lightSleepMinutes: 210, awakeMinutes: 48, unit: 'hours', timestamp: now.toISOString() },
+        { type: 'blood_pressure', systolic: 120, diastolic: 78, pulse: 66, value: 120, unit: 'mmHg', timestamp: now.toISOString() },
+        { type: 'spo2', value: 98, unit: '%', timestamp: now.toISOString() },
+        { type: 'hrv', value: 52, unit: 'ms', timestamp: now.toISOString() },
+        { type: 'wrist_temperature', value: 0.1, baselineDeviationDegreesC: 0.1, unit: '°C', timestamp: now.toISOString() },
+        { type: 'nutrition_hydration', value: 2200, waterMl: 2200, caloriesKcal: 2100, proteinGrams: 95, carbsGrams: 240, fatGrams: 65, timestamp: now.toISOString() },
+      ];
+    }
+
+    const result = await integrationsService.executeAdapterPipeline(userId, pId, sampleBatch);
+    return res.json(result);
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err?.message });
   }
 });
 
@@ -999,7 +1685,8 @@ app.post('/api/ai/feedback', requireAuth, async (req: AuthenticatedRequest, res)
 
 app.post('/api/chat', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const { message, history, botRoleId, context } = req.body;
+    const { message, history, botRoleId, context, subjectProfileId } = req.body;
+    const userId = req.user!.id;
     const ai = getGeminiClient();
 
     const selectedRole = botRoleId || 'aida';
@@ -1033,9 +1720,25 @@ app.post('/api/chat', requireAuth, async (req: AuthenticatedRequest, res) => {
 
     const activeBot = botRoleConfig[selectedRole] || botRoleConfig.aida;
 
+    // Retrieve subject-scoped medical data from Canonical Backend Layer
+    const activeSubjId = subjectProfileId || context?.subjectProfileId;
+    const canonicalData = activeSubjId
+      ? await canonicalDataLayer.getSubjectHealthData(userId, activeSubjId)
+      : await canonicalDataLayer.getUserData(userId);
+
+    // Build context through AI Context Builder Pipeline (Rule 17)
+    // Pipeline: message → intent → active subject → permission filter → context query → normalization → rules/safety → compact context → LLM → response validation
+    const pipelineResult = aiContextBuilder.buildPipelineContext(canonicalData, {
+      requesterUserId: userId,
+      subjectProfileId: activeSubjId,
+      message,
+    });
+
+    const userSummary = pipelineResult.promptContextString;
+
     // Helper for smart fallback
     const fallbackResponse = () => {
-      const responseText = generateSmartHealthAdvice(message || '', context || {});
+      const responseText = generateSmartHealthAdvice(message || '', context || canonicalData);
       return sanitizeChatResponse(responseText);
     };
 
@@ -1043,9 +1746,7 @@ app.post('/api/chat', requireAuth, async (req: AuthenticatedRequest, res) => {
       return res.json({ text: fallbackResponse(), mode: 'rule_based', botName: activeBot.name });
     }
 
-    const userSummary = buildUserContextSummary(context || {});
-
-    const userName = context?.user?.fullName || req.user?.fullName || 'друг';
+    const userName = canonicalData?.profile?.fullName || context?.user?.fullName || req.user?.fullName || 'друг';
 
     const systemInstruction = `Имя бота: ${activeBot.name}. Роль: ${activeBot.title}. Имя пользователя: ${userName}.
 
@@ -1120,8 +1821,35 @@ ${userSummary}
         config: { systemInstruction },
       });
 
-      const replyText = response.text || fallbackResponse();
-      return res.json({ text: sanitizeChatResponse(replyText), mode: 'gemini', botName: activeBot.name });
+      const rawReply = sanitizeChatResponse(response.text || fallbackResponse());
+
+      // Pipeline Stage 9: Response Validation (Rule 17: No Fallback Invention)
+      const validation = aiContextBuilder.validateLlmResponse(rawReply, pipelineResult);
+      const replyText = validation.validatedResponseText;
+
+      // Rule 16: Auto-Detect Natural Language Health Facts & Create STAGED Candidates
+      let stagedCandidate = null;
+      const parsedFact = healthFactCandidateService.parseFactFromMessage(cleanUserMsg);
+
+      if (parsedFact && parsedFact.hasFact) {
+        stagedCandidate = await healthFactCandidateService.stageHealthFactCandidate(parsedFact, userId);
+      } else if (cleanUserMsg.toLowerCase().includes('доступ') && cleanUserMsg.toLowerCase().includes('@')) {
+        const emailMatch = cleanUserMsg.match(/([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+)/);
+        if (emailMatch) {
+          const targetEmail = emailMatch[1];
+          const stagedRes = await aiToolsService.executeTool('access.propose_grant', {
+            targetUserEmail: targetEmail,
+            scopes: ['labs', 'measurements'],
+            durationDays: 30,
+          }, { id: userId, email: req.user?.email || '' });
+
+          if (stagedRes.success && stagedRes.candidate) {
+            stagedCandidate = stagedRes.candidate;
+          }
+        }
+      }
+
+      return res.json({ text: replyText, mode: 'gemini', botName: activeBot.name, stagedCandidate });
     } catch (geminiError: any) {
       console.warn('Gemini generateContent error in chat, using smart fallback:', geminiError?.message || geminiError);
       return res.json({ text: fallbackResponse(), mode: 'rule_based_fallback', botName: activeBot.name });
@@ -1132,6 +1860,95 @@ ${userSummary}
       text: 'Я рядом. Произошёл небольшой сбой связи, но я сохранила твой вопрос. Задай его ещё раз или выбери одну из тем 🤍',
       mode: 'error_fallback',
       botName: 'Аида',
+    });
+  }
+});
+
+// ==========================================
+// LAB RESULTS STAGING PIPELINE ENDPOINTS
+// ==========================================
+
+// 1. Process document into staging pipeline (Validation, Quarantine, OCR, Classify, Owner match, Extract, Normalize, Confidence, Dedupe)
+app.post('/api/lab/staging/process', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user?.id || 'default_user';
+    const { fileBase64, mimeType, fileName } = req.body;
+
+    if (!fileBase64) {
+      return res.status(400).json({
+        success: false,
+        error: 'Отсутствуют данные файла (fileBase64)',
+      });
+    }
+
+    const stagingRecord = await labStagingService.processDocumentToStaging(
+      userId,
+      fileBase64,
+      mimeType || 'image/jpeg',
+      fileName || 'Исследование.jpg'
+    );
+
+    return res.json({
+      success: true,
+      stagingRecord,
+    });
+  } catch (err: any) {
+    console.error('Lab Staging Process Error:', err);
+    return res.status(500).json({
+      success: false,
+      error: 'Сбой при обработке документа в пайплайне',
+      message: err?.message || 'Не удалось обработать документ.',
+    });
+  }
+});
+
+// 2. Fetch active staging record
+app.get('/api/lab/staging/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const stagingRecord = labStagingService.getStagingRecord(req.params.id);
+    if (!stagingRecord) {
+      return res.status(404).json({ success: false, error: 'Запись staging не найдена' });
+    }
+    return res.json({ success: true, stagingRecord });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err?.message });
+  }
+});
+
+// 3. Final User Confirmation & Commit (Save to canonical history OR Explain only)
+app.post('/api/lab/staging/commit', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user?.id || 'default_user';
+    const {
+      stagingId,
+      targetProfileId,
+      mode,
+      duplicateAction,
+      correctedAnalytes,
+      documentMetadata,
+      stagingRecordFallback,
+    } = req.body;
+
+    const result = await labStagingService.commitStagingRecord(userId, {
+      stagingId,
+      targetProfileId: targetProfileId || `sp-primary-${userId}`,
+      mode: mode || 'commit_to_history',
+      duplicateAction: duplicateAction || 'create_duplicate',
+      correctedAnalytes,
+      documentMetadata,
+      stagingRecordFallback,
+    });
+
+    return res.json({
+      success: true,
+      ...result,
+    });
+  } catch (err: any) {
+    console.error('Lab Staging Commit Error:', err);
+    return res.status(500).json({
+      success: false,
+      error: 'Сбой сохранения результатов исследования',
+      message: err?.message || 'Не удалось сохранить результаты.',
     });
   }
 });
@@ -1548,6 +2365,630 @@ app.post('/api/ai/health-analysis', requireAuth, async (req: AuthenticatedReques
     console.warn('API health-analysis route fallback triggered:', error?.message || error);
     const { generateFallbackHealthAnalysis } = await import('./server/healthAnalyzer');
     return res.json({ success: true, analysis: generateFallbackHealthAnalysis(req.body), mode: 'rule_fallback' });
+  }
+});
+
+// ============================================================================
+// RULE 15: UNTRUSTED REASONING COMPONENT & TYPED BACKEND TOOLS ENDPOINTS
+// ============================================================================
+
+// 1. Get registry of 15 typed backend tools with policy levels and action classes
+app.get('/api/ai/tools/registry', requireAuth, (_req, res) => {
+  const tools = aiToolsService.getRegisteredTools();
+  res.json({
+    success: true,
+    policy: {
+      llmRole: 'Untrusted Reasoning Component',
+      policyLevels: {
+        1: 'READ / EXPLAIN / SUGGEST / ALERT (Auto-executed safely)',
+        2: 'STAGE (Creates candidate / proposal requiring human confirmation token)',
+        3: 'WRITE / SHARE (Requires valid user confirmation token)',
+        4: 'DELETE (Destructive action requiring explicit user confirmation token)',
+      },
+      directCrudAllowed: false,
+    },
+    tools,
+  });
+});
+
+// 2. Get pending staged candidates waiting for human confirmation
+app.get('/api/ai/candidates/pending', requireAuth, (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const candidates = aiToolsService.getPendingCandidates(userId);
+  res.json({ success: true, candidates });
+});
+
+// 3. Execute tool via untrusted LLM executor
+app.post('/api/ai/tools/execute', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { toolName, params } = req.body;
+    const executingUser = req.user!;
+
+    if (!toolName) {
+      return res.status(400).json({ success: false, message: 'toolName is required' });
+    }
+
+    const result = await aiToolsService.executeTool(toolName, params || {}, {
+      id: executingUser.id,
+      email: executingUser.email,
+    });
+
+    if (result.policyViolation) {
+      return res.status(403).json({
+        success: false,
+        policyViolation: true,
+        message: result.error,
+      });
+    }
+
+    if (!result.success) {
+      return res.status(400).json({ success: false, message: result.error });
+    }
+
+    res.json({ success: true, ...result });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: 'Tool execution error: ' + err.message });
+  }
+});
+
+// 4. User confirms a candidate with server-generated token
+app.post('/api/ai/candidates/confirm', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { candidateId, confirmationToken } = req.body;
+    const executingUser = req.user!;
+
+    if (!candidateId || !confirmationToken) {
+      return res.status(400).json({ success: false, message: 'candidateId and confirmationToken are required' });
+    }
+
+    const result = await aiToolsService.executeTool(
+      'candidate.confirm',
+      { candidateId, confirmationToken },
+      { id: executingUser.id, email: executingUser.email },
+      true // direct user action
+    );
+
+    if (!result.success) {
+      return res.status(400).json({ success: false, message: result.error });
+    }
+
+    res.json({ success: true, message: 'Кандидатная запись подтверждена пользователем и внесена в медкарту.', result });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: 'Confirmation error: ' + err.message });
+  }
+});
+
+// 5. User rejects a candidate
+app.post('/api/ai/candidates/reject', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { candidateId, confirmationToken, reason } = req.body;
+    const executingUser = req.user!;
+
+    if (!candidateId || !confirmationToken) {
+      return res.status(400).json({ success: false, message: 'candidateId and confirmationToken are required' });
+    }
+
+    const result = await aiToolsService.executeTool(
+      'candidate.reject',
+      { candidateId, confirmationToken, reason },
+      { id: executingUser.id, email: executingUser.email },
+      true
+    );
+
+    if (!result.success) {
+      return res.status(400).json({ success: false, message: result.error });
+    }
+
+    res.json({ success: true, message: 'Кандидатная запись успешно отклонена пользователем.', result });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: 'Rejection error: ' + err.message });
+  }
+});
+
+// 6. Inspect AI Context Builder Pipeline (Requirement 17)
+app.post('/api/ai/context/inspect', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { message, subjectProfileId } = req.body;
+    const userId = req.user!.id;
+
+    const canonicalData = subjectProfileId
+      ? await canonicalDataLayer.getSubjectHealthData(userId, subjectProfileId)
+      : await canonicalDataLayer.getUserData(userId);
+
+    const pipelineResult = aiContextBuilder.buildPipelineContext(canonicalData, {
+      requesterUserId: userId,
+      subjectProfileId,
+      message,
+    });
+
+    res.json({
+      success: true,
+      pipeline: {
+        stage1_intent: pipelineResult.intent,
+        stage2_activeSubject: pipelineResult.activeSubjectId,
+        stage3_permissionGranted: pipelineResult.permissionGranted,
+        stage3_permissionReason: pipelineResult.permissionReason,
+        stage4_evidenceCount: pipelineResult.evidenceItems.length,
+        stage4_evidenceItems: pipelineResult.evidenceItems,
+        stage5_isEmptyResult: pipelineResult.isEmptyResult,
+        stage6_safetyAlerts: pipelineResult.alerts,
+        stage7_promptContextString: pipelineResult.promptContextString,
+      },
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: 'Context inspection error: ' + err.message });
+  }
+});
+
+// 7. Rule 18: Audit, Provenance & Cascade Insight Invalidation Endpoints
+app.get('/api/audit/provenance-logs', requireAuth, (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const logs = auditProvenanceService.getAuditLogs(userId, 100);
+    res.json({ success: true, count: logs.length, logs });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: 'Audit log retrieval error: ' + err.message });
+  }
+});
+
+app.get('/api/ai/insights', requireAuth, (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const insights = auditProvenanceService.getInsights(userId);
+    res.json({ success: true, count: insights.length, insights });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: 'Insights retrieval error: ' + err.message });
+  }
+});
+
+app.post('/api/audit/mutate-record', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const userEmail = req.user!.email || '';
+    const { resourceType, resourceId, action, oldValue, newValue, reasonSource } = req.body;
+
+    if (!resourceId || !action) {
+      return res.status(400).json({ success: false, message: 'resourceId and action (UPDATE/DELETE) are required.' });
+    }
+
+    // 1. Record critical change in Audit Provenance Ledger
+    const auditRecord = await auditProvenanceService.recordCriticalChange({
+      userId,
+      resourceType: resourceType || 'measurement',
+      resourceId,
+      action: action.toUpperCase() as 'CREATE' | 'UPDATE' | 'DELETE',
+      oldValue: oldValue ?? { id: resourceId, status: 'active' },
+      newValue: newValue ?? (action === 'DELETE' ? null : { id: resourceId, status: 'updated' }),
+      actor: { id: userId, email: userEmail, role: 'user', name: 'Пользователь' },
+      reasonSource: reasonSource || (action === 'DELETE' ? 'USER_DELETE' : 'USER_MANUAL_EDIT'),
+    });
+
+    // 2. Query updated insights to see which ones were invalidated
+    const allInsights = auditProvenanceService.getInsights(userId);
+    const invalidatedInsights = allInsights.filter(
+      (i) => i.status === 'invalidated' && i.evidenceRecordIds.includes(resourceId)
+    );
+
+    res.json({
+      success: true,
+      message: `Запись [${resourceId}] ${action === 'DELETE' ? 'удалена' : 'обновлена'}. Зависимые инсайты ИИ инвалидированы.`,
+      auditRecord,
+      invalidatedInsightsCount: invalidatedInsights.length,
+      invalidatedInsights,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: 'Record mutation audit error: ' + err.message });
+  }
+});
+
+// 8. Rule 19: Family, Children, Guardians & Temporary Doctor Share Endpoints
+app.get('/api/family/child-profiles', requireAuth, (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const profiles = familyDoctorSharingService.getChildProfilesForGuardian(userId);
+    res.json({ success: true, count: profiles.length, profiles });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: 'Error retrieving child profiles: ' + err.message });
+  }
+});
+
+app.post('/api/family/child-profiles/create', requireAuth, (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const { fullName, birthDate, gender, guardianName } = req.body;
+
+    if (!fullName || !birthDate) {
+      return res.status(400).json({ success: false, message: 'fullName and birthDate are required.' });
+    }
+
+    const childProfile = familyDoctorSharingService.createChildProfile({
+      guardianUserId: userId,
+      guardianName: guardianName || req.user!.email || 'Опекун',
+      fullName,
+      birthDate,
+      gender: gender || 'male',
+    });
+
+    res.json({ success: true, message: `Детский профиль ${fullName} создан.`, childProfile });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: 'Error creating child profile: ' + err.message });
+  }
+});
+
+app.post('/api/family/child-profiles/add-guardian', requireAuth, (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const { childId, newGuardianUserId, newGuardianName, newGuardianEmailOrPhone, relationship } = req.body;
+
+    if (!childId || !newGuardianUserId || !newGuardianName) {
+      return res.status(400).json({ success: false, message: 'childId, newGuardianUserId, newGuardianName are required.' });
+    }
+
+    const updatedChild = familyDoctorSharingService.addGuardianToChildProfile({
+      childId,
+      requesterUserId: userId,
+      newGuardianUserId,
+      newGuardianName,
+      newGuardianEmailOrPhone,
+      relationship: relationship || 'father',
+    });
+
+    res.json({
+      success: true,
+      message: `Второй опекун ${newGuardianName} успешно добавлен в профиль ребенка.`,
+      childProfile: updatedChild,
+    });
+  } catch (err: any) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+});
+
+app.post('/api/family/child-profiles/transition-adult', requireAuth, (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const { childProfileId, newAdultUserId, newAdultEmail } = req.body;
+
+    if (!childProfileId || !newAdultUserId) {
+      return res.status(400).json({ success: false, message: 'childProfileId and newAdultUserId are required.' });
+    }
+
+    const result = familyDoctorSharingService.transitionChildToAdultProfile({
+      childProfileId,
+      requesterUserId: userId,
+      newAdultUserId,
+      newAdultEmail: newAdultEmail || 'adult@example.com',
+    });
+
+    res.json(result);
+  } catch (err: any) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+});
+
+app.post('/api/family/calculate-event-age', (req, res) => {
+  try {
+    const { birthDate, eventDate } = req.body;
+    if (!birthDate || !eventDate) {
+      return res.status(400).json({ success: false, message: 'birthDate and eventDate are required.' });
+    }
+
+    const age = calculateAgeAtDate(birthDate, eventDate);
+    res.json({ success: true, age });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: 'Error calculating age: ' + err.message });
+  }
+});
+
+app.post('/api/doctor/share/create', requireAuth, (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const {
+      targetSubjectProfileId,
+      targetSubjectName,
+      doctorName,
+      doctorEmail,
+      clinicName,
+      durationHours,
+      allowedScopes,
+      explicitSensitiveScopes,
+    } = req.body;
+
+    if (!doctorName) {
+      return res.status(400).json({ success: false, message: 'doctorName is required.' });
+    }
+
+    const doctorGrant = familyDoctorSharingService.createDoctorGrant({
+      ownerUserId: userId,
+      targetSubjectProfileId: targetSubjectProfileId || userId,
+      targetSubjectName,
+      doctorName,
+      doctorEmail,
+      clinicName,
+      durationHours: durationHours || 48,
+      allowedScopes,
+      explicitSensitiveScopes,
+    });
+
+    res.json({
+      success: true,
+      message: `Временный доступ для врача ${doctorName} создан (Код доступа: ${doctorGrant.accessCode}). Действителен до ${new Date(
+        doctorGrant.expiresAt
+      ).toLocaleString('ru-RU')}.`,
+      doctorGrant,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: 'Error creating doctor share: ' + err.message });
+  }
+});
+
+app.get('/api/doctor/share/list', requireAuth, (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const grants = familyDoctorSharingService.getDoctorGrantsByOwner(userId);
+    res.json({ success: true, count: grants.length, grants });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: 'Error listing doctor shares: ' + err.message });
+  }
+});
+
+app.post('/api/doctor/share/evaluate', (req, res) => {
+  try {
+    const { accessCode, requestedScope } = req.body;
+    if (!accessCode || !requestedScope) {
+      return res.status(400).json({ success: false, message: 'accessCode and requestedScope are required.' });
+    }
+
+    const evalResult = familyDoctorSharingService.evaluateDoctorAccess(accessCode, requestedScope);
+    res.json({ success: evalResult.allowed, ...evalResult });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: 'Error evaluating doctor access: ' + err.message });
+  }
+});
+
+app.post('/api/doctor/share/revoke', requireAuth, (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const { grantId } = req.body;
+
+    if (!grantId) {
+      return res.status(400).json({ success: false, message: 'grantId is required.' });
+    }
+
+    const success = familyDoctorSharingService.revokeDoctorGrant(userId, grantId);
+    res.json({
+      success,
+      message: success ? 'Доступ врача успешно и мгновенно отозван (Instant Revoke).' : 'Не удалось отозвать доступ.',
+    });
+  } catch (err: any) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+});
+
+// 9. Rule 20: Emergency Card, Safety Service, SOS Workflow, Fall Events & Location Freshness Endpoints
+app.get('/api/safety/emergency-card', requireAuth, (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const card = safetyEmergencyService.getEmergencyCard(userId);
+    res.json({ success: true, mode: 'deterministic_no_llm', card });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: 'Emergency card retrieval error: ' + err.message });
+  }
+});
+
+app.post('/api/safety/emergency-card/update', requireAuth, (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const updatedCard = safetyEmergencyService.updateEmergencyCard(userId, req.body);
+    res.json({ success: true, message: 'Экстренная карточка (Emergency Card) успешно обновлена.', card: updatedCard });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: 'Emergency card update error: ' + err.message });
+  }
+});
+
+app.post('/api/safety/metrics/evaluate', requireAuth, (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const alerts = safetyEmergencyService.evaluateMetricsSafety(userId, req.body);
+    res.json({ success: true, alertsCount: alerts.length, alerts });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: 'Metrics safety evaluation error: ' + err.message });
+  }
+});
+
+app.post('/api/safety/sos/trigger', requireAuth, (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const { source, reason } = req.body;
+    const sosRecord = safetyEmergencyService.triggerSOS({
+      userId,
+      source: source || 'user_button',
+      reason,
+    });
+    res.json({
+      success: true,
+      message: 'Активирован экстренный режим SOS! Оповещения отправлены доверенным контактам и экстренным службам.',
+      sosRecord,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: 'SOS trigger error: ' + err.message });
+  }
+});
+
+app.post('/api/safety/sos/resolve', requireAuth, (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const { sosId, reason } = req.body;
+    if (!sosId) {
+      return res.status(400).json({ success: false, message: 'sosId is required.' });
+    }
+    const resolvedRecord = safetyEmergencyService.resolveSOS(userId, sosId, reason);
+    res.json({ success: true, message: 'Диспетчеризация SOS успешно завершена.', sosRecord: resolvedRecord });
+  } catch (err: any) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+});
+
+app.post('/api/safety/fall-event', requireAuth, (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const { providerId, timestamp, impactGForce } = req.body;
+
+    if (!providerId) {
+      return res.status(400).json({ success: false, message: 'providerId is required.' });
+    }
+
+    const result = safetyEmergencyService.recordDeviceFallEvent({
+      userId,
+      providerId,
+      timestamp,
+      impactGForce,
+    });
+
+    res.json(result);
+  } catch (err: any) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+});
+
+app.post('/api/location/update', requireAuth, (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const { latitude, longitude, accuracyMeters, capturedAt, addressText } = req.body;
+
+    if (latitude === undefined || longitude === undefined) {
+      return res.status(400).json({ success: false, message: 'latitude and longitude are required.' });
+    }
+
+    const loc = safetyEmergencyService.saveLocationRecord({
+      userId,
+      latitude,
+      longitude,
+      accuracyMeters: accuracyMeters || 10,
+      capturedAt,
+      addressText,
+    });
+
+    res.json({ success: true, location: loc });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: 'Location update error: ' + err.message });
+  }
+});
+
+app.get('/api/location/latest', requireAuth, (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const location = safetyEmergencyService.getLatestLocation(userId);
+
+    if (!location) {
+      return res.json({ success: true, location: null, message: 'Геолокация не зафиксирована.' });
+    }
+
+    res.json({
+      success: true,
+      location,
+      isStale: location.isStale,
+      displayWarning: location.isStale
+        ? 'ВНИМАНИЕ: Геолокация устарела (зафиксирована более 15 минут назад) и НЕ МОЖЕТ отображаться как текущая!'
+        : null,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: 'Location retrieval error: ' + err.message });
+  }
+});
+
+// 10. Rule 21: Dental Domain Endpoints (Dental Chart, Findings, Procedures, Symptoms, Periodontal, Orthodontic, Visits, Imaging)
+app.get('/api/dental/summary', requireAuth, (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const dentitionType = (req.query.dentitionType as any) || 'permanent';
+    const summary = dentalService.getDentalSummary(userId, dentitionType);
+    res.json({ success: true, summary });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: 'Dental summary retrieval error: ' + err.message });
+  }
+});
+
+app.post('/api/dental/tooth/update', requireAuth, (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const { toothNumber, ...updates } = req.body;
+    if (!toothNumber) {
+      return res.status(400).json({ success: false, message: 'toothNumber is required.' });
+    }
+    const updated = dentalService.updateTooth(userId, Number(toothNumber), updates);
+    res.json({ success: true, message: `Карточка зуба ${toothNumber} обновлена.`, tooth: updated });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: 'Tooth update error: ' + err.message });
+  }
+});
+
+app.post('/api/dental/finding', requireAuth, (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const finding = dentalService.addFinding(userId, req.body);
+    res.json({ success: true, message: 'Стоматологическая находка добавлена.', finding });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: 'Dental finding creation error: ' + err.message });
+  }
+});
+
+app.post('/api/dental/procedure', requireAuth, (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const procedure = dentalService.addProcedure(userId, req.body);
+    res.json({ success: true, message: 'Стоматологическая процедура зафиксирована.', procedure });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: 'Dental procedure creation error: ' + err.message });
+  }
+});
+
+app.post('/api/dental/symptom', requireAuth, (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const symptom = dentalService.addSymptom(userId, req.body);
+    res.json({ success: true, message: 'Стоматологический симптом сохранен.', symptom });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: 'Dental symptom creation error: ' + err.message });
+  }
+});
+
+app.post('/api/dental/periodontal', requireAuth, (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const record = dentalService.addPeriodontalRecord(userId, req.body);
+    res.json({ success: true, message: 'Пародонтологическая запись сохранена.', record });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: 'Periodontal record creation error: ' + err.message });
+  }
+});
+
+app.post('/api/dental/orthodontic', requireAuth, (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const episode = dentalService.addOrthodonticEpisode(userId, req.body);
+    res.json({ success: true, message: 'Ортодонтический эпизод зафиксирован.', episode });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: 'Orthodontic episode creation error: ' + err.message });
+  }
+});
+
+app.post('/api/dental/visit', requireAuth, (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const visit = dentalService.addVisit(userId, req.body);
+    res.json({ success: true, message: 'Визит к стоматологу зафиксирован.', visit });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: 'Dental visit creation error: ' + err.message });
+  }
+});
+
+app.post('/api/dental/imaging', requireAuth, (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const imaging = dentalService.addImagingLink(userId, req.body);
+    res.json({ success: true, message: 'Ссылка на снимок (Dental Imaging) сохранена в защищенном контуре.', imaging });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: 'Dental imaging link creation error: ' + err.message });
   }
 });
 

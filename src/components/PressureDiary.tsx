@@ -511,117 +511,134 @@ export const PressureDiary: React.FC<PressureDiaryProps> = ({
 
         {/* Recharts Responsive Container */}
         <div className="h-72 sm:h-96 w-full pt-2">
-          <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart
-              data={filteredEntries}
-              margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" vertical={false} />
-              
-              <XAxis
-                dataKey="displayDate"
-                stroke="#9ca3af"
-                fontSize={11}
-                tickLine={false}
-                axisLine={{ stroke: '#374151' }}
-              />
-
-              {/* Left Y Axis for Pressure (mmHg) */}
-              <YAxis
-                yAxisId="bp"
-                domain={[50, 170]}
-                stroke="#9ca3af"
-                fontSize={11}
-                tickLine={false}
-                axisLine={{ stroke: '#374151' }}
-                unit=" мм"
-              />
-
-              {/* Right Y Axis for Pulse (bpm) */}
-              <YAxis
-                yAxisId="pulse"
-                orientation="right"
-                domain={[40, 130]}
-                stroke="#f59e0b"
-                fontSize={11}
-                tickLine={false}
-                axisLine={{ stroke: '#374151' }}
-                unit=" уд"
-              />
-
-              <Tooltip content={<CustomTooltip />} />
-
-              {/* Target Reference Lines */}
-              {showReferenceLines && (
-                <>
-                  <ReferenceLine
-                    yAxisId="bp"
-                    y={120}
-                    stroke="#10b981"
-                    strokeDasharray="4 4"
-                    strokeOpacity={0.6}
-                  />
-                  <ReferenceLine
-                    yAxisId="bp"
-                    y={80}
-                    stroke="#38bdf8"
-                    strokeDasharray="4 4"
-                    strokeOpacity={0.6}
-                  />
-                  <ReferenceLine
-                    yAxisId="bp"
-                    y={140}
-                    stroke="#ef4444"
-                    strokeDasharray="4 4"
-                    strokeOpacity={0.5}
-                  />
-                </>
-              )}
-
-              {/* Systolic Line */}
-              {showSystolic && (
-                <Line
-                  yAxisId="bp"
-                  type="monotone"
-                  dataKey="systolic"
-                  name="Систолическое АД"
-                  stroke="#34F5A4"
-                  strokeWidth={3}
-                  dot={{ r: 4, fill: '#34F5A4', strokeWidth: 0 }}
-                  activeDot={{ r: 7, fill: '#34F5A4', stroke: '#050A12', strokeWidth: 2 }}
+          {filteredEntries.length > 0 ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart
+                data={filteredEntries}
+                margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" vertical={false} />
+                
+                <XAxis
+                  dataKey="displayDate"
+                  stroke="#9ca3af"
+                  fontSize={11}
+                  tickLine={false}
+                  axisLine={{ stroke: '#374151' }}
                 />
-              )}
 
-              {/* Diastolic Line */}
-              {showDiastolic && (
-                <Line
+                {/* Left Y Axis for Pressure (mmHg) */}
+                <YAxis
                   yAxisId="bp"
-                  type="monotone"
-                  dataKey="diastolic"
-                  name="Диастолическое АД"
-                  stroke="#38bdf8"
-                  strokeWidth={2.5}
-                  dot={{ r: 3.5, fill: '#38bdf8', strokeWidth: 0 }}
-                  activeDot={{ r: 6, fill: '#38bdf8', stroke: '#050A12', strokeWidth: 2 }}
+                  domain={[50, 170]}
+                  stroke="#9ca3af"
+                  fontSize={11}
+                  tickLine={false}
+                  axisLine={{ stroke: '#374151' }}
+                  unit=" мм"
                 />
-              )}
 
-              {/* Pulse Line */}
-              {showPulse && (
-                <Line
+                {/* Right Y Axis for Pulse (bpm) */}
+                <YAxis
                   yAxisId="pulse"
-                  type="monotone"
-                  dataKey="pulse"
-                  name="Пульс"
+                  orientation="right"
+                  domain={[40, 130]}
                   stroke="#f59e0b"
-                  strokeWidth={2}
-                  strokeDasharray="4 4"
-                  dot={{ r: 3, fill: '#f59e0b', strokeWidth: 0 }}
-                  activeDot={{ r: 6, fill: '#f59e0b', stroke: '#050A12', strokeWidth: 2 }}
+                  fontSize={11}
+                  tickLine={false}
+                  axisLine={{ stroke: '#374151' }}
+                  unit=" уд"
                 />
-              )}
-            </ComposedChart>
-          </ResponsiveContainer>
+
+                <Tooltip content={<CustomTooltip />} />
+
+                {/* Target Reference Lines */}
+                {showReferenceLines && (
+                  <>
+                    <ReferenceLine
+                      yAxisId="bp"
+                      y={120}
+                      stroke="#10b981"
+                      strokeDasharray="4 4"
+                      strokeOpacity={0.6}
+                    />
+                    <ReferenceLine
+                      yAxisId="bp"
+                      y={80}
+                      stroke="#38bdf8"
+                      strokeDasharray="4 4"
+                      strokeOpacity={0.6}
+                    />
+                    <ReferenceLine
+                      yAxisId="bp"
+                      y={140}
+                      stroke="#ef4444"
+                      strokeDasharray="4 4"
+                      strokeOpacity={0.5}
+                    />
+                  </>
+                )}
+
+                {/* Systolic Line */}
+                {showSystolic && (
+                  <Line
+                    yAxisId="bp"
+                    type="monotone"
+                    dataKey="systolic"
+                    name="Систолическое АД"
+                    stroke="#34F5A4"
+                    strokeWidth={3}
+                    dot={{ r: 4, fill: '#34F5A4', strokeWidth: 0 }}
+                    activeDot={{ r: 7, fill: '#34F5A4', stroke: '#050A12', strokeWidth: 2 }}
+                  />
+                )}
+
+                {/* Diastolic Line */}
+                {showDiastolic && (
+                  <Line
+                    yAxisId="bp"
+                    type="monotone"
+                    dataKey="diastolic"
+                    name="Диастолическое АД"
+                    stroke="#38bdf8"
+                    strokeWidth={2.5}
+                    dot={{ r: 3.5, fill: '#38bdf8', strokeWidth: 0 }}
+                    activeDot={{ r: 6, fill: '#38bdf8', stroke: '#050A12', strokeWidth: 2 }}
+                  />
+                )}
+
+                {/* Pulse Line */}
+                {showPulse && (
+                  <Line
+                    yAxisId="pulse"
+                    type="monotone"
+                    dataKey="pulse"
+                    name="Пульс"
+                    stroke="#f59e0b"
+                    strokeWidth={2}
+                    strokeDasharray="4 4"
+                    dot={{ r: 3, fill: '#f59e0b', strokeWidth: 0 }}
+                    activeDot={{ r: 6, fill: '#f59e0b', stroke: '#050A12', strokeWidth: 2 }}
+                  />
+                )}
+              </ComposedChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-full flex flex-col items-center justify-center text-center p-6 bg-[#090B10] border border-white/[0.04] rounded-2xl space-y-3">
+              <Activity className="w-10 h-10 text-white/20" />
+              <div className="space-y-1">
+                <p className="text-sm font-bold text-white/70">Замеры давления за период отсутствуют</p>
+                <p className="text-xs text-white/40">Добавьте первый замер, чтобы увидеть динамику АД и пульса</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsModalOpen(true)}
+                className="px-4 py-2 bg-[#8968FF] text-white text-xs font-bold rounded-xl hover:bg-[#7854f7] transition-all cursor-pointer shadow-md"
+              >
+                + Внести замер
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Medical Legend Note */}
