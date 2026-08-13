@@ -637,7 +637,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0A0B0D] text-gray-100 font-sans flex flex-col selection:bg-emerald-500/20 selection:text-emerald-300">
+    <div className={`min-h-screen flex flex-col ${currentScreen === 'start' || currentScreen === 'auth' ? '' : 'aida-app-shell bg-[#f6f7fa]'}`}>
       {/* Top Header & Mobile Navigation (Only for logged-in inside app screens) */}
       {currentScreen !== 'start' && currentScreen !== 'auth' && user.isAuthenticated && (
         <Navigation
@@ -667,7 +667,7 @@ export default function App() {
       )}
 
       {/* Main Screen Router Content */}
-      <main className={currentScreen === 'start' || currentScreen === 'auth' ? 'flex-1 w-full flex flex-col' : 'flex-1 max-w-[1320px] w-full mx-auto px-3 sm:px-6 pt-4 sm:pt-6 pb-28 sm:pb-24'}>
+      <main className={currentScreen === 'start' || currentScreen === 'auth' ? 'flex-1 w-full flex flex-col' : 'flex-1 w-full aida-app-main'}>
         {/* GATE / AUTH SCREEN */}
         {currentScreen === 'auth' && (
           <AuthScreen
