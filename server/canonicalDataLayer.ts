@@ -40,7 +40,6 @@ export interface WearableIngestPayload {
   };
 }
 
-// Abstraction for Storage Adapters (PostgreSQL/YDB, Google Sheets, In-Memory)
 export interface MedicalStorageAdapter {
   name: string;
   getUserData(userId: string): Promise<CanonicalUserData | null>;
@@ -48,7 +47,6 @@ export interface MedicalStorageAdapter {
   deleteUserData(userId: string, email?: string): Promise<void>;
 }
 
-// In-Memory Storage Adapter Fallback
 class InMemoryMedicalStorageAdapter implements MedicalStorageAdapter {
   name = 'InMemoryStorageAdapter';
   private store = new Map<string, CanonicalUserData>();
@@ -63,13 +61,10 @@ class InMemoryMedicalStorageAdapter implements MedicalStorageAdapter {
 
   async deleteUserData(userId: string, email?: string): Promise<void> {
     this.store.delete(userId);
-    if (email) {
-      this.store.delete(email);
-    }
+    if (email) this.store.delete(email);
   }
 }
 
-// PostgreSQL / YDB Storage Adapter Implementation
 class PostgresYdbMedicalStorageAdapter implements MedicalStorageAdapter {
   name = 'PostgresYdbStorageAdapter';
 
@@ -89,23 +84,17 @@ class PostgresYdbMedicalStorageAdapter implements MedicalStorageAdapter {
   }
 }
 
-// Google Sheets Storage Adapter Implementation (Server-to-Server)
-// Decouples business logic from Google Sheets tab names / row indices
 class GoogleSheetsMedicalStorageAdapter implements MedicalStorageAdapter {
   name = 'GoogleSheetsStorageAdapter';
 
   private getScriptUrl(): string | null {
     const url = process.env.GOOGLE_SHEETS_WEB_APP_URL;
-    if (url && url.startsWith('https://script.google.com/')) {
-      return url;
-    }
-    return null;
+    return url && url.startsWith('https://script.google.com/') ? url : null;
   }
 
   async getUserData(userId: string): Promise<CanonicalUserData | null> {
     const webAppUrl = this.getScriptUrl();
     if (!webAppUrl) return null;
-
     try {
       const response = await fetch(webAppUrl, {
         method: 'POST',
@@ -113,9 +102,7 @@ class GoogleSheetsMedicalStorageAdapter implements MedicalStorageAdapter {
         body: JSON.stringify({ action: 'getUserData', userId }),
       });
       const resData = await response.json();
-      if (resData?.success && resData?.data) {
-        return resData.data as CanonicalUserData;
-      }
+      if (resData?.success && resData?.data) return resData.data as CanonicalUserData;
     } catch (err) {
       console.warn('[GoogleSheetsStorageAdapter] Read error:', err);
     }
@@ -125,16 +112,11 @@ class GoogleSheetsMedicalStorageAdapter implements MedicalStorageAdapter {
   async saveUserData(userId: string, data: CanonicalUserData): Promise<void> {
     const webAppUrl = this.getScriptUrl();
     if (!webAppUrl) return;
-
     try {
       await fetch(webAppUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'saveUserData',
-          userId,
-          payload: data,
-        }),
+        body: JSON.stringify({ action: 'saveUserData', userId, payload: data }),
       });
     } catch (err) {
       console.warn('[GoogleSheetsStorageAdapter] Write error:', err);
@@ -144,16 +126,11 @@ class GoogleSheetsMedicalStorageAdapter implements MedicalStorageAdapter {
   async deleteUserData(userId: string, email?: string): Promise<void> {
     const webAppUrl = this.getScriptUrl();
     if (!webAppUrl) return;
-
     try {
       await fetch(webAppUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'deleteUserAccount',
-          userId,
-          payload: { email },
-        }),
+        body: JSON.stringify({ action: 'deleteUserAccount', userId, payload: { email } }),
       });
     } catch (err) {
       console.warn('[GoogleSheetsStorageAdapter] Delete error:', err);
@@ -161,51 +138,29 @@ class GoogleSheetsMedicalStorageAdapter implements MedicalStorageAdapter {
   }
 }
 
-// Canonical Data Layer orchestrates storage adapters & standardizes medical schemas
 export class CanonicalDataLayer {
   private inMemoryAdapter = new InMemoryMedicalStorageAdapter();
   private postgresAdapter = new PostgresYdbMedicalStorageAdapter();
   private sheetsAdapter = new GoogleSheetsMedicalStorageAdapter();
 
-  /**
-   * Retrieves canonical user medical data from configured storage adapters in priority sequence:
-   * 1. PostgreSQL / YDB
-   * 2. Google Sheets
-   * 3. In-Memory fallback
-   */
   async getUserData(userId: string): Promise<CanonicalUserData> {
     let data: CanonicalUserData | null = null;
-
-    if (isPostgresConfigured()) {
-      data = await this.postgresAdapter.getUserData(userId);
-    }
-
-    if (!data || Object.keys(data).length === 0) {
-      data = await this.sheetsAdapter.getUserData(userId);
-    }
-
-    if (!data || Object.keys(data).length === 0) {
-      data = await this.inMemoryAdapter.getUserData(userId);
-    }
-
+    if (isPostgresConfigured()) data = await this.postgresAdapter.getUserData(userId);
+    if (!data || Object.keys(data).length === 0) data = await this.sheetsAdapter.getUserData(userId);
+    if (!data || Object.keys(data).length === 0) data = await this.inMemoryAdapter.getUserData(userId);
     return this.normalizeCanonicalData(data || {});
   }
 
-  /**
-   * Filter health data strictly by subject_profile_id (Self, Child, Relative)
-   */
   async getSubjectHealthData(userId: string, subjectProfileId?: string): Promise<CanonicalUserData> {
     const fullData = await this.getUserData(userId);
     if (!subjectProfileId) return fullData;
 
     const primarySubjectId = `sp-primary-${userId}`;
-
     const filterCollection = (collection: any[]) => {
       if (!Array.isArray(collection)) return [];
       return collection.filter((item) => {
         if (!item) return false;
         if (!item.subject_profile_id) {
-          // Legacy or unassigned items belong to primary profile
           return subjectProfileId === primarySubjectId || subjectProfileId === 'sp-default' || subjectProfileId === 'default';
         }
         return item.subject_profile_id === subjectProfileId;
@@ -223,12 +178,8 @@ export class CanonicalDataLayer {
     };
   }
 
-  /**
-   * Save medical data through storage adapters
-   */
   async saveUserData(userId: string, payload: Partial<CanonicalUserData>): Promise<CanonicalUserData> {
     const currentData = await this.getUserData(userId);
-
     const updatedData: CanonicalUserData = {
       profile: payload.profile !== undefined ? payload.profile : currentData.profile,
       subjectProfiles: payload.subjectProfiles !== undefined ? payload.subjectProfiles : currentData.subjectProfiles,
@@ -240,56 +191,51 @@ export class CanonicalDataLayer {
       reminders: payload.reminders !== undefined ? payload.reminders : currentData.reminders,
       aiAnalysis: payload.aiAnalysis !== undefined ? payload.aiAnalysis : currentData.aiAnalysis,
       wearablesSyncs: payload.wearablesSyncs !== undefined ? payload.wearablesSyncs : currentData.wearablesSyncs,
+      connectedSources: payload.connectedSources !== undefined ? payload.connectedSources : currentData.connectedSources,
+      devices: payload.devices !== undefined ? payload.devices : currentData.devices,
       onboardingState: payload.onboardingState !== undefined ? payload.onboardingState : currentData.onboardingState,
       puzzleConfig: payload.puzzleConfig !== undefined ? payload.puzzleConfig : currentData.puzzleConfig,
       updatedAt: new Date().toISOString(),
     };
 
     const normalized = this.normalizeCanonicalData(updatedData);
-
-    // Save to primary and fallback storage adapters
-    if (isPostgresConfigured()) {
-      await this.postgresAdapter.saveUserData(userId, normalized);
-    }
+    if (isPostgresConfigured()) await this.postgresAdapter.saveUserData(userId, normalized);
     await this.sheetsAdapter.saveUserData(userId, normalized);
     await this.inMemoryAdapter.saveUserData(userId, normalized);
-
     return normalized;
   }
 
-  /**
-   * Delete user medical data across all adapters
-   */
   async deleteUserData(userId: string, email?: string): Promise<void> {
     await this.postgresAdapter.deleteUserData(userId, email);
     await this.sheetsAdapter.deleteUserData(userId, email);
     await this.inMemoryAdapter.deleteUserData(userId, email);
   }
 
-  /**
-   * Ingest telemetry from Wearable devices (smartwatches, monitors)
-   * Wearables do NOT write directly to UI or raw tables — they go through Backend Canonical Layer
-   */
   async ingestWearableData(userId: string, payload: WearableIngestPayload): Promise<CanonicalUserData> {
     const currentData = await this.getUserData(userId);
     const nowIso = payload.timestamp || new Date().toISOString();
     const dateStr = nowIso.slice(0, 10);
-    const timeStr = nowIso.slice(11, 16) || '12:00';
+    const timeStr = nowIso.slice(11, 16) || null;
     const subjId = payload.subjectProfileId || `sp-primary-${userId}`;
+    const metrics = payload.metrics || {};
 
     const newSyncEvent = {
       id: `wearable-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
       subject_profile_id: subjId,
       source: payload.source,
-      deviceModel: payload.deviceModel || 'Smart Tracker',
+      deviceModel: payload.deviceModel || null,
       timestamp: nowIso,
-      metrics: payload.metrics,
+      metrics,
     };
-
     const updatedWearablesSyncs = [newSyncEvent, ...(currentData.wearablesSyncs || [])].slice(0, 50);
 
     let updatedPressureLogs = [...(currentData.pressureLogs || [])];
-    if (payload.metrics.systolicBp || payload.metrics.diastolicBp || payload.metrics.pulseBpm) {
+    const hasSystolic = metrics.systolicBp !== undefined && metrics.systolicBp !== null;
+    const hasDiastolic = metrics.diastolicBp !== undefined && metrics.diastolicBp !== null;
+    const hasPulse = metrics.pulseBpm !== undefined && metrics.pulseBpm !== null;
+    const hasHeartRate = metrics.heartRateBpm !== undefined && metrics.heartRateBpm !== null;
+
+    if (hasSystolic || hasDiastolic || hasPulse || hasHeartRate) {
       const newBpLog = {
         id: `press-wearable-${Date.now()}`,
         subject_profile_id: subjId,
@@ -297,36 +243,44 @@ export class CanonicalDataLayer {
         date: dateStr,
         displayDate: dateStr,
         time: timeStr,
-        systolic: payload.metrics.systolicBp || 120,
-        diastolic: payload.metrics.diastolicBp || 80,
-        pulse: payload.metrics.pulseBpm || payload.metrics.heartRateBpm || 72,
+        systolic: hasSystolic ? metrics.systolicBp : null,
+        diastolic: hasDiastolic ? metrics.diastolicBp : null,
+        pulse: hasPulse ? metrics.pulseBpm : hasHeartRate ? metrics.heartRateBpm : null,
+        source: payload.source,
+        deviceModel: payload.deviceModel || null,
+        data_state: hasSystolic && hasDiastolic ? 'available' : 'partial',
         notes: `Авто-импорт с носимого устройства (${payload.source})`,
       };
       updatedPressureLogs = [newBpLog, ...updatedPressureLogs];
     }
 
     let updatedDailyLogs = [...(currentData.dailyLogs || [])];
-    if (payload.metrics.sleepHours || payload.metrics.stressScore) {
+    const hasSleep = metrics.sleepHours !== undefined && metrics.sleepHours !== null;
+    const hasStress = metrics.stressScore !== undefined && metrics.stressScore !== null;
+
+    if (hasSleep || hasStress) {
       const existingTodayIndex = updatedDailyLogs.findIndex(
         (l) => l.date === dateStr && l.subject_profile_id === subjId
       );
+      const measuredPatch: Record<string, any> = {};
+      if (hasSleep) measuredPatch.sleep = metrics.sleepHours;
+      if (hasStress) measuredPatch.stress = metrics.stressScore;
 
       if (existingTodayIndex >= 0) {
         updatedDailyLogs[existingTodayIndex] = {
           ...updatedDailyLogs[existingTodayIndex],
-          sleep: payload.metrics.sleepHours ?? updatedDailyLogs[existingTodayIndex].sleep,
-          stress: payload.metrics.stressScore ?? updatedDailyLogs[existingTodayIndex].stress,
+          ...measuredPatch,
+          source: updatedDailyLogs[existingTodayIndex].source || payload.source,
         };
       } else {
         updatedDailyLogs.unshift({
           id: `daily-wearable-${Date.now()}`,
           date: dateStr,
+          timestamp: nowIso,
           subject_profile_id: subjId,
-          energy: 7,
-          sleep: payload.metrics.sleepHours || 8,
-          stress: payload.metrics.stressScore || 3,
-          mood: 'нормальное',
-          has_pain: false,
+          source: payload.source,
+          deviceModel: payload.deviceModel || null,
+          ...measuredPatch,
         });
       }
     }
@@ -350,9 +304,11 @@ export class CanonicalDataLayer {
       reminders: Array.isArray(raw.reminders) ? raw.reminders : [],
       aiAnalysis: raw.aiAnalysis || null,
       wearablesSyncs: Array.isArray(raw.wearablesSyncs) ? raw.wearablesSyncs : [],
+      connectedSources: Array.isArray(raw.connectedSources) ? raw.connectedSources : [],
+      devices: Array.isArray(raw.devices) ? raw.devices : [],
       onboardingState: raw.onboardingState || null,
       puzzleConfig: Array.isArray(raw.puzzleConfig) ? raw.puzzleConfig : [],
-      updatedAt: raw.updatedAt || new Date().toISOString(),
+      updatedAt: raw.updatedAt || null,
     };
   }
 }
