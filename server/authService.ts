@@ -1,10 +1,14 @@
-import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
-import { AccountEntity, ProfileEntity } from './schema';
 import { canonicalDataLayer } from './canonicalDataLayer';
 
-const JWT_SECRET = process.env.SESSION_SECRET || process.env.JWT_SECRET || 'helt_aida_secure_session_secret_2026';
+function getJwtSecret(): string {
+  const secret = process.env.SESSION_SECRET || process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error('SESSION_SECRET or JWT_SECRET must be configured before creating authenticated sessions');
+  }
+  return secret;
+}
 
 export interface UserSessionInfo {
   sessionId: string;
@@ -25,6 +29,11 @@ export interface PasswordRecoveryRecord {
   attempts: number;
 }
 
+export interface RecoveryRequestResult {
+  expiresAt: number;
+  deliveryRequired: true;
+}
+
 export interface OnboardingStatus {
   isCompleted: boolean;
   currentStep: string;
@@ -40,13 +49,10 @@ export interface FeatureFlags {
 }
 
 export class AuthService {
-  private sessions = new Map<string, UserSessionInfo>(); // sessionId -> UserSessionInfo
-  private userSessionsMap = new Map<string, Set<string>>(); // userId -> Set of sessionIds
-  private recoveryRequests = new Map<string, PasswordRecoveryRecord>(); // emailOrPhone -> record
+  private sessions = new Map<string, UserSessionInfo>();
+  private userSessionsMap = new Map<string, Set<string>>();
+  private recoveryRequests = new Map<string, PasswordRecoveryRecord>();
 
-  /**
-   * Helper to parse user agent into a friendly device string
-   */
   private parseDeviceName(userAgent: string): string {
     if (!userAgent) return 'Неизвестное устройство';
     if (userAgent.includes('iPhone') || userAgent.includes('iPad')) return 'Apple iOS Device';
@@ -57,25 +63,28 @@ export class AuthService {
     return 'Веб-браузер';
   }
 
-  /**
-   * Create new authenticated session
-   */
-  public createSession(userId: string, reqContext: { ip: string; userAgent: string; email: string; fullName?: string }): UserSessionInfo {
-    const sessionId = `sess-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  public createSession(
+    userId: string,
+    reqContext: { ip: string; userAgent: string; email: string; fullName?: string }
+  ): UserSessionInfo {
+    if (!userId || !reqContext.email) {
+      throw new Error('Cannot create an authenticated session without a real user id and email');
+    }
+
+    const sessionId = `sess-${crypto.randomUUID()}`;
     const token = jwt.sign(
       { id: userId, email: reqContext.email, fullName: reqContext.fullName, sessionId },
-      JWT_SECRET,
+      getJwtSecret(),
       { expiresIn: '7d' }
     );
 
-    const deviceName = this.parseDeviceName(reqContext.userAgent);
     const session: UserSessionInfo = {
       sessionId,
       userId,
       token,
-      ipAddress: reqContext.ip || '127.0.0.1',
+      ipAddress: reqContext.ip || '',
       userAgent: reqContext.userAgent || '',
-      deviceName,
+      deviceName: this.parseDeviceName(reqContext.userAgent || ''),
       createdAt: new Date().toISOString(),
       lastActiveAt: new Date().toISOString(),
       isRevoked: false,
@@ -92,13 +101,16 @@ export class AuthService {
   }
 
   /**
-   * Request password recovery OTP code
+   * Creates a recovery challenge without returning the raw OTP to API callers.
+   * The delivery layer must send the raw code to the verified destination.
    */
-  public requestRecovery(emailOrPhone: string): { code: string; expiresAt: number } {
+  public requestRecovery(emailOrPhone: string): RecoveryRequestResult {
     const norm = emailOrPhone.trim().toLowerCase();
-    const rawCode = Math.floor(100000 + Math.random() * 900000).toString();
+    if (!norm) throw new Error('Email или телефон обязателен');
+
+    const rawCode = crypto.randomInt(100000, 1000000).toString();
     const codeHash = crypto.createHash('sha256').update(rawCode).digest('hex');
-    const expiresAt = Date.now() + 15 * 60 * 1000; // 15 min TTL
+    const expiresAt = Date.now() + 15 * 60 * 1000;
 
     this.recoveryRequests.set(norm, {
       emailOrPhone: norm,
@@ -107,65 +119,59 @@ export class AuthService {
       attempts: 0,
     });
 
-    return { code: rawCode, expiresAt };
+    // Intentionally do not expose rawCode. A mail/SMS adapter must deliver it.
+    return { expiresAt, deliveryRequired: true };
   }
 
   /**
-   * Confirm password recovery and set new password
+   * Validates recovery challenge. Password persistence belongs to the account store.
    */
-  public async confirmRecovery(emailOrPhone: string, code: string, newPassword: string): Promise<boolean> {
+  public async confirmRecovery(emailOrPhone: string, code: string, _newPassword: string): Promise<boolean> {
     const norm = emailOrPhone.trim().toLowerCase();
     const record = this.recoveryRequests.get(norm);
 
     if (!record || Date.now() > record.expiresAt) {
+      this.recoveryRequests.delete(norm);
       throw new Error('Срок действия кода восстановления истёк или код не запрашивался');
     }
 
     if (record.attempts >= 3) {
+      this.recoveryRequests.delete(norm);
       throw new Error('Превышено количество попыток ввода кода восстановления');
     }
 
     const inputHash = crypto.createHash('sha256').update(code.trim()).digest('hex');
-    if (inputHash !== record.codeHash) {
+    const expected = Buffer.from(record.codeHash, 'hex');
+    const actual = Buffer.from(inputHash, 'hex');
+    const matches = expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
+
+    if (!matches) {
       record.attempts += 1;
-      throw new Error(`Неверный код восстановления. Осталось попыток: ${3 - record.attempts}`);
+      if (record.attempts >= 3) this.recoveryRequests.delete(norm);
+      throw new Error(`Неверный код восстановления. Осталось попыток: ${Math.max(0, 3 - record.attempts)}`);
     }
 
-    // OTP validated - clear recovery record
     this.recoveryRequests.delete(norm);
     return true;
   }
 
-  /**
-   * Revoke single session or device (lost device scenario)
-   */
   public revokeSession(userId: string, sessionIdToRevoke: string): boolean {
     const session = this.sessions.get(sessionIdToRevoke);
-    if (session && session.userId === userId) {
-      session.isRevoked = true;
-      this.sessions.delete(sessionIdToRevoke);
-      
-      const userSet = this.userSessionsMap.get(userId);
-      if (userSet) {
-        userSet.delete(sessionIdToRevoke);
-      }
-      return true;
-    }
-    return false;
+    if (!session || session.userId !== userId) return false;
+
+    session.isRevoked = true;
+    this.sessions.delete(sessionIdToRevoke);
+    this.userSessionsMap.get(userId)?.delete(sessionIdToRevoke);
+    return true;
   }
 
-  /**
-   * Revoke all user sessions except current (or all sessions)
-   */
   public revokeAllSessions(userId: string, keepCurrentSessionId?: string): number {
     const sessionIds = this.userSessionsMap.get(userId);
     if (!sessionIds) return 0;
 
     let revokedCount = 0;
     for (const sid of Array.from(sessionIds)) {
-      if (keepCurrentSessionId && sid === keepCurrentSessionId) {
-        continue;
-      }
+      if (keepCurrentSessionId && sid === keepCurrentSessionId) continue;
       const session = this.sessions.get(sid);
       if (session) {
         session.isRevoked = true;
@@ -174,62 +180,87 @@ export class AuthService {
       sessionIds.delete(sid);
       revokedCount++;
     }
-
     return revokedCount;
   }
 
+  public isSessionActive(sessionId: string, userId?: string): boolean {
+    const session = this.sessions.get(sessionId);
+    if (!session || session.isRevoked) return false;
+    return !userId || session.userId === userId;
+  }
+
+  public touchSession(sessionId: string): boolean {
+    const session = this.sessions.get(sessionId);
+    if (!session || session.isRevoked) return false;
+    session.lastActiveAt = new Date().toISOString();
+    return true;
+  }
+
   /**
-   * Build complete GET /session payload
+   * Builds GET /session without fabricating email, dates, names, verification,
+   * profile identifiers or family members when source records are missing.
    */
   public async buildSessionResponse(userId: string, currentToken?: string, activeSubjectProfileId?: string) {
     const userData = await canonicalDataLayer.getUserData(userId);
     const profile = userData?.profile || {};
 
-    const account: AccountEntity = {
+    const account = {
       id: userId,
-      email: profile.email || `${userId}@heltaida.local`,
-      fullName: profile.fullName || 'Пользователь',
-      passwordHash: '***',
-      isVerified: profile.isVerified ?? true,
-      mfaEnabled: false,
-      createdAt: profile.createdAt || new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      email: profile.email ?? null,
+      fullName: profile.fullName ?? profile.name ?? null,
+      isVerified: profile.isVerified === true,
+      mfaEnabled: profile.mfaEnabled === true,
+      createdAt: profile.createdAt ?? null,
+      updatedAt: userData?.updatedAt ?? null,
     };
 
-    // Profiles linked to account
-    const availableProfiles: ProfileEntity[] = [
-      {
-        id: 'self',
-        accountId: userId,
-        type: 'self',
-        fullName: profile.fullName || 'Главный профиль',
-        relationship: 'Self',
-        birthDate: profile.birthDate,
-        gender: profile.gender,
-        bloodType: profile.bloodType,
-        heightCm: profile.heightCm,
-        weightKg: profile.weightKg,
-        createdAt: profile.createdAt || new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      },
-      ...((userData?.subjectProfiles || (userData as any)?.familyProfiles || [])).map((p: any) => ({
-        id: p.id || `prof-${Math.random().toString(36).substring(2, 7)}`,
-        accountId: userId,
-        type: p.type || 'relative',
-        fullName: p.fullName || p.name || 'Член семьи',
-        relationship: p.relationship || 'Родственник',
-        birthDate: p.birthDate,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      })),
-    ];
+    const selfProfile = {
+      id: `sp-primary-${userId}`,
+      accountId: userId,
+      type: 'self' as const,
+      fullName: profile.fullName ?? profile.name ?? null,
+      relationship: 'self',
+      birthDate: profile.birthDate ?? null,
+      gender: profile.gender ?? null,
+      bloodType: profile.bloodType ?? null,
+      heightCm: profile.heightCm ?? profile.height ?? null,
+      weightKg: profile.weightKg ?? profile.weight ?? null,
+      createdAt: profile.createdAt ?? null,
+      updatedAt: userData?.updatedAt ?? null,
+    };
 
-    const activeProfile = availableProfiles.find((p) => p.id === activeSubjectProfileId) || availableProfiles[0];
+    const storedRelatedProfiles = Array.isArray(userData?.subjectProfiles)
+      ? userData.subjectProfiles
+      : Array.isArray((userData as any)?.familyProfiles)
+        ? (userData as any).familyProfiles
+        : [];
+
+    const relatedProfiles = storedRelatedProfiles
+      .filter((p: any) => p?.id)
+      .map((p: any) => ({
+        id: p.id,
+        accountId: userId,
+        type: p.type ?? null,
+        fullName: p.fullName ?? p.name ?? null,
+        relationship: p.relationship ?? null,
+        birthDate: p.birthDate ?? null,
+        gender: p.gender ?? null,
+        createdAt: p.createdAt ?? null,
+        updatedAt: p.updatedAt ?? null,
+      }));
+
+    const availableProfiles = [selfProfile, ...relatedProfiles];
+    const activeProfile =
+      availableProfiles.find((p) => p.id === activeSubjectProfileId) || selfProfile;
 
     const onboardingStatus: OnboardingStatus = {
       isCompleted: Boolean(profile.fullName && profile.birthDate),
-      currentStep: profile.fullName ? 'completed' : 'profile_setup',
-      completedSteps: ['registration', 'consents', profile.fullName ? 'profile_setup' : ''].filter(Boolean),
+      currentStep: profile.fullName && profile.birthDate ? 'completed' : 'profile_setup',
+      completedSteps: [
+        'registration',
+        ...(profile.consentPersonalData === true && profile.consentMedicalData === true ? ['consents'] : []),
+        ...(profile.fullName && profile.birthDate ? ['profile_setup'] : []),
+      ],
     };
 
     const featureFlags: FeatureFlags = {
@@ -240,7 +271,6 @@ export class AuthService {
       enableMFA: false,
     };
 
-    // Get active session list for lost-device management
     const userSessionIds = Array.from(this.userSessionsMap.get(userId) || []);
     const activeSessions = userSessionIds
       .map((sid) => this.sessions.get(sid))
@@ -248,7 +278,7 @@ export class AuthService {
       .map((s) => ({
         sessionId: s.sessionId,
         deviceName: s.deviceName,
-        ipAddress: s.ipAddress,
+        ipAddress: s.ipAddress || null,
         isCurrent: Boolean(currentToken && s.token === currentToken),
         createdAt: s.createdAt,
         lastActiveAt: s.lastActiveAt,
