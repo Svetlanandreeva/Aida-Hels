@@ -35,7 +35,6 @@ jobs:
           docker rm -f aida-smoke >/dev/null 2>&1 || true
           docker run -d --name aida-smoke \
             -p 18080:8080 \
-            -e PORT=8080 \
             -e NODE_ENV=production \
             -e JWT_SECRET=ci-smoke-test-secret-not-for-production \
             "$IMAGE"
