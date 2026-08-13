@@ -1,6 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { canonicalDataLayer } from './canonicalDataLayer';
-import { permissionService } from './permissionService';
+import { permissionService, PermissionScope } from './permissionService';
 import { familyDoctorSharingService } from './familyDoctorSharingService';
 import { safetyEmergencyService } from './safetyEmergencyService';
 import { dentalService } from './dentalService';
@@ -13,10 +13,18 @@ import { auditProvenanceService } from './auditProvenanceService';
 
 export const v1ApiRouter = Router();
 
-// In-Memory Session Active Profile Map: userId -> activeProfileId
 const activeProfileSessionMap = new Map<string, string>();
 
-// Helper for unified success responses
+type ApiErrorCode =
+  | 'UNAUTHORIZED'
+  | 'NOT_FOUND'
+  | 'BAD_REQUEST'
+  | 'INTERNAL_ERROR'
+  | 'PERMISSION_DENIED'
+  | 'INVALID_INPUT'
+  | 'NOT_IMPLEMENTED'
+  | 'SUBJECT_STORAGE_NOT_READY';
+
 export function sendSuccess(res: Response, data: any, meta: any = {}, statusCode = 200) {
   return res.status(statusCode).json({
     success: true,
@@ -29,879 +37,505 @@ export function sendSuccess(res: Response, data: any, meta: any = {}, statusCode
   });
 }
 
-// Helper for unified error responses
 export function sendError(
   res: Response,
   message: string,
-  code: 'UNAUTHORIZED' | 'NOT_FOUND' | 'BAD_REQUEST' | 'INTERNAL_ERROR' | 'PERMISSION_DENIED' | 'INVALID_INPUT' = 'INTERNAL_ERROR',
+  code: ApiErrorCode = 'INTERNAL_ERROR',
   statusCode = 500,
   details: any = null
 ) {
   return res.status(statusCode).json({
     success: false,
-    error: {
-      code,
-      message,
-      details,
-    },
+    error: { code, message, details },
     timestamp: new Date().toISOString(),
-    requestId: `req-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`,
+    requestId: `req-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 8)}`,
   });
 }
 
-// Helper middleware for v1 authentication
 function requireV1Auth(req: Request, res: Response, next: NextFunction) {
   const user = (req as any).user;
-  if (!user || !user.id) {
-    return sendError(res, 'Требуется авторизация пользователя в системе.', 'UNAUTHORIZED', 401);
+  if (!user?.id) {
+    return sendError(res, 'Требуется авторизация пользователя.', 'UNAUTHORIZED', 401);
   }
-  next();
+  return next();
 }
 
-// Global v1 Error Handler Middleware
-v1ApiRouter.use((err: any, req: Request, res: Response, next: NextFunction) => {
-  console.error('[API v1 Error]', err);
-  if (res.headersSent) return next(err);
-  return sendError(res, err.message || 'Внутренняя ошибка сервера', 'INTERNAL_ERROR', 500, err.stack);
-});
+function isSelfProfile(userId: string, profileId: string | null | undefined) {
+  return !profileId || profileId === userId || profileId === 'self' || profileId === `sp-primary-${userId}`;
+}
 
-// ==========================================
-// 0. /architecture/readiness (Requirement 23)
-// ==========================================
-v1ApiRouter.get('/architecture/readiness', (req: Request, res: Response) => {
-  const readinessBlocks = [
-    { id: 'db_schema_migrations', name: 'БД / Schema / Migrations / Sheets Adapter', status: 'READY', service: 'server/db.ts, server/schema.ts, /api/sheets/proxy' },
-    { id: 'auth_session', name: 'Auth & Session Engine', status: 'READY', service: 'server/authService.ts, /api/v1/auth/*' },
-    { id: 'account_profile_separation', name: 'Account & Subject Profile Separation', status: 'READY', service: 'server/familyDoctorSharingService.ts, /api/v1/profiles' },
-    { id: 'permission_service', name: 'Permission & Access Grant Service', status: 'READY', service: 'server/permissionService.ts, permissionMiddleware.ts' },
-    { id: 'api_contracts_types', name: 'API Contracts & Strict Types', status: 'READY', service: 'server/v1ApiContractRouter.ts, src/types.ts' },
-    { id: 'upload_staging_architecture', name: 'Upload & Staging Pipeline', status: 'READY', service: 'server/labStagingService.ts, /api/v1/uploads' },
-    { id: 'ocr_import_flow', name: 'OCR & Document Import Flow', status: 'READY', service: 'server/yandexOcr.ts, /api/recognize-doc, /api/analyze-doc' },
-    { id: 'integration_adapters', name: 'Integration Adapters (Wearables, EHR)', status: 'READY', service: 'server/integrationsService.ts' },
-    { id: 'canonical_normalization', name: 'Canonical Normalization Layer', status: 'READY', service: 'server/canonicalDataLayer.ts' },
-    { id: 'deduplication_idempotency', name: 'Deduplication & Idempotency Engine', status: 'READY', service: 'server/labStagingService.ts (deduplicationKey)' },
-    { id: 'audit_log', name: 'Audit Log & Provenance Tracking', status: 'READY', service: 'server/auditProvenanceService.ts' },
-    { id: 'candidate_record', name: 'Candidate Record Extraction Engine', status: 'READY', service: 'server/healthFactCandidateService.ts' },
-    { id: 'ai_tool_schemas', name: 'AI Tool Schemas & Executable Registry', status: 'READY', service: 'server/aiToolsService.ts' },
-    { id: 'context_builder', name: 'AI Context Builder & Prompt Assembler', status: 'READY', service: 'server/aiContextBuilder.ts' },
-    { id: 'unit_integration_tests', name: 'Unit & Integration Test Rig', status: 'READY', service: 'npm run lint, compile_applet, server health suites' },
-    { id: 'empty_data_state_contract', name: 'Empty-State & Data-State Contracts', status: 'READY', service: 'NOT_EXAMINED flags, unexamined tooth maps, explicit zero states' },
+function evaluateProfileAccess(req: Request, profileId: string, scope: PermissionScope, action: 'read' | 'write' | 'delete' | 'manage_grants' = 'read') {
+  const userId = (req as any).user?.id || '';
+  return permissionService.evaluateAccess({
+    requesterUserId: userId,
+    targetSubjectProfileId: profileId,
+    scope,
+    action,
+    ipAddress: req.ip || '',
+    userAgent: req.headers['user-agent'] || '',
+  });
+}
+
+function requireProfileAccess(scope: PermissionScope, action: 'read' | 'write' | 'delete' | 'manage_grants' = 'read') {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const profileId = req.params.id || req.params.profileId || req.body?.subject_profile_id || req.body?.subjectProfileId || req.body?.profileId;
+    if (!profileId) {
+      return sendError(res, 'subject_profile_id/profile id обязателен.', 'INVALID_INPUT', 400);
+    }
+    const evaluation = evaluateProfileAccess(req, profileId, scope, action);
+    if (!evaluation.allowed) {
+      return sendError(res, evaluation.reason, 'PERMISSION_DENIED', 403, {
+        scope,
+        action,
+        stage: evaluation.stage,
+        auditLogId: evaluation.auditEntry.id,
+      });
+    }
+    (req as any).permissionEvaluation = evaluation;
+    return next();
+  };
+}
+
+function canOpenProfile(req: Request, profileId: string): boolean {
+  const scopes: PermissionScope[] = ['emergency_card', 'labs', 'measurements', 'medications', 'conditions', 'allergies', 'documents', 'dental', 'mental', 'cycle', 'pregnancy', 'safety', 'location'];
+  return scopes.some((scope) => evaluateProfileAccess(req, profileId, scope, 'read').allowed);
+}
+
+v1ApiRouter.get('/architecture/readiness', (_req, res) => {
+  const subsystems = [
+    { id: 'canonical_normalization', status: 'READY', service: 'server/canonicalDataLayer.ts' },
+    { id: 'permission_service', status: 'READY', service: 'server/permissionService.ts' },
+    { id: 'audit_log', status: 'READY', service: 'server/auditProvenanceService.ts' },
+    { id: 'upload_staging_architecture', status: 'PARTIAL', service: 'server/labStagingService.ts', note: 'Binary upload transport still requires production storage adapter.' },
+    { id: 'auth_session', status: 'PARTIAL', service: '/api/auth/*', note: 'Canonical auth exists outside /api/v1; v1 aliases intentionally disabled until safely wired.' },
+    { id: 'account_profile_separation', status: 'PARTIAL', service: 'familyDoctorSharingService + permissionService', note: 'Some legacy stores are still user-keyed and cannot safely serve non-self profiles.' },
+    { id: 'integration_adapters', status: 'PARTIAL', service: 'server/integrationsService.ts', note: 'Registry/ingestion layer exists; native HealthKit/Health Connect bridges are not considered production-ready yet.' },
+    { id: 'empty_data_state_contract', status: 'IN_PROGRESS', service: 'API/UI safety audit', note: 'No endpoint may substitute missing medical values with defaults.' },
   ];
-
   return sendSuccess(res, {
     readyForFrontendDevelopment: true,
+    productionReady: false,
     requiresUIWaiting: false,
-    message: 'Вся фундаментальная архитектура бэкенда полностью готова для параллельной разработки Frontend.',
-    subsystems: readinessBlocks,
+    message: 'Frontend can continue against the typed contract, but production readiness is partial and must not be represented as complete.',
+    subsystems,
   });
 });
 
-// ==========================================
-// 1. /session & /session/active-profile
-// ==========================================
-
-v1ApiRouter.get('/session', (req: Request, res: Response) => {
+v1ApiRouter.get('/session', (req, res) => {
   const user = (req as any).user;
-  if (!user) {
-    return sendSuccess(res, {
-      isAuthenticated: false,
-      user: null,
-      activeProfileId: null,
-    });
+  if (!user?.id) {
+    return sendSuccess(res, { isAuthenticated: false, user: null, activeProfileId: null });
   }
-
   const activeProfileId = activeProfileSessionMap.get(user.id) || `sp-primary-${user.id}`;
-
   return sendSuccess(res, {
     isAuthenticated: true,
     user: {
       id: user.id,
-      email: user.email,
-      name: user.name || 'Пользователь',
-      role: user.role || 'user',
+      email: user.email ?? null,
+      name: user.fullName ?? user.name ?? null,
+      role: user.role ?? null,
     },
     activeProfileId,
   });
 });
 
-v1ApiRouter.get('/session/active-profile', requireV1Auth, (req: Request, res: Response) => {
+v1ApiRouter.get('/session/active-profile', requireV1Auth, (req, res) => {
   const userId = (req as any).user.id;
-  const activeProfileId = activeProfileSessionMap.get(userId) || `sp-primary-${userId}`;
-  return sendSuccess(res, { activeProfileId, userId });
+  return sendSuccess(res, { activeProfileId: activeProfileSessionMap.get(userId) || `sp-primary-${userId}` });
 });
 
-v1ApiRouter.post('/session/active-profile', requireV1Auth, (req: Request, res: Response) => {
+v1ApiRouter.post('/session/active-profile', requireV1Auth, (req, res) => {
   const userId = (req as any).user.id;
-  const { profileId } = req.body;
-
-  if (!profileId) {
-    return sendError(res, 'Параметр profileId обязателен', 'INVALID_INPUT', 400);
+  const profileId = req.body?.subject_profile_id || req.body?.subjectProfileId || req.body?.profileId;
+  if (!profileId) return sendError(res, 'subject_profile_id обязателен.', 'INVALID_INPUT', 400);
+  if (!canOpenProfile(req, profileId)) {
+    return sendError(res, 'Нет разрешения на открытие указанного профиля.', 'PERMISSION_DENIED', 403);
   }
-
   activeProfileSessionMap.set(userId, profileId);
-  return sendSuccess(res, {
-    activeProfileId: profileId,
-    message: `Активный профиль успешно переключен на ${profileId}`,
-  });
+  return sendSuccess(res, { activeProfileId: profileId });
 });
 
-// ==========================================
-// 2. /auth/*
-// ==========================================
-
-v1ApiRouter.post('/auth/register', async (req: Request, res: Response) => {
-  const { email, password, name } = req.body;
-  if (!email || !password) {
-    return sendError(res, 'Email и пароль обязательны для регистрации', 'INVALID_INPUT', 400);
-  }
-  return sendSuccess(
-    res,
-    {
-      userId: `usr-${Date.now()}`,
-      email,
-      name: name || 'Пользователь',
-      status: 'active',
-      message: 'Пользователь успешно зарегистрирован',
-    },
-    {},
-    201
+// Legacy fake /api/v1 auth endpoints are disabled. Canonical auth currently lives at /api/auth/*.
+for (const route of ['/auth/register', '/auth/send-code', '/auth/verify-code', '/auth/login']) {
+  v1ApiRouter.post(route, (_req, res) =>
+    sendError(res, 'Этот v1 auth endpoint временно отключён до безопасной привязки к canonical auth service. Используйте /api/auth/*.', 'NOT_IMPLEMENTED', 501)
   );
-});
+}
 
-v1ApiRouter.post('/auth/send-code', async (req: Request, res: Response) => {
-  const { email, phone } = req.body;
-  if (!email && !phone) {
-    return sendError(res, 'Необходимо указать email или номер телефона', 'INVALID_INPUT', 400);
-  }
-  return sendSuccess(res, {
-    message: 'Одноразовый код подтверждения отправлен',
-    expiresInSeconds: 300,
-  });
-});
+v1ApiRouter.get('/auth/me', requireV1Auth, (req, res) => sendSuccess(res, { user: (req as any).user }));
+v1ApiRouter.post('/auth/logout', requireV1Auth, (_req, res) => sendSuccess(res, { message: 'Запрос на завершение сессии принят canonical auth layer.' }));
 
-v1ApiRouter.post('/auth/verify-code', async (req: Request, res: Response) => {
-  const { code } = req.body;
-  if (!code) {
-    return sendError(res, 'Код подтверждения обязателен', 'INVALID_INPUT', 400);
-  }
-  return sendSuccess(res, {
-    verified: true,
-    token: `v1-token-${Date.now()}`,
-  });
-});
-
-v1ApiRouter.post('/auth/login', async (req: Request, res: Response) => {
-  const { email } = req.body;
-  return sendSuccess(res, {
-    userId: 'user_demo_me',
-    email: email || 'demo@medai.ru',
-    name: 'Демо Пользователь',
-    token: `v1-session-${Date.now()}`,
-  });
-});
-
-v1ApiRouter.get('/auth/me', requireV1Auth, (req: Request, res: Response) => {
-  const user = (req as any).user;
-  return sendSuccess(res, { user });
-});
-
-v1ApiRouter.post('/auth/logout', (req: Request, res: Response) => {
-  return sendSuccess(res, { message: 'Сессия успешно завершена' });
-});
-
-// ==========================================
-// 3. /profiles
-// ==========================================
-
-v1ApiRouter.get('/profiles', requireV1Auth, async (req: Request, res: Response) => {
+v1ApiRouter.get('/profiles', requireV1Auth, async (req, res) => {
   const userId = (req as any).user.id;
   const canonicalData = await canonicalDataLayer.getUserData(userId);
-
   const primaryProfile = {
     id: `sp-primary-${userId}`,
     userId,
     relationship: 'self',
-    name: canonicalData.profile?.name || 'Основной профиль',
+    name: canonicalData?.profile?.fullName ?? canonicalData?.profile?.name ?? null,
     isChild: false,
-    birthDate: canonicalData.profile?.birthDate || '1990-01-01',
+    birthDate: canonicalData?.profile?.birthDate ?? null,
   };
-
   const childProfiles = familyDoctorSharingService.getChildProfilesForGuardian(userId);
-
-  return sendSuccess(res, {
-    profiles: [primaryProfile, ...childProfiles],
-  });
+  return sendSuccess(res, { profiles: [primaryProfile, ...childProfiles] });
 });
 
-v1ApiRouter.post('/profiles', requireV1Auth, async (req: Request, res: Response) => {
+v1ApiRouter.post('/profiles', requireV1Auth, (req, res) => {
   const userId = (req as any).user.id;
-  const { name, isChild, birthDate, relationship } = req.body;
-
-  if (!name) {
-    return sendError(res, 'Имя профиля обязательно', 'INVALID_INPUT', 400);
-  }
+  const { name, isChild, birthDate, relationship, gender } = req.body || {};
+  if (!name) return sendError(res, 'Имя профиля обязательно.', 'INVALID_INPUT', 400);
 
   if (isChild) {
+    if (!birthDate || !['female', 'male'].includes(gender)) {
+      return sendError(res, 'Для детского профиля нужны реальная дата рождения и пол; значения по умолчанию запрещены.', 'INVALID_INPUT', 400);
+    }
     const child = familyDoctorSharingService.createChildProfile({
       guardianUserId: userId,
-      guardianName: (req as any).user.name || 'Опекун',
+      guardianName: (req as any).user.fullName ?? (req as any).user.name ?? '',
       fullName: name,
-      birthDate: birthDate || '2020-01-01',
-      gender: req.body.gender === 'female' ? 'female' : 'male',
+      birthDate,
+      gender,
     });
     return sendSuccess(res, { profile: child }, {}, 201);
   }
 
-  const newProfile = {
-    id: `sp-rel-${Date.now()}`,
-    userId,
-    relationship: relationship || 'family_member',
-    name,
-    isChild: false,
-    birthDate: birthDate || '1995-01-01',
-  };
-
-  return sendSuccess(res, { profile: newProfile }, {}, 201);
+  return sendError(
+    res,
+    'Создание взрослого родственника должно идти через invitation/consent flow, а не создавать локальный псевдопрофиль.',
+    'NOT_IMPLEMENTED',
+    501,
+    { relationship: relationship ?? null }
+  );
 });
 
-// ==========================================
-// 4. /onboarding/*
-// ==========================================
-
-v1ApiRouter.get('/onboarding/schema', requireV1Auth, async (req: Request, res: Response) => {
-  return sendSuccess(res, { schema: BASE_ONBOARDING_SCHEMA });
-});
-
-v1ApiRouter.post('/onboarding/progress', requireV1Auth, async (req: Request, res: Response) => {
+v1ApiRouter.get('/onboarding/schema', requireV1Auth, (_req, res) => sendSuccess(res, { schema: BASE_ONBOARDING_SCHEMA }));
+v1ApiRouter.post('/onboarding/progress', requireV1Auth, async (req, res) => {
   const userId = (req as any).user.id;
-  const { stepId, answers } = req.body;
-  const result = await onboardingService.saveStepProgress(userId, stepId || 'step_1', answers || {});
-  return sendSuccess(res, result);
+  const { stepId, answers } = req.body || {};
+  if (!stepId || !answers || typeof answers !== 'object') return sendError(res, 'stepId и answers обязательны.', 'INVALID_INPUT', 400);
+  return sendSuccess(res, await onboardingService.saveStepProgress(userId, stepId, answers));
 });
-
-v1ApiRouter.post('/onboarding/complete', requireV1Auth, async (req: Request, res: Response) => {
+v1ApiRouter.post('/onboarding/complete', requireV1Auth, async (req, res) => {
   const userId = (req as any).user.id;
   const result = await onboardingService.saveStepProgress(userId, 'complete', req.body || {});
   return sendSuccess(res, { ...result, completed: true });
 });
 
-// ==========================================
-// 5. /profiles/{id}/modules
-// ==========================================
-
-v1ApiRouter.get('/profiles/:id/modules', requireV1Auth, async (req: Request, res: Response) => {
-  const userId = (req as any).user.id;
-  const config = await puzzleService.getUserPuzzleConfig(userId);
+v1ApiRouter.get('/profiles/:id/modules', requireV1Auth, requireProfileAccess('measurements'), async (req, res) => {
+  const config = await puzzleService.getUserPuzzleConfig((req as any).user.id);
   return sendSuccess(res, { profileId: req.params.id, modules: config });
 });
-
-v1ApiRouter.post('/profiles/:id/modules', requireV1Auth, async (req: Request, res: Response) => {
-  const userId = (req as any).user.id;
-  const { modules } = req.body;
-
-  if (!Array.isArray(modules)) {
-    return sendError(res, 'Массив modules обязателен', 'INVALID_INPUT', 400);
-  }
-
-  const updatedConfig = await puzzleService.updateUserPuzzleConfig(userId, modules);
+v1ApiRouter.post('/profiles/:id/modules', requireV1Auth, requireProfileAccess('measurements', 'write'), async (req, res) => {
+  const { modules } = req.body || {};
+  if (!Array.isArray(modules)) return sendError(res, 'Массив modules обязателен.', 'INVALID_INPUT', 400);
+  const updatedConfig = await puzzleService.updateUserPuzzleConfig((req as any).user.id, modules);
   return sendSuccess(res, { profileId: req.params.id, modules: updatedConfig });
 });
 
-// ==========================================
-// 6. /profiles/{id}/home & /profiles/{id}/timeline
-// ==========================================
-
-v1ApiRouter.get('/profiles/:id/home', requireV1Auth, async (req: Request, res: Response) => {
-  const profileId = req.params.id;
-  const userId = (req as any).user.id;
-  const data = await homeApiService.getHomePayload(userId, profileId);
-  return sendSuccess(res, data);
+v1ApiRouter.get('/profiles/:id/home', requireV1Auth, requireProfileAccess('measurements'), async (req, res) => {
+  return sendSuccess(res, await homeApiService.getHomePayload((req as any).user.id, req.params.id));
+});
+v1ApiRouter.get('/profiles/:id/timeline', requireV1Auth, requireProfileAccess('measurements'), async (req, res) => {
+  const timelineResponse = await timelineService.getTimeline((req as any).user.id, {});
+  return sendSuccess(res, { profileId: req.params.id, ...timelineResponse });
 });
 
-v1ApiRouter.get('/profiles/:id/timeline', requireV1Auth, async (req: Request, res: Response) => {
-  const profileId = req.params.id;
-  const userId = (req as any).user.id;
-  const timelineResponse = await timelineService.getTimeline(userId, {});
-  return sendSuccess(res, { profileId, ...timelineResponse });
+v1ApiRouter.get('/profiles/:id/measurements', requireV1Auth, requireProfileAccess('measurements'), async (req, res) => {
+  const data = await canonicalDataLayer.getSubjectHealthData((req as any).user.id, req.params.id);
+  return sendSuccess(res, { profileId: req.params.id, dailyLogs: data.dailyLogs || [] });
 });
-
-// ==========================================
-// 7. /profiles/{id}/measurements & /profiles/{id}/blood-pressure
-// ==========================================
-
-v1ApiRouter.get('/profiles/:id/measurements', requireV1Auth, async (req: Request, res: Response) => {
-  const profileId = req.params.id;
+v1ApiRouter.post('/profiles/:id/measurements', requireV1Auth, requireProfileAccess('measurements', 'write'), async (req, res) => {
   const userId = (req as any).user.id;
-  const data = await canonicalDataLayer.getSubjectHealthData(userId, profileId);
-  return sendSuccess(res, {
-    profileId,
-    dailyLogs: data.dailyLogs || [],
-  });
-});
-
-v1ApiRouter.post('/profiles/:id/measurements', requireV1Auth, async (req: Request, res: Response) => {
-  const profileId = req.params.id;
-  const userId = (req as any).user.id;
+  if (!req.body || Object.keys(req.body).length === 0) return sendError(res, 'Измерение не может быть пустым.', 'INVALID_INPUT', 400);
   const current = await canonicalDataLayer.getUserData(userId);
-
   const newLog = {
-    id: `log-${Date.now()}`,
-    subject_profile_id: profileId,
-    date: new Date().toISOString().slice(0, 10),
-    timestamp: new Date().toISOString(),
     ...req.body,
+    id: `log-${Date.now()}`,
+    subject_profile_id: req.params.id,
+    timestamp: req.body.timestamp || new Date().toISOString(),
   };
-
-  const updatedLogs = [newLog, ...(current.dailyLogs || [])];
-  await canonicalDataLayer.saveUserData(userId, { dailyLogs: updatedLogs });
-
-  await auditProvenanceService.recordCriticalChange({
-    userId,
-    subjectProfileId: profileId,
-    resourceType: 'measurement',
-    resourceId: newLog.id,
-    action: 'CREATE',
-    oldValue: null,
-    newValue: newLog,
-    actor: { id: userId, role: 'user', name: (req as any).user?.name },
-    reasonSource: 'USER_MANUAL_EDIT',
-  });
-
+  await canonicalDataLayer.saveUserData(userId, { dailyLogs: [newLog, ...(current.dailyLogs || [])] });
+  await auditProvenanceService.recordCriticalChange({ userId, subjectProfileId: req.params.id, resourceType: 'measurement', resourceId: newLog.id, action: 'CREATE', oldValue: null, newValue: newLog, actor: { id: userId, role: 'user', name: (req as any).user?.name }, reasonSource: 'USER_MANUAL_EDIT' });
   return sendSuccess(res, { measurement: newLog }, {}, 201);
 });
 
-v1ApiRouter.get('/profiles/:id/blood-pressure', requireV1Auth, async (req: Request, res: Response) => {
-  const profileId = req.params.id;
-  const userId = (req as any).user.id;
-  const data = await canonicalDataLayer.getSubjectHealthData(userId, profileId);
-  return sendSuccess(res, {
-    profileId,
-    pressureLogs: data.pressureLogs || [],
-  });
+v1ApiRouter.get('/profiles/:id/blood-pressure', requireV1Auth, requireProfileAccess('measurements'), async (req, res) => {
+  const data = await canonicalDataLayer.getSubjectHealthData((req as any).user.id, req.params.id);
+  return sendSuccess(res, { profileId: req.params.id, pressureLogs: data.pressureLogs || [] });
 });
-
-v1ApiRouter.post('/profiles/:id/blood-pressure', requireV1Auth, async (req: Request, res: Response) => {
-  const profileId = req.params.id;
+v1ApiRouter.post('/profiles/:id/blood-pressure', requireV1Auth, requireProfileAccess('measurements', 'write'), async (req, res) => {
   const userId = (req as any).user.id;
-  const { systolic, diastolic, pulse, notes } = req.body;
-
-  if (!systolic || !diastolic) {
-    return sendError(res, 'Параметры systolic и diastolic обязательны', 'INVALID_INPUT', 400);
-  }
-
-  const current = await canonicalDataLayer.getUserData(userId);
-  const nowIso = new Date().toISOString();
-
+  const { systolic, diastolic, pulse, notes, observed_at } = req.body || {};
+  if (!Number.isFinite(Number(systolic)) || !Number.isFinite(Number(diastolic))) return sendError(res, 'systolic и diastolic обязательны и должны быть числами.', 'INVALID_INPUT', 400);
+  const nowIso = observed_at || new Date().toISOString();
   const newBp = {
     id: `press-${Date.now()}`,
-    subject_profile_id: profileId,
+    subject_profile_id: req.params.id,
     timestamp: nowIso,
-    date: nowIso.slice(0, 10),
-    time: nowIso.slice(11, 16),
     systolic: Number(systolic),
     diastolic: Number(diastolic),
-    pulse: pulse ? Number(pulse) : undefined,
-    notes,
+    ...(pulse !== undefined && pulse !== null ? { pulse: Number(pulse) } : {}),
+    ...(notes ? { notes } : {}),
   };
-
-  const updated = [newBp, ...(current.pressureLogs || [])];
-  await canonicalDataLayer.saveUserData(userId, { pressureLogs: updated });
-
-  await auditProvenanceService.recordCriticalChange({
-    userId,
-    subjectProfileId: profileId,
-    resourceType: 'measurement',
-    resourceId: newBp.id,
-    action: 'CREATE',
-    oldValue: null,
-    newValue: newBp,
-    actor: { id: userId, role: 'user', name: (req as any).user?.name },
-    reasonSource: 'USER_MANUAL_EDIT',
-  });
-
-  // Safety Service evaluation
-  safetyEmergencyService.evaluateMetricsSafety(userId, {
-    systolic: Number(systolic),
-    diastolic: Number(diastolic),
-    heartRate: pulse ? Number(pulse) : undefined,
-  });
-
+  const current = await canonicalDataLayer.getUserData(userId);
+  await canonicalDataLayer.saveUserData(userId, { pressureLogs: [newBp, ...(current.pressureLogs || [])] });
+  await auditProvenanceService.recordCriticalChange({ userId, subjectProfileId: req.params.id, resourceType: 'measurement', resourceId: newBp.id, action: 'CREATE', oldValue: null, newValue: newBp, actor: { id: userId, role: 'user', name: (req as any).user?.name }, reasonSource: 'USER_MANUAL_EDIT' });
+  safetyEmergencyService.evaluateMetricsSafety(userId, { systolic: Number(systolic), diastolic: Number(diastolic), ...(pulse !== undefined ? { heartRate: Number(pulse) } : {}) });
   return sendSuccess(res, { bloodPressureLog: newBp }, {}, 201);
 });
 
-// ==========================================
-// 8. /uploads & /lab-imports/*
-// ==========================================
-
-v1ApiRouter.post('/uploads', requireV1Auth, async (req: Request, res: Response) => {
-  const uploadId = `upload-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-  const protectedUrl = `/api/protected-media/${uploadId}.pdf`;
-
+v1ApiRouter.post('/uploads', requireV1Auth, (req, res) => {
+  const { fileName, mimeType } = req.body || {};
+  if (!fileName || !mimeType) return sendError(res, 'fileName и mimeType обязательны для upload session.', 'INVALID_INPUT', 400);
+  const uploadId = `upload-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
   return sendSuccess(res, {
     uploadId,
-    protectedStorageRef: `protected://uploads/${uploadId}.pdf`,
-    downloadUrl: protectedUrl,
-    uploadedAt: new Date().toISOString(),
-    status: 'uploaded',
+    fileName,
+    mimeType,
+    protectedStorageRef: `protected://uploads/${uploadId}`,
+    status: 'awaiting_binary_upload',
   }, {}, 201);
 });
 
-v1ApiRouter.post('/lab-imports/process', requireV1Auth, async (req: Request, res: Response) => {
-  const userId = (req as any).user.id;
-  const { fileBase64, mimeType, fileName } = req.body;
-
-  const staging = await labStagingService.processDocumentToStaging(
-    userId,
-    fileBase64 || 'SGVsbG8=',
-    mimeType || 'application/pdf',
-    fileName || 'Анализ.pdf'
-  );
-
+v1ApiRouter.post('/lab-imports/process', requireV1Auth, async (req, res) => {
+  const { fileBase64, mimeType, fileName } = req.body || {};
+  if (!fileBase64 || !mimeType || !fileName) return sendError(res, 'fileBase64, mimeType и fileName обязательны; тестовые файлы по умолчанию запрещены.', 'INVALID_INPUT', 400);
+  const staging = await labStagingService.processDocumentToStaging((req as any).user.id, fileBase64, mimeType, fileName);
   return sendSuccess(res, { stagingRecord: staging }, {}, 201);
 });
-
-v1ApiRouter.get('/lab-imports/staging/:id', requireV1Auth, async (req: Request, res: Response) => {
-  const stagingId = req.params.id;
-  const staging = labStagingService.getStagingRecord(stagingId);
-  if (!staging) {
-    return sendError(res, `Черновик импорта ${stagingId} не найден`, 'NOT_FOUND', 404);
-  }
+v1ApiRouter.get('/lab-imports/staging/:id', requireV1Auth, (req, res) => {
+  const staging = labStagingService.getStagingRecord(req.params.id);
+  if (!staging) return sendError(res, `Черновик импорта ${req.params.id} не найден.`, 'NOT_FOUND', 404);
   return sendSuccess(res, { stagingRecord: staging });
 });
-
-v1ApiRouter.post('/lab-imports/commit', requireV1Auth, async (req: Request, res: Response) => {
+v1ApiRouter.post('/lab-imports/commit', requireV1Auth, async (req, res) => {
   const userId = (req as any).user.id;
-  const { stagingId, targetProfileId } = req.body;
-
-  if (!stagingId) {
-    return sendError(res, 'Параметр stagingId обязателен', 'INVALID_INPUT', 400);
-  }
-
-  const result = await labStagingService.commitStagingRecord(userId, {
-    stagingId,
-    targetProfileId: targetProfileId || `sp-primary-${userId}`,
-    mode: 'commit_to_history',
-  });
+  const { stagingId, targetProfileId } = req.body || {};
+  if (!stagingId || !targetProfileId) return sendError(res, 'stagingId и подтверждённый targetProfileId обязательны.', 'INVALID_INPUT', 400);
+  if (!evaluateProfileAccess(req, targetProfileId, 'labs', 'write').allowed) return sendError(res, 'Нет доступа к лабораторным данным этого профиля.', 'PERMISSION_DENIED', 403);
+  const result = await labStagingService.commitStagingRecord(userId, { stagingId, targetProfileId, mode: 'commit_to_history' });
   return sendSuccess(res, result);
 });
 
-// ==========================================
-// 9. /profiles/{id}/lab-reports, /symptoms, /conditions, /allergies, /medications, /sleep, /activity
-// ==========================================
-
-v1ApiRouter.get('/profiles/:id/lab-reports', requireV1Auth, async (req: Request, res: Response) => {
-  const profileId = req.params.id;
-  const userId = (req as any).user.id;
-  const data = await canonicalDataLayer.getSubjectHealthData(userId, profileId);
-  return sendSuccess(res, { profileId, documents: data.documents || [] });
+v1ApiRouter.get('/profiles/:id/lab-reports', requireV1Auth, requireProfileAccess('labs'), async (req, res) => {
+  const data = await canonicalDataLayer.getSubjectHealthData((req as any).user.id, req.params.id);
+  return sendSuccess(res, { profileId: req.params.id, documents: data.documents || [] });
 });
+v1ApiRouter.post('/profiles/:id/lab-reports', requireV1Auth, requireProfileAccess('labs', 'write'), (_req, res) =>
+  sendError(res, 'Прямая запись лабораторного отчёта запрещена: используйте staging → preview → commit.', 'NOT_IMPLEMENTED', 501)
+);
 
-v1ApiRouter.post('/profiles/:id/lab-reports', requireV1Auth, async (req: Request, res: Response) => {
-  const profileId = req.params.id;
+v1ApiRouter.get('/profiles/:id/symptoms', requireV1Auth, requireProfileAccess('measurements'), async (req, res) => {
+  const data = await canonicalDataLayer.getSubjectHealthData((req as any).user.id, req.params.id);
+  return sendSuccess(res, { profileId: req.params.id, symptoms: (data.dailyLogs || []).filter((l: any) => l.symptoms || l.symptomType) });
+});
+v1ApiRouter.post('/profiles/:id/symptoms', requireV1Auth, requireProfileAccess('measurements', 'write'), async (req, res) => {
   const userId = (req as any).user.id;
+  const symptoms = Array.isArray(req.body?.symptoms) ? req.body.symptoms.filter(Boolean) : req.body?.symptomName ? [req.body.symptomName] : [];
+  if (symptoms.length === 0) return sendError(res, 'Нужно указать реальный симптом.', 'INVALID_INPUT', 400);
+  const newSymptomLog = { id: `symptom-${Date.now()}`, subject_profile_id: req.params.id, timestamp: req.body?.observed_at || new Date().toISOString(), symptoms, ...(req.body?.severity ? { severity: req.body.severity } : {}), ...(req.body?.notes ? { notes: req.body.notes } : {}) };
   const current = await canonicalDataLayer.getUserData(userId);
-
-  const newDoc = {
-    id: `doc-${Date.now()}`,
-    subject_profile_id: profileId,
-    title: req.body.title || 'Лабораторный отчёт',
-    category: 'lab_report',
-    date: new Date().toISOString().slice(0, 10),
-    data: req.body.data || {},
-  };
-
-  const updatedDocs = [newDoc, ...(current.documents || [])];
-  await canonicalDataLayer.saveUserData(userId, { documents: updatedDocs });
-  return sendSuccess(res, { labReport: newDoc }, {}, 201);
-});
-
-v1ApiRouter.get('/profiles/:id/symptoms', requireV1Auth, async (req: Request, res: Response) => {
-  const profileId = req.params.id;
-  const userId = (req as any).user.id;
-  const data = await canonicalDataLayer.getSubjectHealthData(userId, profileId);
-  const symptoms = (data.dailyLogs || []).filter((l) => l.symptoms || l.symptomType);
-  return sendSuccess(res, { profileId, symptoms });
-});
-
-v1ApiRouter.post('/profiles/:id/symptoms', requireV1Auth, async (req: Request, res: Response) => {
-  const profileId = req.params.id;
-  const userId = (req as any).user.id;
-  const current = await canonicalDataLayer.getUserData(userId);
-
-  const newSymptomLog = {
-    id: `symptom-${Date.now()}`,
-    subject_profile_id: profileId,
-    timestamp: new Date().toISOString(),
-    symptoms: req.body.symptoms || [req.body.symptomName || 'Симптом'],
-    severity: req.body.severity || 'mild',
-    notes: req.body.notes,
-  };
-
-  const updatedLogs = [newSymptomLog, ...(current.dailyLogs || [])];
-  await canonicalDataLayer.saveUserData(userId, { dailyLogs: updatedLogs });
-
-  await auditProvenanceService.recordCriticalChange({
-    userId,
-    subjectProfileId: profileId,
-    resourceType: 'symptom',
-    resourceId: newSymptomLog.id,
-    action: 'CREATE',
-    oldValue: null,
-    newValue: newSymptomLog,
-    actor: { id: userId, role: 'user', name: (req as any).user?.name },
-    reasonSource: 'USER_MANUAL_EDIT',
-  });
-
+  await canonicalDataLayer.saveUserData(userId, { dailyLogs: [newSymptomLog, ...(current.dailyLogs || [])] });
+  await auditProvenanceService.recordCriticalChange({ userId, subjectProfileId: req.params.id, resourceType: 'symptom', resourceId: newSymptomLog.id, action: 'CREATE', oldValue: null, newValue: newSymptomLog, actor: { id: userId, role: 'user', name: (req as any).user?.name }, reasonSource: 'USER_MANUAL_EDIT' });
   return sendSuccess(res, { symptomLog: newSymptomLog }, {}, 201);
 });
 
-v1ApiRouter.get('/profiles/:id/conditions', requireV1Auth, async (req: Request, res: Response) => {
-  const profileId = req.params.id;
-  const emergencyCard = safetyEmergencyService.getEmergencyCard((req as any).user.id);
-  return sendSuccess(res, { profileId, conditions: emergencyCard.criticalConditions });
-});
-
-v1ApiRouter.post('/profiles/:id/conditions', requireV1Auth, async (req: Request, res: Response) => {
+function ensureSelfBackedLegacyStore(req: Request, res: Response): boolean {
   const userId = (req as any).user.id;
-  const { conditionName, icdCode, notes } = req.body;
+  if (isSelfProfile(userId, req.params.id)) return true;
+  sendError(res, 'Этот legacy store пока хранится по account_id и не может безопасно обслуживать чужой/детский subject_profile_id. Возвращаем честный not-ready вместо смешивания данных.', 'SUBJECT_STORAGE_NOT_READY', 501);
+  return false;
+}
+
+v1ApiRouter.get('/profiles/:id/conditions', requireV1Auth, requireProfileAccess('conditions'), (req, res) => {
+  if (!ensureSelfBackedLegacyStore(req, res)) return;
+  return sendSuccess(res, { profileId: req.params.id, conditions: safetyEmergencyService.getEmergencyCard((req as any).user.id).criticalConditions });
+});
+v1ApiRouter.post('/profiles/:id/conditions', requireV1Auth, requireProfileAccess('conditions', 'write'), (req, res) => {
+  if (!ensureSelfBackedLegacyStore(req, res)) return;
+  if (!req.body?.conditionName) return sendError(res, 'conditionName обязателен.', 'INVALID_INPUT', 400);
+  const userId = (req as any).user.id;
   const card = safetyEmergencyService.getEmergencyCard(userId);
-
-  const newCond = { conditionName, icdCode, notes };
-  const updatedCard = safetyEmergencyService.updateEmergencyCard(userId, {
-    criticalConditions: [...card.criticalConditions, newCond],
-  });
-
-  await auditProvenanceService.recordCriticalChange({
-    userId,
-    subjectProfileId: req.params.id,
-    resourceType: 'condition',
-    resourceId: `cond-${Date.now()}`,
-    action: 'CREATE',
-    oldValue: null,
-    newValue: newCond,
-    actor: { id: userId, role: 'user', name: (req as any).user?.name },
-    reasonSource: 'USER_MANUAL_EDIT',
-  });
-
+  const newCond = { conditionName: req.body.conditionName, ...(req.body.icdCode ? { icdCode: req.body.icdCode } : {}), ...(req.body.notes ? { notes: req.body.notes } : {}) };
+  const updatedCard = safetyEmergencyService.updateEmergencyCard(userId, { criticalConditions: [...card.criticalConditions, newCond] });
   return sendSuccess(res, { conditions: updatedCard.criticalConditions }, {}, 201);
 });
 
-v1ApiRouter.get('/profiles/:id/allergies', requireV1Auth, async (req: Request, res: Response) => {
-  const userId = (req as any).user.id;
-  const card = safetyEmergencyService.getEmergencyCard(userId);
-  return sendSuccess(res, { allergies: card.allergies });
+v1ApiRouter.get('/profiles/:id/allergies', requireV1Auth, requireProfileAccess('allergies'), (req, res) => {
+  if (!ensureSelfBackedLegacyStore(req, res)) return;
+  return sendSuccess(res, { allergies: safetyEmergencyService.getEmergencyCard((req as any).user.id).allergies });
 });
-
-v1ApiRouter.post('/profiles/:id/allergies', requireV1Auth, async (req: Request, res: Response) => {
+v1ApiRouter.post('/profiles/:id/allergies', requireV1Auth, requireProfileAccess('allergies', 'write'), (req, res) => {
+  if (!ensureSelfBackedLegacyStore(req, res)) return;
+  if (!req.body?.allergyName) return sendError(res, 'allergyName обязателен.', 'INVALID_INPUT', 400);
   const userId = (req as any).user.id;
-  const { allergyName, severity, notes } = req.body;
   const card = safetyEmergencyService.getEmergencyCard(userId);
-
-  const newAllergy = { allergyName, severity: severity || 'moderate', notes };
-  const updatedCard = safetyEmergencyService.updateEmergencyCard(userId, {
-    allergies: [...card.allergies, newAllergy],
-  });
-
+  const newAllergy = { allergyName: req.body.allergyName, ...(req.body.severity ? { severity: req.body.severity } : {}), ...(req.body.notes ? { notes: req.body.notes } : {}) };
+  const updatedCard = safetyEmergencyService.updateEmergencyCard(userId, { allergies: [...card.allergies, newAllergy] });
   return sendSuccess(res, { allergies: updatedCard.allergies }, {}, 201);
 });
 
-v1ApiRouter.get('/profiles/:id/medications', requireV1Auth, async (req: Request, res: Response) => {
-  const userId = (req as any).user.id;
-  const card = safetyEmergencyService.getEmergencyCard(userId);
-  return sendSuccess(res, { medications: card.activeMedications });
+v1ApiRouter.get('/profiles/:id/medications', requireV1Auth, requireProfileAccess('medications'), (req, res) => {
+  if (!ensureSelfBackedLegacyStore(req, res)) return;
+  return sendSuccess(res, { medications: safetyEmergencyService.getEmergencyCard((req as any).user.id).activeMedications });
 });
-
-v1ApiRouter.post('/profiles/:id/medications', requireV1Auth, async (req: Request, res: Response) => {
+v1ApiRouter.post('/profiles/:id/medications', requireV1Auth, requireProfileAccess('medications', 'write'), (req, res) => {
+  if (!ensureSelfBackedLegacyStore(req, res)) return;
+  if (!req.body?.medicationName) return sendError(res, 'medicationName обязателен.', 'INVALID_INPUT', 400);
   const userId = (req as any).user.id;
-  const { medicationName, dosage, schedule } = req.body;
   const card = safetyEmergencyService.getEmergencyCard(userId);
-
-  const newMed = { medicationName, dosage, schedule };
-  const updatedCard = safetyEmergencyService.updateEmergencyCard(userId, {
-    activeMedications: [...card.activeMedications, newMed],
-  });
-
-  await auditProvenanceService.recordCriticalChange({
-    userId,
-    subjectProfileId: req.params.id,
-    resourceType: 'medication',
-    resourceId: `med-${Date.now()}`,
-    action: 'CREATE',
-    oldValue: null,
-    newValue: newMed,
-    actor: { id: userId, role: 'user', name: (req as any).user?.name },
-    reasonSource: 'USER_MANUAL_EDIT',
-  });
-
+  const newMed = { medicationName: req.body.medicationName, ...(req.body.dosage ? { dosage: req.body.dosage } : {}), ...(req.body.schedule ? { schedule: req.body.schedule } : {}) };
+  const updatedCard = safetyEmergencyService.updateEmergencyCard(userId, { activeMedications: [...card.activeMedications, newMed] });
   return sendSuccess(res, { medications: updatedCard.activeMedications }, {}, 201);
 });
 
-v1ApiRouter.get('/profiles/:id/sleep', requireV1Auth, async (req: Request, res: Response) => {
-  const profileId = req.params.id;
-  const userId = (req as any).user.id;
-  const data = await canonicalDataLayer.getSubjectHealthData(userId, profileId);
-  const sleepLogs = (data.dailyLogs || []).filter((l) => l.sleepHours !== undefined);
-  return sendSuccess(res, { profileId, sleepLogs });
+v1ApiRouter.get('/profiles/:id/sleep', requireV1Auth, requireProfileAccess('measurements'), async (req, res) => {
+  const data = await canonicalDataLayer.getSubjectHealthData((req as any).user.id, req.params.id);
+  return sendSuccess(res, { profileId: req.params.id, sleepLogs: (data.dailyLogs || []).filter((l: any) => l.sleepHours !== undefined && l.sleepHours !== null) });
 });
-
-v1ApiRouter.post('/profiles/:id/sleep', requireV1Auth, async (req: Request, res: Response) => {
-  const profileId = req.params.id;
+v1ApiRouter.post('/profiles/:id/sleep', requireV1Auth, requireProfileAccess('measurements', 'write'), async (req, res) => {
+  const sleepHours = Number(req.body?.sleepHours);
+  if (!Number.isFinite(sleepHours) || sleepHours <= 0) return sendError(res, 'sleepHours обязателен и должен быть реальным положительным числом.', 'INVALID_INPUT', 400);
   const userId = (req as any).user.id;
-  const { sleepHours, sleepQuality, notes } = req.body;
-
   const current = await canonicalDataLayer.getUserData(userId);
-  const newSleep = {
-    id: `sleep-${Date.now()}`,
-    subject_profile_id: profileId,
-    timestamp: new Date().toISOString(),
-    sleepHours: Number(sleepHours || 8),
-    sleepQuality: sleepQuality || 'good',
-    notes,
-  };
-
-  const updated = [newSleep, ...(current.dailyLogs || [])];
-  await canonicalDataLayer.saveUserData(userId, { dailyLogs: updated });
+  const newSleep = { id: `sleep-${Date.now()}`, subject_profile_id: req.params.id, timestamp: req.body?.observed_at || new Date().toISOString(), sleepHours, ...(req.body?.sleepQuality ? { sleepQuality: req.body.sleepQuality } : {}), ...(req.body?.notes ? { notes: req.body.notes } : {}) };
+  await canonicalDataLayer.saveUserData(userId, { dailyLogs: [newSleep, ...(current.dailyLogs || [])] });
   return sendSuccess(res, { sleepLog: newSleep }, {}, 201);
 });
 
-v1ApiRouter.get('/profiles/:id/activity', requireV1Auth, async (req: Request, res: Response) => {
-  const profileId = req.params.id;
-  const userId = (req as any).user.id;
-  const data = await canonicalDataLayer.getSubjectHealthData(userId, profileId);
-  const activityLogs = (data.dailyLogs || []).filter((l) => l.steps || l.workoutMinutes);
-  return sendSuccess(res, { profileId, activityLogs });
+v1ApiRouter.get('/profiles/:id/activity', requireV1Auth, requireProfileAccess('measurements'), async (req, res) => {
+  const data = await canonicalDataLayer.getSubjectHealthData((req as any).user.id, req.params.id);
+  return sendSuccess(res, { profileId: req.params.id, activityLogs: (data.dailyLogs || []).filter((l: any) => l.steps !== undefined || l.workoutMinutes !== undefined || l.caloriesBurned !== undefined) });
 });
-
-v1ApiRouter.post('/profiles/:id/activity', requireV1Auth, async (req: Request, res: Response) => {
-  const profileId = req.params.id;
+v1ApiRouter.post('/profiles/:id/activity', requireV1Auth, requireProfileAccess('measurements', 'write'), async (req, res) => {
+  const { steps, workoutMinutes, caloriesBurned } = req.body || {};
+  if ([steps, workoutMinutes, caloriesBurned].every((v) => v === undefined || v === null)) return sendError(res, 'Нужно передать хотя бы один реальный показатель активности.', 'INVALID_INPUT', 400);
   const userId = (req as any).user.id;
-  const { steps, workoutMinutes, caloriesBurned } = req.body;
-
   const current = await canonicalDataLayer.getUserData(userId);
-  const newActivity = {
-    id: `activity-${Date.now()}`,
-    subject_profile_id: profileId,
-    timestamp: new Date().toISOString(),
-    steps: steps ? Number(steps) : undefined,
-    workoutMinutes: workoutMinutes ? Number(workoutMinutes) : undefined,
-    caloriesBurned: caloriesBurned ? Number(caloriesBurned) : undefined,
-  };
-
-  const updated = [newActivity, ...(current.dailyLogs || [])];
-  await canonicalDataLayer.saveUserData(userId, { dailyLogs: updated });
+  const newActivity = { id: `activity-${Date.now()}`, subject_profile_id: req.params.id, timestamp: req.body?.observed_at || new Date().toISOString(), ...(steps !== undefined ? { steps: Number(steps) } : {}), ...(workoutMinutes !== undefined ? { workoutMinutes: Number(workoutMinutes) } : {}), ...(caloriesBurned !== undefined ? { caloriesBurned: Number(caloriesBurned) } : {}) };
+  await canonicalDataLayer.saveUserData(userId, { dailyLogs: [newActivity, ...(current.dailyLogs || [])] });
   return sendSuccess(res, { activityLog: newActivity }, {}, 201);
 });
 
-// ==========================================
-// 10. /profiles/{id}/mental/*
-// ==========================================
-
-v1ApiRouter.get('/profiles/:id/mental/entries', requireV1Auth, async (req: Request, res: Response) => {
-  const profileId = req.params.id;
-  const userId = (req as any).user.id;
-  const data = await canonicalDataLayer.getSubjectHealthData(userId, profileId);
-  return sendSuccess(res, { profileId, diaryEntries: data.diaryEntries || [] });
+v1ApiRouter.get('/profiles/:id/mental/entries', requireV1Auth, requireProfileAccess('mental'), async (req, res) => {
+  const data = await canonicalDataLayer.getSubjectHealthData((req as any).user.id, req.params.id);
+  return sendSuccess(res, { profileId: req.params.id, diaryEntries: data.diaryEntries || [] });
 });
-
-v1ApiRouter.post('/profiles/:id/mental/entries', requireV1Auth, async (req: Request, res: Response) => {
-  const profileId = req.params.id;
+v1ApiRouter.post('/profiles/:id/mental/entries', requireV1Auth, requireProfileAccess('mental', 'write'), async (req, res) => {
+  const { text, state_score, emotions } = req.body || {};
+  if (!text && state_score === undefined && (!Array.isArray(emotions) || emotions.length === 0)) return sendError(res, 'Пустая запись ментального дневника запрещена.', 'INVALID_INPUT', 400);
   const userId = (req as any).user.id;
-  const { text, state_score, emotions } = req.body;
-
   const current = await canonicalDataLayer.getUserData(userId);
-  const newEntry = {
-    id: `mental-${Date.now()}`,
-    subject_profile_id: profileId,
-    created_at: new Date().toISOString(),
-    text: text || '',
-    state_score: state_score || 7,
-    emotions: emotions || [],
-  };
-
-  const updated = [newEntry, ...(current.diaryEntries || [])];
-  await canonicalDataLayer.saveUserData(userId, { diaryEntries: updated });
+  const newEntry = { id: `mental-${Date.now()}`, subject_profile_id: req.params.id, created_at: new Date().toISOString(), ...(text ? { text } : {}), ...(state_score !== undefined ? { state_score: Number(state_score) } : {}), ...(Array.isArray(emotions) ? { emotions } : {}) };
+  await canonicalDataLayer.saveUserData(userId, { diaryEntries: [newEntry, ...(current.diaryEntries || [])] });
   return sendSuccess(res, { mentalEntry: newEntry }, {}, 201);
 });
-
-v1ApiRouter.post('/profiles/:id/mental/analyze', requireV1Auth, async (req: Request, res: Response) => {
-  const profileId = req.params.id;
-  return sendSuccess(res, {
-    profileId,
-    analysis: {
-      overallEmotionalState: 'Стабильное психологическое состояние',
-      dominantEmotions: ['Спокойствие', 'Сосредоточенность'],
-      crisisDetected: false,
-      recommendedPractices: ['Дыхание по схеме 4-7-8', 'Вечерняя прогулка на свежем воздухе'],
-    },
-  });
+v1ApiRouter.post('/profiles/:id/mental/analyze', requireV1Auth, requireProfileAccess('mental'), async (req, res) => {
+  const data = await canonicalDataLayer.getSubjectHealthData((req as any).user.id, req.params.id);
+  if (!data.diaryEntries?.length) return sendSuccess(res, { profileId: req.params.id, state: 'no_data', analysis: null });
+  return sendSuccess(res, { profileId: req.params.id, state: 'requires_ai_pipeline', analysis: null, evidenceCount: data.diaryEntries.length });
 });
 
-// ==========================================
-// 11. /profiles/{id}/cycle/* & /pregnancies/*
-// ==========================================
-
-v1ApiRouter.get('/profiles/:id/cycle/summary', requireV1Auth, async (req: Request, res: Response) => {
-  const profileId = req.params.id;
-  return sendSuccess(res, {
-    profileId,
-    cycleDay: 14,
-    cycleLengthDays: 28,
-    phase: 'ovulation',
-    predictedNextPeriodDate: '2026-08-26',
-  });
+v1ApiRouter.get('/profiles/:id/cycle/summary', requireV1Auth, requireProfileAccess('cycle'), async (req, res) => {
+  const data = await canonicalDataLayer.getSubjectHealthData((req as any).user.id, req.params.id);
+  const cycle = (data as any)?.profile?.womenHealth?.cycle ?? (data as any)?.womenHealth?.cycle ?? null;
+  return sendSuccess(res, { profileId: req.params.id, state: cycle ? 'available' : 'no_data', cycle });
 });
-
-v1ApiRouter.post('/profiles/:id/cycle/log', requireV1Auth, async (req: Request, res: Response) => {
-  const profileId = req.params.id;
-  const { flow, symptoms } = req.body;
-  return sendSuccess(res, {
-    profileId,
-    loggedEvent: {
-      id: `cycle-${Date.now()}`,
-      date: new Date().toISOString().slice(0, 10),
-      flow: flow || 'medium',
-      symptoms: symptoms || [],
-    },
-  }, {}, 201);
-});
-
-v1ApiRouter.get('/profiles/:id/pregnancies/summary', requireV1Auth, async (req: Request, res: Response) => {
-  const profileId = req.params.id;
-  return sendSuccess(res, {
-    profileId,
-    activePregnancy: null,
-    history: [],
-  });
-});
-
-v1ApiRouter.post('/profiles/:id/pregnancies/log', requireV1Auth, async (req: Request, res: Response) => {
-  const profileId = req.params.id;
-  const { gestatingWeeks, notes } = req.body;
-  return sendSuccess(res, {
-    profileId,
-    pregnancyLog: {
-      id: `preg-${Date.now()}`,
-      gestatingWeeks: gestatingWeeks || 12,
-      notes,
-      loggedAt: new Date().toISOString(),
-    },
-  }, {}, 201);
-});
-
-// ==========================================
-// 12. /profiles/{id}/access-grants
-// ==========================================
-
-v1ApiRouter.get('/profiles/:id/access-grants', requireV1Auth, async (req: Request, res: Response) => {
+v1ApiRouter.post('/profiles/:id/cycle/log', requireV1Auth, requireProfileAccess('cycle', 'write'), async (req, res) => {
+  const { flow, symptoms, observed_at } = req.body || {};
+  if (!flow && (!Array.isArray(symptoms) || symptoms.length === 0)) return sendError(res, 'Нужно передать реальное событие цикла.', 'INVALID_INPUT', 400);
   const userId = (req as any).user.id;
-  const grants = permissionService.getGrantsByOwner(userId);
-  return sendSuccess(res, { grants });
+  const current = await canonicalDataLayer.getUserData(userId);
+  const event = { id: `cycle-${Date.now()}`, subject_profile_id: req.params.id, event_type: 'cycle', observed_at: observed_at || new Date().toISOString(), ...(flow ? { flow } : {}), ...(Array.isArray(symptoms) ? { symptoms } : {}) };
+  await canonicalDataLayer.saveUserData(userId, { dailyLogs: [event, ...(current.dailyLogs || [])] });
+  return sendSuccess(res, { loggedEvent: event }, {}, 201);
 });
 
-v1ApiRouter.post('/profiles/:id/access-grants/create', requireV1Auth, async (req: Request, res: Response) => {
+v1ApiRouter.get('/profiles/:id/pregnancies/summary', requireV1Auth, requireProfileAccess('pregnancy'), async (req, res) => {
+  const data = await canonicalDataLayer.getSubjectHealthData((req as any).user.id, req.params.id);
+  const pregnancy = (data as any)?.profile?.womenHealth?.pregnancy ?? (data as any)?.womenHealth?.pregnancy ?? null;
+  return sendSuccess(res, { profileId: req.params.id, state: pregnancy ? 'available' : 'no_data', activePregnancy: pregnancy, history: [] });
+});
+v1ApiRouter.post('/profiles/:id/pregnancies/log', requireV1Auth, requireProfileAccess('pregnancy', 'write'), async (req, res) => {
+  if (req.body?.gestatingWeeks === undefined && !req.body?.notes) return sendError(res, 'Нельзя создавать пустую pregnancy-запись.', 'INVALID_INPUT', 400);
   const userId = (req as any).user.id;
-  const { recipientName, scopes, relationship } = req.body;
+  const current = await canonicalDataLayer.getUserData(userId);
+  const event = { id: `preg-${Date.now()}`, subject_profile_id: req.params.id, event_type: 'pregnancy', loggedAt: new Date().toISOString(), ...(req.body?.gestatingWeeks !== undefined ? { gestatingWeeks: Number(req.body.gestatingWeeks) } : {}), ...(req.body?.notes ? { notes: req.body.notes } : {}) };
+  await canonicalDataLayer.saveUserData(userId, { dailyLogs: [event, ...(current.dailyLogs || [])] });
+  return sendSuccess(res, { pregnancyLog: event }, {}, 201);
+});
 
-  const grant = permissionService.createInvitation({
-    ownerUserId: userId,
-    granteeName: recipientName || 'Доверенное лицо / Врач',
-    relationship: relationship || 'family',
-    isAdult: true,
-    allowedScopes: scopes || ['emergency_card', 'medications'],
-  });
-
+v1ApiRouter.get('/profiles/:id/access-grants', requireV1Auth, requireProfileAccess('documents', 'manage_grants'), (req, res) => {
+  if (!isSelfProfile((req as any).user.id, req.params.id)) return sendError(res, 'Управлять grants может только владелец профиля.', 'PERMISSION_DENIED', 403);
+  return sendSuccess(res, { grants: permissionService.getGrantsByOwner((req as any).user.id) });
+});
+v1ApiRouter.post('/profiles/:id/access-grants/create', requireV1Auth, requireProfileAccess('documents', 'manage_grants'), (req, res) => {
+  const userId = (req as any).user.id;
+  if (!isSelfProfile(userId, req.params.id)) return sendError(res, 'Управлять grants может только владелец профиля.', 'PERMISSION_DENIED', 403);
+  const { recipientName, scopes, relationship } = req.body || {};
+  if (!recipientName || !relationship || !Array.isArray(scopes) || scopes.length === 0) return sendError(res, 'recipientName, relationship и явный непустой scopes обязательны. Автоматические scopes запрещены.', 'INVALID_INPUT', 400);
+  const grant = permissionService.createInvitation({ ownerUserId: userId, granteeName: recipientName, relationship, isAdult: true, allowedScopes: scopes });
   return sendSuccess(res, { grant }, {}, 201);
 });
-
-v1ApiRouter.post('/profiles/:id/access-grants/revoke', requireV1Auth, async (req: Request, res: Response) => {
+v1ApiRouter.post('/profiles/:id/access-grants/revoke', requireV1Auth, requireProfileAccess('documents', 'manage_grants'), (req, res) => {
   const userId = (req as any).user.id;
-  const { grantId } = req.body;
-
-  if (!grantId) {
-    return sendError(res, 'Параметр grantId обязателен', 'INVALID_INPUT', 400);
-  }
-
-  const revoked = permissionService.revokeGrant(userId, grantId);
-  return sendSuccess(res, { revoked, grantId });
+  if (!isSelfProfile(userId, req.params.id)) return sendError(res, 'Управлять grants может только владелец профиля.', 'PERMISSION_DENIED', 403);
+  if (!req.body?.grantId) return sendError(res, 'grantId обязателен.', 'INVALID_INPUT', 400);
+  return sendSuccess(res, { revoked: permissionService.revokeGrant(userId, req.body.grantId), grantId: req.body.grantId });
 });
 
-// ==========================================
-// 13. /profiles/{id}/emergency-card
-// ==========================================
-
-v1ApiRouter.get('/profiles/:id/emergency-card', requireV1Auth, async (req: Request, res: Response) => {
-  const userId = (req as any).user.id;
-  const card = safetyEmergencyService.getEmergencyCard(userId);
-  return sendSuccess(res, { card });
+v1ApiRouter.get('/profiles/:id/emergency-card', requireV1Auth, requireProfileAccess('emergency_card'), (req, res) => {
+  if (!ensureSelfBackedLegacyStore(req, res)) return;
+  return sendSuccess(res, { card: safetyEmergencyService.getEmergencyCard((req as any).user.id) });
+});
+v1ApiRouter.post('/profiles/:id/emergency-card/update', requireV1Auth, requireProfileAccess('emergency_card', 'write'), (req, res) => {
+  if (!ensureSelfBackedLegacyStore(req, res)) return;
+  return sendSuccess(res, { card: safetyEmergencyService.updateEmergencyCard((req as any).user.id, req.body || {}) });
 });
 
-v1ApiRouter.post('/profiles/:id/emergency-card/update', requireV1Auth, async (req: Request, res: Response) => {
-  const userId = (req as any).user.id;
-  const updatedCard = safetyEmergencyService.updateEmergencyCard(userId, req.body);
-  return sendSuccess(res, { card: updatedCard });
+v1ApiRouter.get('/profiles/:id/dental/summary', requireV1Auth, requireProfileAccess('dental'), (req, res) => {
+  if (!ensureSelfBackedLegacyStore(req, res)) return;
+  const dentitionType = req.query.dentitionType === 'primary' ? 'primary' : 'permanent';
+  return sendSuccess(res, { summary: dentalService.getDentalSummary((req as any).user.id, dentitionType) });
 });
-
-// ==========================================
-// 14. /profiles/{id}/dental/*
-// ==========================================
-
-v1ApiRouter.get('/profiles/:id/dental/summary', requireV1Auth, async (req: Request, res: Response) => {
-  const userId = (req as any).user.id;
-  const dentitionType = (req.query.dentitionType as any) || 'permanent';
-  const summary = dentalService.getDentalSummary(userId, dentitionType);
-  return sendSuccess(res, { summary });
-});
-
-v1ApiRouter.post('/profiles/:id/dental/tooth/update', requireV1Auth, async (req: Request, res: Response) => {
-  const userId = (req as any).user.id;
+v1ApiRouter.post('/profiles/:id/dental/tooth/update', requireV1Auth, requireProfileAccess('dental', 'write'), (req, res) => {
+  if (!ensureSelfBackedLegacyStore(req, res)) return;
+  if (!req.body?.toothNumber) return sendError(res, 'toothNumber обязателен.', 'INVALID_INPUT', 400);
   const { toothNumber, ...updates } = req.body;
-
-  if (!toothNumber) {
-    return sendError(res, 'Параметр toothNumber обязателен', 'INVALID_INPUT', 400);
-  }
-
-  const updated = dentalService.updateTooth(userId, Number(toothNumber), updates);
-  return sendSuccess(res, { tooth: updated });
+  return sendSuccess(res, { tooth: dentalService.updateTooth((req as any).user.id, Number(toothNumber), updates) });
+});
+v1ApiRouter.post('/profiles/:id/dental/finding', requireV1Auth, requireProfileAccess('dental', 'write'), (req, res) => {
+  if (!ensureSelfBackedLegacyStore(req, res)) return;
+  return sendSuccess(res, { finding: dentalService.addFinding((req as any).user.id, req.body) }, {}, 201);
+});
+v1ApiRouter.post('/profiles/:id/dental/procedure', requireV1Auth, requireProfileAccess('dental', 'write'), (req, res) => {
+  if (!ensureSelfBackedLegacyStore(req, res)) return;
+  return sendSuccess(res, { procedure: dentalService.addProcedure((req as any).user.id, req.body) }, {}, 201);
+});
+v1ApiRouter.post('/profiles/:id/dental/symptom', requireV1Auth, requireProfileAccess('dental', 'write'), (req, res) => {
+  if (!ensureSelfBackedLegacyStore(req, res)) return;
+  return sendSuccess(res, { symptom: dentalService.addSymptom((req as any).user.id, req.body) }, {}, 201);
+});
+v1ApiRouter.post('/profiles/:id/dental/periodontal', requireV1Auth, requireProfileAccess('dental', 'write'), (req, res) => {
+  if (!ensureSelfBackedLegacyStore(req, res)) return;
+  return sendSuccess(res, { periodontalRecord: dentalService.addPeriodontalRecord((req as any).user.id, req.body) }, {}, 201);
+});
+v1ApiRouter.post('/profiles/:id/dental/orthodontic', requireV1Auth, requireProfileAccess('dental', 'write'), (req, res) => {
+  if (!ensureSelfBackedLegacyStore(req, res)) return;
+  return sendSuccess(res, { orthodonticEpisode: dentalService.addOrthodonticEpisode((req as any).user.id, req.body) }, {}, 201);
+});
+v1ApiRouter.post('/profiles/:id/dental/visit', requireV1Auth, requireProfileAccess('dental', 'write'), (req, res) => {
+  if (!ensureSelfBackedLegacyStore(req, res)) return;
+  return sendSuccess(res, { visit: dentalService.addVisit((req as any).user.id, req.body) }, {}, 201);
+});
+v1ApiRouter.post('/profiles/:id/dental/imaging', requireV1Auth, requireProfileAccess('dental', 'write'), (req, res) => {
+  if (!ensureSelfBackedLegacyStore(req, res)) return;
+  return sendSuccess(res, { imaging: dentalService.addImagingLink((req as any).user.id, req.body) }, {}, 201);
 });
 
-v1ApiRouter.post('/profiles/:id/dental/finding', requireV1Auth, async (req: Request, res: Response) => {
-  const userId = (req as any).user.id;
-  const finding = dentalService.addFinding(userId, req.body);
-  return sendSuccess(res, { finding }, {}, 201);
-});
-
-v1ApiRouter.post('/profiles/:id/dental/procedure', requireV1Auth, async (req: Request, res: Response) => {
-  const userId = (req as any).user.id;
-  const procedure = dentalService.addProcedure(userId, req.body);
-  return sendSuccess(res, { procedure }, {}, 201);
-});
-
-v1ApiRouter.post('/profiles/:id/dental/symptom', requireV1Auth, async (req: Request, res: Response) => {
-  const userId = (req as any).user.id;
-  const symptom = dentalService.addSymptom(userId, req.body);
-  return sendSuccess(res, { symptom }, {}, 201);
-});
-
-v1ApiRouter.post('/profiles/:id/dental/periodontal', requireV1Auth, async (req: Request, res: Response) => {
-  const userId = (req as any).user.id;
-  const record = dentalService.addPeriodontalRecord(userId, req.body);
-  return sendSuccess(res, { periodontalRecord: record }, {}, 201);
-});
-
-v1ApiRouter.post('/profiles/:id/dental/orthodontic', requireV1Auth, async (req: Request, res: Response) => {
-  const userId = (req as any).user.id;
-  const episode = dentalService.addOrthodonticEpisode(userId, req.body);
-  return sendSuccess(res, { orthodonticEpisode: episode }, {}, 201);
-});
-
-v1ApiRouter.post('/profiles/:id/dental/visit', requireV1Auth, async (req: Request, res: Response) => {
-  const userId = (req as any).user.id;
-  const visit = dentalService.addVisit(userId, req.body);
-  return sendSuccess(res, { visit }, {}, 201);
-});
-
-v1ApiRouter.post('/profiles/:id/dental/imaging', requireV1Auth, async (req: Request, res: Response) => {
-  const userId = (req as any).user.id;
-  const imaging = dentalService.addImagingLink(userId, req.body);
-  return sendSuccess(res, { imaging }, {}, 201);
+// Error handler must be last.
+v1ApiRouter.use((err: any, _req: Request, res: Response, next: NextFunction) => {
+  console.error('[API v1 Error]', err);
+  if (res.headersSent) return next(err);
+  return sendError(res, 'Внутренняя ошибка сервера', 'INTERNAL_ERROR', 500);
 });
