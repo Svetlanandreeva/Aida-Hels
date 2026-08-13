@@ -13,6 +13,15 @@ const checks = [
     ],
   },
   {
+    file: 'server/homeApiService.ts',
+    patterns: [
+      /mood:\s*latest\?\.mood\s*\|\|\s*['"]Нормальное['"]/,
+      /Показатели стабильны\./,
+      /плановый приём витаминов/i,
+      /time:\s*r\.time\s*\|\|\s*['"]09:00['"]/,
+    ],
+  },
+  {
     file: 'server/permissionService.ts',
     patterns: [/seedDemoGrants\s*\(/, /grant-demo-/i, /demo-user-/i],
   },
@@ -29,6 +38,21 @@ const checks = [
       /state_score\s*:\s*state_score\s*\|\|\s*7/,
       /cycleDay\s*:\s*14/,
       /gestatingWeeks\s*:\s*gestatingWeeks\s*\|\|\s*12/,
+    ],
+  },
+  {
+    file: 'server/integrationsService.ts',
+    patterns: [
+      /id:\s*['"]apple_health['"][\s\S]{0,200}status:\s*['"]supported['"]/,
+      /id:\s*['"]health_connect['"][\s\S]{0,200}status:\s*['"]supported['"]/,
+      /Официальный адаптер активен/,
+      /diastolic:[^\n]*\|\|\s*80/,
+      /deepSleepMinutes:[^\n]*0\.25/,
+      /remSleepMinutes:[^\n]*0\.20/,
+      /cyclePhase:[^\n]*['"]follicular['"]/,
+      /flowLevel:[^\n]*['"]light['"]/,
+      /deviceName\s*=\s*['"]Apple Watch Series 9['"]/,
+      /batteryLevel:\s*88/,
     ],
   },
   {
@@ -60,14 +84,12 @@ const checks = [
 ];
 
 let failures = 0;
-
 for (const check of checks) {
   if (!fs.existsSync(check.file)) {
     console.error(`FAIL ${check.file}: file not found`);
     failures++;
     continue;
   }
-
   const source = fs.readFileSync(check.file, 'utf8');
   for (const pattern of check.patterns) {
     if (pattern.test(source)) {
@@ -81,5 +103,4 @@ if (failures > 0) {
   console.error(`\nProduction safety audit failed: ${failures} blocker(s).`);
   process.exit(1);
 }
-
-console.log('Production safety audit passed: no known fake/demo medical-data or auth blockers found.');
+console.log('Production safety audit passed: no known fake/demo medical-data, auth or integration-readiness blockers found.');
