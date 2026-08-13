@@ -27,18 +27,55 @@ jobs:
           docker build -t cr.yandex/${{ env.YC_REGISTRY_ID }}/${{ env.IMAGE_NAME }}:${{ github.sha }} .
           docker tag cr.yandex/${{ env.YC_REGISTRY_ID }}/${{ env.IMAGE_NAME }}:${{ github.sha }} cr.yandex/${{ env.YC_REGISTRY_ID }}/${{ env.IMAGE_NAME }}:latest
 
+      - name: Smoke-test built container
+        shell: bash
+        run: |
+          set -euo pipefail
+          IMAGE="cr.yandex/${{ env.YC_REGISTRY_ID }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
+          docker rm -f aida-smoke >/dev/null 2>&1 || true
+          docker run -d --name aida-smoke \
+            -p 18080:8080 \
+            -e PORT=8080 \
+            -e NODE_ENV=production \
+            -e JWT_SECRET=ci-smoke-test-secret-not-for-production \
+            "$IMAGE"
+
+          healthy=0
+          for attempt in $(seq 1 20); do
+            if curl --fail --silent --show-error http://127.0.0.1:18080/ >/tmp/aida-smoke-response.html; then
+              healthy=1
+              break
+            fi
+            if ! docker ps --format '{{.Names}}' | grep -qx aida-smoke; then
+              break
+            fi
+            sleep 1
+          done
+
+          if [ "$healthy" -ne 1 ]; then
+            echo 'Container smoke test failed. Runtime logs:'
+            docker logs aida-smoke || true
+            docker inspect aida-smoke --format='exit={{.State.ExitCode}} error={{.State.Error}} status={{.State.Status}}' || true
+            exit 1
+          fi
+
+          echo 'Container smoke test passed.'
+          docker rm -f aida-smoke >/dev/null
+
       - name: Push image
         run: |
           docker push cr.yandex/${{ env.YC_REGISTRY_ID }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
           docker push cr.yandex/${{ env.YC_REGISTRY_ID }}/${{ env.IMAGE_NAME }}:latest
 
       - name: Deploy revision to Serverless Container
+        id: deploy
         uses: yc-actions/yc-sls-container-deploy@v3
         with:
           yc-sa-json-credentials: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
           folder-id: ${{ env.YC_FOLDER_ID }}
           container-name: helt-aida
           revision-image-url: cr.yandex/${{ env.YC_REGISTRY_ID }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          revision-runtime: http
           revision-cores: 1
           revision-memory: 512Mb
           revision-concurrency: 8
@@ -55,3 +92,29 @@ jobs:
             JWT_SECRET=${{ secrets.JWT_SECRET }}
             NODE_ENV=production
           public: true
+
+      - name: Verify deployed container responds
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL="https://${{ steps.deploy.outputs.id }}.containers.yandexcloud.net/"
+          echo "Checking deployed container endpoint: $URL"
+          healthy=0
+          for attempt in $(seq 1 20); do
+            code=$(curl --silent --show-error --output /tmp/deployed-response.txt --write-out '%{http_code}' "$URL" || true)
+            if [[ "$code" =~ ^2|3 ]]; then
+              healthy=1
+              break
+            fi
+            echo "Attempt $attempt returned HTTP $code"
+            cat /tmp/deployed-response.txt || true
+            sleep 2
+          done
+
+          if [ "$healthy" -ne 1 ]; then
+            echo 'Deployed container did not become healthy.'
+            cat /tmp/deployed-response.txt || true
+            exit 1
+          fi
+
+          echo 'Deployed container health check passed.'
