@@ -34,14 +34,13 @@ jobs:
           GEMINI_PROXY_URL: ${{ secrets.GEMINI_PROXY_URL }}
           GEMINI_PROXY_SECRET: ${{ secrets.GEMINI_PROXY_SECRET }}
           GOOGLE_SHEETS_WEB_APP_URL: ${{ secrets.GOOGLE_SHEETS_WEB_APP_URL }}
-          YDB_ENDPOINT: ${{ secrets.YDB_ENDPOINT }}
-          YDB_DATABASE: ${{ secrets.YDB_DATABASE }}
-          YDB_SA_JSON_CREDENTIALS: ${{ secrets.YDB_SA_JSON_CREDENTIALS }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
         run: |
           set -euo pipefail
           IMAGE="cr.yandex/${{ env.YC_REGISTRY_ID }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
           docker rm -f aida-smoke >/dev/null 2>&1 || true
+          docker run --rm "$IMAGE" node -e \
+            "require.resolve('@yandex-cloud/nodejs-sdk/dist/token-service/metadata-token-service')"
           docker run -d --name aida-smoke \
             -p 18080:8080 \
             -e NODE_ENV=production \
@@ -49,9 +48,6 @@ jobs:
             -e GEMINI_PROXY_URL \
             -e GEMINI_PROXY_SECRET \
             -e GOOGLE_SHEETS_WEB_APP_URL \
-            -e YDB_ENDPOINT \
-            -e YDB_DATABASE \
-            -e YDB_SA_JSON_CREDENTIALS \
             -e JWT_SECRET \
             "$IMAGE"
 
