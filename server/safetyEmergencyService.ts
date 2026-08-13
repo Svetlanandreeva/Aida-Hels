@@ -10,14 +10,14 @@ export interface EmergencyContact {
 
 export interface AllergyEntry {
   allergyName: string;
-  severity: 'mild' | 'moderate' | 'severe' | 'life_threatening';
+  severity?: 'mild' | 'moderate' | 'severe' | 'life_threatening';
   notes?: string;
 }
 
 export interface ActiveMedicationEntry {
   medicationName: string;
-  dosage: string;
-  schedule: string;
+  dosage?: string;
+  schedule?: string;
 }
 
 export interface CriticalConditionEntry {
@@ -33,9 +33,9 @@ export interface EmergencyCardProfile {
   activeMedications: ActiveMedicationEntry[];
   criticalConditions: CriticalConditionEntry[];
   emergencyContacts: EmergencyContact[];
-  organDonor: boolean;
-  specialInstructions: string;
-  updatedAt: string;
+  organDonor: boolean | null;
+  specialInstructions: string | null;
+  updatedAt: string | null;
 }
 
 export interface SafetyAlertResult {
@@ -56,7 +56,7 @@ export interface LocationRecord {
   latitude: number;
   longitude: number;
   accuracyMeters: number;
-  capturedAt: string; // ISO String
+  capturedAt: string;
   addressText?: string;
   isStale: boolean;
   ageMinutes: number;
@@ -80,68 +80,14 @@ export interface SOSAlertRecord {
 
 export class SafetyEmergencyService {
   private emergencyCards = new Map<string, EmergencyCardProfile>();
-  private locations = new Map<string, LocationRecord>(); // userId -> LocationRecord
-  private activeSosDispatches = new Map<string, SOSAlertRecord>(); // sosId -> SOSAlertRecord
+  private locations = new Map<string, LocationRecord>();
+  private activeSosDispatches = new Map<string, SOSAlertRecord>();
   private safetyAlertsLog: SafetyAlertResult[] = [];
 
-  constructor() {
-    this.seedDemoEmergencyData('user_demo_me');
-  }
-
-  private seedDemoEmergencyData(userId: string) {
-    const demoCard: EmergencyCardProfile = {
-      userId,
-      bloodType: 'A+',
-      allergies: [
-        { allergyName: 'Пенициллин', severity: 'life_threatening', notes: 'Анафилактический шок в анамнезе' },
-        { allergyName: 'Новокаин', severity: 'severe', notes: 'Отек Квинке' },
-      ],
-      activeMedications: [
-        { medicationName: 'Периндоприл', dosage: '5 мг', schedule: '1 раз в день утром' },
-        { medicationName: 'Аспирин Кардио', dosage: '100 мг', schedule: '1 раз в день вечером' },
-      ],
-      criticalConditions: [
-        { conditionName: 'Артериальная гипертензия II ст.', icdCode: 'I10', notes: 'Целевое АД 120-130 / 70-80' },
-        { conditionName: 'Бронхиальная астма', icdCode: 'J45', notes: 'Использует ингалятор Вентолин' },
-      ],
-      emergencyContacts: [
-        { name: 'Анна Иванова (Жена)', relationship: 'супруга', phone: '+7 (999) 123-45-67', isPrimary: true },
-        { name: 'Д-р Петров В.С.', relationship: 'лечащий врач', phone: '+7 (903) 987-65-43', isPrimary: false },
-      ],
-      organDonor: true,
-      specialInstructions: 'Наличие кардиостимулятора Medtronic. Избегать МРТ без согласования с кардиологом.',
-      updatedAt: new Date().toISOString(),
-    };
-    this.emergencyCards.set(userId, demoCard);
-
-    // Seed Location (Fresh location)
-    const nowIso = new Date().toISOString();
-    const loc: LocationRecord = {
-      id: 'loc-demo-01',
-      userId,
-      latitude: 55.7558,
-      longitude: 37.6173,
-      accuracyMeters: 12,
-      capturedAt: nowIso,
-      addressText: 'г. Москва, ул. Тверская, д. 12, кв. 45',
-      isStale: false,
-      ageMinutes: 0,
-      displayStatus: 'FRESH_LIVE_LOCATION',
-      formattedLabel: 'Текущая геопозиция (Точность 12м, зафиксировано только что)',
-    };
-    this.locations.set(userId, loc);
-  }
-
-  // --- 1. EMERGENCY CARD ENGINE (NO LLM, 100% DETERMINISTIC) ---
-
-  /**
-   * Requirement 20: Deterministic Emergency Card without LLM
-   */
   public getEmergencyCard(userId: string): EmergencyCardProfile {
     const card = this.emergencyCards.get(userId);
     if (card) return card;
 
-    // Return empty fallback profile if not configured
     return {
       userId,
       bloodType: 'UNKNOWN',
@@ -149,9 +95,9 @@ export class SafetyEmergencyService {
       activeMedications: [],
       criticalConditions: [],
       emergencyContacts: [],
-      organDonor: false,
-      specialInstructions: 'Особые медицинские указания не заполнены.',
-      updatedAt: new Date().toISOString(),
+      organDonor: null,
+      specialInstructions: null,
+      updatedAt: null,
     };
   }
 
@@ -180,11 +126,6 @@ export class SafetyEmergencyService {
     return updated;
   }
 
-  // --- 2. DETERMINISTIC SAFETY SERVICE ---
-
-  /**
-   * Requirement 20: Safety Service MUST be deterministic and independent of free AI decisions
-   */
   public evaluateMetricsSafety(
     userId: string,
     metrics: {
@@ -198,52 +139,48 @@ export class SafetyEmergencyService {
     const alerts: SafetyAlertResult[] = [];
     const nowIso = new Date().toISOString();
 
-    // Hypertensive Crisis Threshold (SBP >= 180 or DBP >= 120)
     if ((metrics.systolic && metrics.systolic >= 180) || (metrics.diastolic && metrics.diastolic >= 120)) {
       alerts.push({
         id: `alert-hypertensive-${Date.now()}`,
         userId,
         alertType: 'hypertensive_crisis',
         severity: 'emergency',
-        title: 'ГИПЕРТОНИЧЕСКИЙ КРИЗ (Критический уровень АД)',
-        description: `Зафиксировано опасное повышение артериального давления: ${metrics.systolic || '--'}/${metrics.diastolic || '--'} мм рт. ст.`,
-        recommendedAction: 'Немедленно примите горизонтальное положение. Вызовите скорую медицинскую помощь 103 / 112!',
-        triggeredValue: `${metrics.systolic}/${metrics.diastolic} мм рт. ст.`,
+        title: 'Критически высокое артериальное давление',
+        description: `Зафиксировано высокое артериальное давление: ${metrics.systolic ?? 'нет данных'}/${metrics.diastolic ?? 'нет данных'} мм рт. ст.`,
+        recommendedAction: 'Следуйте заранее согласованному с врачом плану действий. При выраженных симптомах или ухудшении состояния обратитесь за неотложной медицинской помощью.',
+        triggeredValue: `${metrics.systolic ?? 'нет данных'}/${metrics.diastolic ?? 'нет данных'} мм рт. ст.`,
         triggeredAt: nowIso,
       });
     }
 
-    // Critical Hypoglycemia Threshold (Glucose < 3.5 mmol/L)
     if (metrics.glucose && metrics.glucose < 3.5) {
       alerts.push({
         id: `alert-hypo-${Date.now()}`,
         userId,
         alertType: 'hypoglycemia',
         severity: 'emergency',
-        title: 'ОПАСНАЯ ГИПОГЛИКЕМИЯ (Низкий уровень сахара)',
-        description: `Зафиксировано критическое падение глюкозы крови: ${metrics.glucose} ммоль/л (Ниже 3.5 ммоль/л).`,
-        recommendedAction: 'Примите 15-20 грамм быстрых углеводов (стакан сладкого сока, 3-4 куска сахара, гелевую глюкозу). Измерьте уровень через 15 минут!',
+        title: 'Критически низкий уровень глюкозы',
+        description: `Зафиксирован уровень глюкозы ${metrics.glucose} ммоль/л.`,
+        recommendedAction: 'Следуйте персональному плану, который дал лечащий врач. Если состояние ухудшается или есть выраженные симптомы, обратитесь за неотложной медицинской помощью.',
         triggeredValue: `${metrics.glucose} ммоль/л`,
         triggeredAt: nowIso,
       });
     }
 
-    // Critical Hyperglycemia Threshold (Glucose >= 16.0 mmol/L)
     if (metrics.glucose && metrics.glucose >= 16.0) {
       alerts.push({
         id: `alert-hyper-${Date.now()}`,
         userId,
         alertType: 'hyperglycemia',
         severity: 'critical',
-        title: 'ВЫСОКАЯ ГИПЕРГЛИКЕМИЯ',
-        description: `Уровень глюкозы крови повышен до ${metrics.glucose} ммоль/л. Высокий риск кетоацидоза.`,
-        recommendedAction: 'Проверьте кетоны в моче/крови. Введите подкалывающую дозу короткого инсулина согласно врачебному назначению.',
+        title: 'Очень высокий уровень глюкозы',
+        description: `Зафиксирован уровень глюкозы ${metrics.glucose} ммоль/л.`,
+        recommendedAction: 'Следуйте персональному плану лечения, который дал врач. При выраженных симптомах, кетонах или ухудшении состояния обратитесь за медицинской помощью.',
         triggeredValue: `${metrics.glucose} ммоль/л`,
         triggeredAt: nowIso,
       });
     }
 
-    // Heart Rate Tachycardia/Bradycardia
     if (metrics.heartRate) {
       if (metrics.heartRate > 150) {
         alerts.push({
@@ -251,9 +188,9 @@ export class SafetyEmergencyService {
           userId,
           alertType: 'tachycardia',
           severity: 'critical',
-          title: 'ВЫРАЖЕННАЯ ТАХИКАРДИЯ В ПОКОЕ',
-          description: `Пульс покоя превышает 150 уд/мин (Зафиксировано: ${metrics.heartRate} уд/мин).`,
-          recommendedAction: 'Прекратите любую физическую нагрузку, сядьте в прохладном месте. При сохранении вызовите 103.',
+          title: 'Очень высокая частота пульса',
+          description: `Зафиксирован пульс ${metrics.heartRate} уд/мин.`,
+          recommendedAction: 'Прекратите нагрузку и оцените самочувствие. При выраженных симптомах или сохранении очень высокой частоты пульса обратитесь за неотложной медицинской помощью.',
           triggeredValue: `${metrics.heartRate} уд/мин`,
           triggeredAt: nowIso,
         });
@@ -263,44 +200,33 @@ export class SafetyEmergencyService {
           userId,
           alertType: 'bradycardia',
           severity: 'emergency',
-          title: 'ОПАСНАЯ БРАДИКАРДИЯ',
-          description: `Пульс падал ниже 40 уд/мин (Зафиксировано: ${metrics.heartRate} уд/мин). Высокий риск синкопе/потери сознания.`,
-          recommendedAction: 'Примите горизонтальное положение с приподнятыми ногами. Вызовите скорую помощь.',
+          title: 'Очень низкая частота пульса',
+          description: `Зафиксирован пульс ${metrics.heartRate} уд/мин.`,
+          recommendedAction: 'Оцените самочувствие и следуйте персональному плану врача. При слабости, головокружении, обмороке, боли в груди или других выраженных симптомах обратитесь за неотложной помощью.',
           triggeredValue: `${metrics.heartRate} уд/мин`,
           triggeredAt: nowIso,
         });
       }
     }
 
-    // Temperature Anomaly
-    if (metrics.temperature) {
-      if (metrics.temperature >= 39.5) {
-        alerts.push({
-          id: `alert-fever-${Date.now()}`,
-          userId,
-          alertType: 'fever_anomaly',
-          severity: 'critical',
-          title: 'ВЫСОКАЯ ЛИХОРАДКА (Гипертермия)',
-          description: `Температура тела достигла ${metrics.temperature}°C.`,
-          recommendedAction: 'Примите жаропонижающее средство (Парацетамол/Ибупрофен) и примените физическое охлаждение.',
-          triggeredValue: `${metrics.temperature}°C`,
-          triggeredAt: nowIso,
-        });
-      }
+    if (metrics.temperature && metrics.temperature >= 39.5) {
+      alerts.push({
+        id: `alert-fever-${Date.now()}`,
+        userId,
+        alertType: 'fever_anomaly',
+        severity: 'critical',
+        title: 'Высокая температура',
+        description: `Зафиксирована температура ${metrics.temperature}°C.`,
+        recommendedAction: 'Оцените общее состояние и следуйте рекомендациям врача. При выраженном ухудшении состояния или тревожных симптомах обратитесь за медицинской помощью.',
+        triggeredValue: `${metrics.temperature}°C`,
+        triggeredAt: nowIso,
+      });
     }
 
-    for (const alert of alerts) {
-      this.safetyAlertsLog.unshift(alert);
-    }
-
+    for (const alert of alerts) this.safetyAlertsLog.unshift(alert);
     return alerts;
   }
 
-  // --- 3. SOS WORKFLOW ---
-
-  /**
-   * Requirement 20: SOS по кнопке → отдельный workflow
-   */
   public triggerSOS(params: {
     userId: string;
     source: 'user_button' | 'fall_sensor' | 'system';
@@ -308,21 +234,18 @@ export class SafetyEmergencyService {
   }): SOSAlertRecord {
     const sosId = `sos-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
     const nowIso = new Date().toISOString();
-
     const emergencyCardSnapshot = this.getEmergencyCard(params.userId);
     const locationSnapshot = this.getLatestLocation(params.userId);
 
     let locationStatus: SOSAlertRecord['locationStatus'] = 'LOCATION_UNAVAILABLE';
     if (locationSnapshot) {
-      locationStatus = locationSnapshot.isStale
-        ? 'STALE_LOCATION_NOT_CURRENT'
-        : 'FRESH_LIVE_LOCATION';
+      locationStatus = locationSnapshot.isStale ? 'STALE_LOCATION_NOT_CURRENT' : 'FRESH_LIVE_LOCATION';
     }
 
     const notifiedContacts = emergencyCardSnapshot.emergencyContacts.map((c) => ({
       name: c.name,
       phone: c.phone,
-      status: 'sent' as const,
+      status: 'pending' as const,
     }));
 
     const sosRecord: SOSAlertRecord = {
@@ -355,12 +278,11 @@ export class SafetyEmergencyService {
 
   public resolveSOS(userId: string, sosId: string, reason?: string): SOSAlertRecord {
     const sos = this.activeSosDispatches.get(sosId);
-    if (!sos) throw new Error('SOS диспетчеризация не найдена');
+    if (!sos) throw new Error('SOS workflow не найден');
 
     sos.status = 'resolved';
     sos.resolvedAt = new Date().toISOString();
-    sos.cancellationReason = reason || 'Отменено пользователем (Ложный сигнал/Помощь получена)';
-
+    sos.cancellationReason = reason || 'Причина завершения не указана';
     this.activeSosDispatches.set(sosId, sos);
 
     auditProvenanceService.recordCriticalChange({
@@ -377,52 +299,34 @@ export class SafetyEmergencyService {
     return sos;
   }
 
-  // --- 4. FALL / DEVICE EVENTS (STRICT PROVIDER CAPABILITY ENFORCEMENT) ---
-
-  /**
-   * Requirement 20: Fall/device events → только если конкретный provider действительно отдаёт такую capability
-   */
   public recordDeviceFallEvent(params: {
     userId: string;
     providerId: string;
     timestamp?: string;
     impactGForce?: number;
   }): { success: boolean; message: string; sosRecord?: SOSAlertRecord } {
-    // 1. Check provider capability via integrationsService registry
     const provider = integrationsService.getProvidersRegistry().find((p) => p.id === params.providerId);
-
-    if (!provider) {
-      throw new Error(`Неизвестный провайдер носимых устройств: ${params.providerId}`);
-    }
+    if (!provider) throw new Error(`Неизвестный провайдер носимых устройств: ${params.providerId}`);
 
     const hasFallCapability = provider.capabilities.some((c) => c.key === 'fall_detection');
-
     if (!hasFallCapability) {
-      throw new Error(
-        `ОТКЛОНЕНО: Провайдер «${provider.name}» (${params.providerId}) не поддерживает аппаратную детекцию падений (отсутствует capability "fall_detection"). Событие заблокировано.`
-      );
+      throw new Error(`ОТКЛОНЕНО: Провайдер «${provider.name}» (${params.providerId}) не поддерживает capability fall_detection.`);
     }
 
-    // 2. Provider HAS capability -> Process Fall Event & Trigger Emergency SOS Workflow
+    const impactText = params.impactGForce !== undefined ? `${params.impactGForce}G` : 'значение ускорения не передано';
     const sosRecord = this.triggerSOS({
       userId: params.userId,
       source: 'fall_sensor',
-      reason: `Зафиксировано аппаратное падение с устройства ${provider.name} (Ускорение: ${params.impactGForce || '4.2'}G)`,
+      reason: `Зафиксировано аппаратное событие падения с устройства ${provider.name}; ${impactText}`,
     });
 
     return {
       success: true,
-      message: `Зафиксировано подтвержденное аппаратное падение с носимого устройства ${provider.name}. Автоматически активирован экстренный SOS workflow.`,
+      message: `Зафиксировано подтверждённое событие падения от ${provider.name}. SOS workflow активирован локально; статус доставки контактам остаётся pending до подтверждения провайдером уведомлений.`,
       sosRecord,
     };
   }
 
-  // --- 5. LOCATION MANAGEMENT & STALE LOCATION ENFORCEMENT ---
-
-  /**
-   * Requirement 20: Геолокация хранится отдельно, имеет freshness/accuracy и отдельный permission scope.
-   * STALE LOCATION НЕЛЬЗЯ показывать как текущую!
-   */
   public saveLocationRecord(params: {
     userId: string;
     latitude: number;
@@ -435,18 +339,12 @@ export class SafetyEmergencyService {
     const capturedAt = params.capturedAt || new Date().toISOString();
     const ageMs = Date.now() - new Date(capturedAt).getTime();
     const ageMinutes = Math.floor(ageMs / 60000);
+    const isStale = ageMinutes > 15;
+    const displayStatus: LocationRecord['displayStatus'] = isStale ? 'STALE_LOCATION_NOT_CURRENT' : 'FRESH_LIVE_LOCATION';
 
-    const isStale = ageMinutes > 15; // > 15 minutes threshold
-    const displayStatus: LocationRecord['displayStatus'] = isStale
-      ? 'STALE_LOCATION_NOT_CURRENT'
-      : 'FRESH_LIVE_LOCATION';
-
-    let formattedLabel = '';
-    if (isStale) {
-      formattedLabel = `[УСТАРЕВШАЯ ГЕОПОЗИЦИЯ - НЕ ЯВЛЯЕТСЯ ТЕКУЩЕЙ] (Зафиксирована ${ageMinutes} мин. назад, Точность ${params.accuracyMeters}м)`;
-    } else {
-      formattedLabel = `Текущая геопозиция (Зафиксировано ${ageMinutes === 0 ? 'только что' : ageMinutes + ' мин. назад'}, Точность ${params.accuracyMeters}м)`;
-    }
+    const formattedLabel = isStale
+      ? `[УСТАРЕВШАЯ ГЕОПОЗИЦИЯ - НЕ ЯВЛЯЕТСЯ ТЕКУЩЕЙ] (Зафиксирована ${ageMinutes} мин. назад, Точность ${params.accuracyMeters}м)`
+      : `Текущая геопозиция (Зафиксировано ${ageMinutes === 0 ? 'только что' : ageMinutes + ' мин. назад'}, Точность ${params.accuracyMeters}м)`;
 
     const loc: LocationRecord = {
       id,
@@ -466,28 +364,17 @@ export class SafetyEmergencyService {
     return loc;
   }
 
-  /**
-   * Get latest location with strict freshness evaluation
-   */
   public getLatestLocation(userId: string): LocationRecord | null {
     const loc = this.locations.get(userId);
     if (!loc) return null;
 
-    // Recalculate age and freshness dynamically upon retrieval
     const ageMs = Date.now() - new Date(loc.capturedAt).getTime();
     const ageMinutes = Math.floor(ageMs / 60000);
-    const isStale = ageMinutes > 15; // 15 mins threshold
-
-    const displayStatus: LocationRecord['displayStatus'] = isStale
-      ? 'STALE_LOCATION_NOT_CURRENT'
-      : 'FRESH_LIVE_LOCATION';
-
-    let formattedLabel = '';
-    if (isStale) {
-      formattedLabel = `[УСТАРЕВШАЯ ГЕОПОЗИЦИЯ - НЕ ЯВЛЯЕТСЯ ТЕКУЩЕЙ] (Зафиксирована ${ageMinutes} мин. назад, Точность ${loc.accuracyMeters}м)`;
-    } else {
-      formattedLabel = `Текущая геопозиция (Зафиксировано ${ageMinutes === 0 ? 'только что' : ageMinutes + ' мин. назад'}, Точность ${loc.accuracyMeters}м)`;
-    }
+    const isStale = ageMinutes > 15;
+    const displayStatus: LocationRecord['displayStatus'] = isStale ? 'STALE_LOCATION_NOT_CURRENT' : 'FRESH_LIVE_LOCATION';
+    const formattedLabel = isStale
+      ? `[УСТАРЕВШАЯ ГЕОПОЗИЦИЯ - НЕ ЯВЛЯЕТСЯ ТЕКУЩЕЙ] (Зафиксирована ${ageMinutes} мин. назад, Точность ${loc.accuracyMeters}м)`
+      : `Текущая геопозиция (Зафиксировано ${ageMinutes === 0 ? 'только что' : ageMinutes + ' мин. назад'}, Точность ${loc.accuracyMeters}м)`;
 
     const updatedLoc: LocationRecord = {
       ...loc,
