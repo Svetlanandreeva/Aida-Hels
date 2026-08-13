@@ -144,11 +144,88 @@ header.sticky.top-0 svg{color:var(--aida-coral)!important}
   box-shadow:0 18px 44px rgba(64,69,87,.16)!important;
 }
 
-/* Desktop layout refinement */
+/* --- Dashboard composition pass --- */
+/* Utility strip: quieter editorial toolbar instead of a gamer HUD. */
+#root [class*="max-w-[420px]"] > div:first-child{
+  border-bottom:0!important;
+  padding:4px 2px 8px!important;
+  min-height:52px;
+}
+#root [class*="max-w-[420px]"] > div:first-child > div:first-child{
+  background:transparent!important;
+  border:0!important;
+  box-shadow:none!important;
+  padding-left:0!important;
+}
+#root [class*="max-w-[420px]"] > div:first-child > div:first-child span[class*="uppercase"]{
+  color:var(--aida-muted)!important;
+  letter-spacing:.12em!important;
+}
+
+/* Main health summary should read as the dominant object on the page. */
+#root [class*="md:col-span-5"][class*="rounded-3xl"]{
+  background:linear-gradient(180deg,#fff 0%,#fbfbfc 100%)!important;
+  border:1px solid #e2e4e8!important;
+  box-shadow:0 24px 54px rgba(64,69,87,.10)!important;
+  min-height:470px;
+}
+#root [class*="md:col-span-5"][class*="rounded-3xl"] [class*="w-[260px]"]::before,
+#root [class*="md:col-span-5"][class*="rounded-3xl"] [class*="w-[260px]"]::after{
+  content:"";position:absolute;inset:15px;border:1px solid rgba(233,41,79,.12);border-radius:999px;pointer-events:none
+}
+#root [class*="md:col-span-5"][class*="rounded-3xl"] [class*="w-[260px]"]::after{inset:34px;border-color:rgba(6,29,72,.08)}
+#root [class*="md:col-span-5"][class*="rounded-3xl"] [class*="blur-xl"]{display:none!important}
+
+/* Satellite controls become minimal white pills with coral iconography. */
+#root [class*="w-[260px]"] button[class*="w-9"][class*="h-9"]{
+  background:#fff!important;
+  border:1px solid #e0e2e7!important;
+  box-shadow:0 10px 22px rgba(64,69,87,.12)!important;
+}
+#root [class*="w-[260px]"] button[class*="w-9"][class*="h-9"] svg{color:var(--aida-coral)!important}
+
+/* Metric area: calm, modular Puzzle grid. */
+#root [class*="md:col-span-7"] > [class*="grid-cols-2"]{
+  align-items:stretch!important;
+}
+#root [class*="md:col-span-7"] > [class*="grid-cols-2"] > div{
+  position:relative;overflow:hidden;
+}
+#root [class*="md:col-span-7"] > [class*="grid-cols-2"] > div::after{
+  content:"";position:absolute;left:0;right:0;bottom:0;height:3px;background:linear-gradient(90deg,var(--aida-coral),transparent);opacity:.65
+}
+
+/* Aida insight card gets a recognizable assistant treatment. */
+#root [class*="md:col-span-7"] > div[class*="flex-1"][class*="justify-between"]{
+  background:linear-gradient(135deg,#fff 0%,#fff8fa 100%)!important;
+  border:1px solid rgba(233,41,79,.18)!important;
+  box-shadow:0 18px 42px rgba(64,69,87,.10)!important;
+}
+#root [class*="md:col-span-7"] > div[class*="flex-1"][class*="justify-between"] [class*="bg-gradient-to-tr"]{
+  background:var(--aida-navy)!important;
+  color:#fff!important;
+}
+#root [class*="md:col-span-7"] > div[class*="flex-1"][class*="justify-between"] [class*="bg-gradient-to-tr"] svg{color:#fff!important}
+
+/* Medication and expanded-analysis row visually belongs to the same system. */
+#root [class*="md:col-span-5"][class*="rounded-2xl"],
+#root [class*="md:col-span-7"] button[class*="w-full"][class*="rounded-xl"]{
+  border-color:#e2e4e8!important;
+  box-shadow:var(--aida-shadow-sm)!important;
+}
+#root [class*="md:col-span-5"] [class*="bg-[#090B10]"]{
+  background:var(--aida-soft)!important;
+  border-color:#e7e8eb!important;
+  box-shadow:none!important;
+}
+
+/* Give product content the same generous page rhythm as the promo. */
 @media (min-width: 901px){
   #root [class*="max-w-6xl"],#root [class*="lg:max-w-6xl"]{max-width:1320px!important}
-  #root [class*="min-h-screen"][class*="py-4"]{padding-top:28px!important;padding-bottom:72px!important}
+  #root [class*="min-h-screen"][class*="py-4"]{padding-top:34px!important;padding-bottom:84px!important}
   header.sticky.top-0>div{max-width:1320px!important}
+  #root [class*="md:grid-cols-12"]{gap:22px!important}
+  #root [class*="md:col-span-7"] > [class*="grid-cols-2"]{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:14px!important}
 }
 
 /* Tablet */
@@ -158,6 +235,7 @@ header.sticky.top-0 svg{color:var(--aida-coral)!important}
   header.sticky.top-0 [class*="mx-2"]{margin-left:4px!important;margin-right:4px!important}
   #root [class*="md:grid-cols-12"]{grid-template-columns:1fr!important}
   #root [class*="md:col-span-"]{grid-column:1/-1!important}
+  #root [class*="md:col-span-5"][class*="rounded-3xl"]{min-height:430px}
 }
 
 /* Mobile product adaptation */
@@ -169,19 +247,47 @@ header.sticky.top-0 svg{color:var(--aida-coral)!important}
   header.sticky.top-0 button[class*="min-w-[40px]"]{min-width:38px!important;min-height:38px!important;padding:8px!important}
   header.sticky.top-0 button span[class*="hidden md:inline"]{display:none!important}
 
-  #root [class*="min-h-screen"][class*="px-3"]{padding:14px 12px 96px!important}
-  #root [class*="max-w-[420px]"]{max-width:none!important;width:100%!important;space-y:0!important}
-  #root [class*="space-y-6"]>*+*{margin-top:14px!important}
+  #root [class*="min-h-screen"][class*="px-3"]{padding:12px 12px 104px!important}
+  #root [class*="max-w-[420px]"]{max-width:none!important;width:100%!important}
+  #root [class*="space-y-6"]>*+*{margin-top:12px!important}
+
+  #root [class*="max-w-[420px]"] > div:first-child{
+    display:grid!important;
+    grid-template-columns:1fr auto!important;
+    align-items:center!important;
+    gap:8px!important;
+    padding:2px 0 4px!important;
+  }
+  #root [class*="max-w-[420px]"] > div:first-child > div:first-child{
+    min-width:0!important;
+  }
+  #root [class*="max-w-[420px]"] > div:first-child > div:first-child span[class*="uppercase"]{
+    font-size:9px!important;white-space:normal!important;line-height:1.25!important;
+  }
+  #root [class*="max-w-[420px]"] > div:first-child > div:last-child{gap:6px!important}
+  #root [class*="max-w-[420px]"] > div:first-child button{min-height:38px!important;padding-left:10px!important;padding-right:10px!important}
 
   #root [class*="grid-cols-1"]{gap:12px!important}
-  #root [class*="h-[96px]"]{min-height:112px!important;padding:15px!important;border-radius:20px!important}
+  #root [class*="md:col-span-5"][class*="rounded-3xl"]{
+    min-height:390px!important;
+    padding:18px 12px 20px!important;
+    border-radius:24px!important;
+  }
+  #root [class*="h-[96px]"]{min-height:108px!important;padding:14px!important;border-radius:18px!important}
   #root [class*="rounded-3xl"],#root [class*="rounded-2xl"]{border-radius:20px!important}
 
-  #root [class*="w-[260px]"]{width:230px!important;height:230px!important}
+  #root [class*="w-[260px]"]{width:220px!important;height:220px!important}
+  #root [class*="w-[260px]"] button[class*="w-9"][class*="h-9"]{width:34px!important;height:34px!important}
+  #root [class*="text-[42px]"]{font-size:36px!important}
   #root [class*="text-xl"]{line-height:1.15!important}
 
-  /* Metric grid becomes two-column cards; single-column where space is constrained. */
-  #root [class*="grid-cols-2"]{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important}
+  /* Puzzle modules stay scan-friendly: 2 columns on ordinary phones. */
+  #root [class*="grid-cols-2"]{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:9px!important}
+  #root [class*="grid-cols-2"] > div{min-width:0!important}
+
+  /* Aida summary is placed immediately after the metric grid and remains compact. */
+  #root [class*="md:col-span-7"] > div[class*="flex-1"][class*="justify-between"]{padding:16px!important}
+  #root [class*="md:col-span-7"] > div[class*="flex-1"][class*="justify-between"] ul{line-height:1.45!important}
 
   /* Modals/dropdowns fit viewport. */
   #root [class*="fixed"][class*="w-96"]{width:calc(100vw - 24px)!important;left:12px!important;right:12px!important}
@@ -192,7 +298,8 @@ header.sticky.top-0 svg{color:var(--aida-coral)!important}
 
 @media (max-width: 380px){
   #root [class*="grid-cols-2"]{grid-template-columns:1fr!important}
-  #root [class*="w-[260px]"]{width:210px!important;height:210px!important}
+  #root [class*="w-[260px]"]{width:204px!important;height:204px!important}
+  #root [class*="md:col-span-5"][class*="rounded-3xl"]{min-height:372px!important}
 }
 
 /* Respect users who reduce motion. */
