@@ -185,7 +185,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
     const daysCount = chartPeriod === '7d' ? 7 : chartPeriod === '14d' ? 14 : 30;
     const dayLabels = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
-    const result: Array<{ day: string; energy: number; sleep: number; stress: number; mood: number }> = [];
+    const result: Array<{ day: string; energy?: number; sleep?: number; stress?: number; mood?: number }> = [];
 
     const now = new Date();
     for (let i = daysCount - 1; i >= 0; i--) {
@@ -202,42 +202,52 @@ export const Dashboard: React.FC<DashboardProps> = ({
       const dayLogs = (dailyLogs || []).filter((l) => l.date === dateStr || l.date === dayName);
 
       if (dayDiary.length > 0) {
-        const avgEnergy = Math.round(
-          (dayDiary.reduce((acc, curr) => acc + (curr.energy_score || 5), 0) / dayDiary.length) * 10
-        );
-        const avgStress = Math.round(
-          (dayDiary.reduce((acc, curr) => acc + (curr.stress_score || curr.anxiety_score || 3), 0) / dayDiary.length) * 10
-        );
-        const avgMood = Math.round(
-          (dayDiary.reduce((acc, curr) => acc + (curr.state_score || 6), 0) / dayDiary.length) * 10
-        );
-        const sleepEntry = dayDiary.find((e) => e.physical_factors?.sleepDurationHours !== undefined);
-        const avgSleep = sleepEntry?.physical_factors?.sleepDurationHours
-          ? Math.min(100, Math.round((sleepEntry.physical_factors.sleepDurationHours / 8) * 100))
-          : 70;
+        const energyValues = dayDiary
+          .map((entry) => entry.energy_score)
+          .filter((value): value is number => typeof value === 'number');
+        const stressValues = dayDiary
+          .map((entry) => entry.stress_score ?? entry.anxiety_score)
+          .filter((value): value is number => typeof value === 'number');
+        const moodValues = dayDiary
+          .map((entry) => entry.state_score)
+          .filter((value): value is number => typeof value === 'number');
+        const sleepValues = dayDiary
+          .map((entry) => entry.physical_factors?.sleepDurationHours)
+          .filter((value): value is number => typeof value === 'number');
 
-        result.push({ day: dayName, energy: avgEnergy, sleep: avgSleep, stress: avgStress, mood: avgMood });
+        const avgEnergy = energyValues.length > 0
+          ? Math.round((energyValues.reduce((sum, value) => sum + value, 0) / energyValues.length) * 10)
+          : undefined;
+        const avgStress = stressValues.length > 0
+          ? Math.round((stressValues.reduce((sum, value) => sum + value, 0) / stressValues.length) * 10)
+          : undefined;
+        const avgMood = moodValues.length > 0
+          ? Math.round((moodValues.reduce((sum, value) => sum + value, 0) / moodValues.length) * 10)
+          : undefined;
+        const avgSleep = sleepValues.length > 0
+          ? Math.min(100, Math.round(((sleepValues.reduce((sum, value) => sum + value, 0) / sleepValues.length) / 8) * 100))
+          : undefined;
+
+        if ([avgEnergy, avgSleep, avgStress, avgMood].some((value) => typeof value === 'number')) {
+          result.push({ day: dayName, energy: avgEnergy, sleep: avgSleep, stress: avgStress, mood: avgMood });
+        }
       } else if (dayLogs.length > 0) {
         const lastL = dayLogs[dayLogs.length - 1];
-        result.push({
-          day: dayName,
-          energy: lastL.energy,
-          sleep: lastL.sleep,
-          stress: lastL.stress,
-          mood: lastL.mood,
-        });
-      } else {
-        result.push({
-          day: dayName,
-          energy: 0,
-          sleep: 0,
-          stress: 0,
-          mood: 0,
-        });
+        const observed = {
+          energy: typeof lastL.energy === 'number' ? lastL.energy : undefined,
+          sleep: typeof lastL.sleep === 'number' ? lastL.sleep : undefined,
+          stress: typeof lastL.stress === 'number' ? lastL.stress : undefined,
+          mood: typeof lastL.mood === 'number' ? lastL.mood : undefined,
+        };
+        if (Object.values(observed).some((value) => typeof value === 'number')) {
+          result.push({ day: dayName, ...observed });
+        }
       }
     }
 
-    const activeDays = result.filter((r) => r.energy > 0 || r.sleep > 0 || r.stress > 0 || r.mood > 0).length;
+    const activeDays = result.filter((r) =>
+      [r.energy, r.sleep, r.stress, r.mood].some((value) => typeof value === 'number')
+    ).length;
     if (activeDays < 2) {
       return { metricsTrendData: [], hasEnoughChartData: false };
     }
