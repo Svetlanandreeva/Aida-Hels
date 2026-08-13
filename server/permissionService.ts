@@ -1,20 +1,20 @@
-import { canonicalDataLayer } from './canonicalDataLayer';
+import crypto from 'crypto';
 import { familyDoctorSharingService } from './familyDoctorSharingService';
 
 export type PermissionScope =
-  | 'labs'            // Лабораторные анализы и биомаркеры
-  | 'measurements'    // Физиологические замеры (давление, вес, пульс и т.д.)
-  | 'medications'     // Лекарства и рецепты
-  | 'conditions'      // Диагнозы и медицинские проблемы
-  | 'allergies'       // Аллергии и непереносимости
-  | 'mental'          // Ментальный дневник и эмоции (SENSITIVE)
-  | 'cycle'           // Менструальный цикл и женское здоровье (SENSITIVE)
-  | 'pregnancy'       // Дневник беременности (SENSITIVE)
-  | 'dental'          // Стоматологическая карта
-  | 'documents'       // Документы и выписки
-  | 'emergency_card'  // Экстренная карточка
-  | 'safety'          // Проверки безопасности и риски
-  | 'location';       // Геолокация и вызовы (SENSITIVE)
+  | 'labs'
+  | 'measurements'
+  | 'medications'
+  | 'conditions'
+  | 'allergies'
+  | 'mental'
+  | 'cycle'
+  | 'pregnancy'
+  | 'dental'
+  | 'documents'
+  | 'emergency_card'
+  | 'safety'
+  | 'location';
 
 export const ALL_SCOPES: PermissionScope[] = [
   'labs',
@@ -48,16 +48,16 @@ export const DEFAULT_BASIC_SCOPES: PermissionScope[] = [
 
 export interface FamilyGrant {
   id: string;
-  ownerUserId: string;              // Владелец медкарт/профиля
-  granteeUserId: string;            // Пользователь/родственник, получающий доступ
+  ownerUserId: string;
+  granteeUserId: string;
   granteeEmailOrPhone?: string;
   granteeName: string;
-  relationship: string;             // "Супруг", "Родитель", "Взрослый ребенок", "Брат/Сестра", "Опекун"
-  isAdult: boolean;                 // Совершеннолетний родственник (>= 18)
+  relationship: string;
+  isAdult: boolean;
   status: 'pending_invitation' | 'active' | 'revoked' | 'rejected';
-  invitationCode: string;          // Уникальный код приглашения (например "INV-982103")
+  invitationCode: string;
   allowedScopes: PermissionScope[];
-  explicitSensitiveScopesGranted: PermissionScope[]; // Явно подтвержденные сенситивные скоупы
+  explicitSensitiveScopesGranted: PermissionScope[];
   invitedAt: string;
   consentedAt?: string;
   revokedAt?: string;
@@ -87,42 +87,27 @@ export interface EvaluationResult {
   auditEntry: AuditLogEntry;
 }
 
+function uniqueScopes(scopes: PermissionScope[]): PermissionScope[] {
+  return Array.from(new Set(scopes)).filter((scope): scope is PermissionScope => ALL_SCOPES.includes(scope));
+}
+
 export class PermissionService {
-  private grants = new Map<string, FamilyGrant>(); // grantId -> FamilyGrant
-  private userGrantsIndex = new Map<string, Set<string>>(); // ownerUserId -> Set of grantIds
-  private granteeIndex = new Map<string, Set<string>>(); // granteeUserId -> Set of grantIds
-  private invitationCodeIndex = new Map<string, string>(); // invitationCode -> grantId
+  private grants = new Map<string, FamilyGrant>();
+  private userGrantsIndex = new Map<string, Set<string>>();
+  private granteeIndex = new Map<string, Set<string>>();
+  private invitationCodeIndex = new Map<string, string>();
   private auditLogs: AuditLogEntry[] = [];
 
-  constructor() {
-    this.seedDemoGrants();
-  }
+  // IMPORTANT: production service starts empty. Demo/test grants must be injected by tests only.
+  constructor() {}
 
-  /**
-   * Seed demo family grants for testing & simulation
-   */
-  private seedDemoGrants() {
-    const demoGrantId = 'grant-demo-adult-spouse';
-    const invCode = 'INV-773821';
-    
-    const demoGrant: FamilyGrant = {
-      id: demoGrantId,
-      ownerUserId: 'demo-user-123',
-      granteeUserId: 'user-spouse-456',
-      granteeEmailOrPhone: 'spouse@example.com',
-      granteeName: 'Елена (Супруга)',
-      relationship: 'Супруг(а)',
-      isAdult: true,
-      status: 'active',
-      invitationCode: invCode,
-      allowedScopes: ['emergency_card', 'medications', 'measurements', 'labs'],
-      explicitSensitiveScopesGranted: [], // sensitive scopes (mental, cycle, location) are NOT included
-      invitedAt: new Date(Date.now() - 7 * 86400000).toISOString(),
-      consentedAt: new Date(Date.now() - 6 * 86400000).toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-
-    this.storeGrant(demoGrant);
+  private generateInvitationCode(): string {
+    let code = '';
+    do {
+      const number = crypto.randomInt(100000, 1000000);
+      code = `INV-${number}`;
+    } while (this.invitationCodeIndex.has(code));
+    return code;
   }
 
   private storeGrant(grant: FamilyGrant) {
@@ -140,42 +125,27 @@ export class PermissionService {
       this.granteeIndex.get(grant.granteeUserId)!.add(grant.id);
     }
 
-    if (grant.invitationCode) {
-      this.invitationCodeIndex.set(grant.invitationCode, grant.id);
-    }
+    this.invitationCodeIndex.set(grant.invitationCode, grant.id);
   }
 
-  /**
-   * Add entry to tamper-evident audit log
-   */
   public logAudit(entry: Omit<AuditLogEntry, 'id' | 'timestamp'>): AuditLogEntry {
     const fullEntry: AuditLogEntry = {
       ...entry,
-      id: `audit-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      id: crypto.randomUUID(),
       timestamp: new Date().toISOString(),
     };
 
     this.auditLogs.unshift(fullEntry);
-    if (this.auditLogs.length > 500) {
-      this.auditLogs = this.auditLogs.slice(0, 500);
-    }
-
+    if (this.auditLogs.length > 500) this.auditLogs.length = 500;
     return fullEntry;
   }
 
-  /**
-   * Get audit logs for a specific user (as owner or requester)
-   */
   public getAuditLogs(userId: string): AuditLogEntry[] {
     return this.auditLogs.filter(
       (log) => log.requesterUserId === userId || log.targetSubjectProfileId === userId
     );
   }
 
-  /**
-   * Core 6-stage permission pipeline evaluator
-   * authentication -> permission -> validation -> policy -> execution -> audit
-   */
   public evaluateAccess(params: {
     requesterUserId: string;
     targetSubjectProfileId?: string;
@@ -194,37 +164,39 @@ export class PermissionService {
     } = params;
 
     const normalizedTargetId =
-      !targetSubjectProfileId ||
-      targetSubjectProfileId === 'self' ||
-      targetSubjectProfileId === 'me'
+      !targetSubjectProfileId || targetSubjectProfileId === 'self' || targetSubjectProfileId === 'me'
         ? requesterUserId
         : targetSubjectProfileId;
 
-    // STAGE 1: AUTHENTICATION
-    if (!requesterUserId) {
+    const deny = (
+      stage: EvaluationResult['stage'],
+      reason: string,
+      grant?: FamilyGrant
+    ): EvaluationResult => {
       const auditEntry = this.logAudit({
-        pipelineStage: 'authentication',
-        requesterUserId: 'anonymous',
+        pipelineStage: stage === 'execution' ? 'policy' : stage,
+        requesterUserId: requesterUserId || 'anonymous',
         targetSubjectProfileId: normalizedTargetId,
         scope,
         action,
         decision: 'DENIED',
-        reason: 'Ошибка аутентификации: маркер доступа отсутствует или недействителен',
+        reason,
         ipAddress,
         userAgent,
       });
+      return { allowed: false, stage, decision: 'DENIED', reason, grant, auditEntry };
+    };
 
-      return {
-        allowed: false,
-        stage: 'authentication',
-        decision: 'DENIED',
-        reason: 'Ошибка аутентификации: маркер доступа отсутствует',
-        auditEntry,
-      };
+    if (!requesterUserId) {
+      return deny('authentication', 'Требуется аутентификация');
     }
 
-    // SELF-ACCESS CHECK (Owner accessing their own data)
-    if (requesterUserId === normalizedTargetId) {
+    if (!ALL_SCOPES.includes(scope)) {
+      return deny('validation', `Недействительный scope: ${scope}`);
+    }
+
+    // Self access is allowed only to the caller's own subject profile identifier.
+    if (normalizedTargetId === requesterUserId || normalizedTargetId === `sp-primary-${requesterUserId}`) {
       const auditEntry = this.logAudit({
         pipelineStage: 'audit',
         requesterUserId,
@@ -232,24 +204,22 @@ export class PermissionService {
         scope,
         action,
         decision: 'GRANTED',
-        reason: 'Доступ разрешен: Владелец имеет полный доступ к собственному профилю',
+        reason: 'Владелец собственного профиля',
         ipAddress,
         userAgent,
       });
-
       return {
         allowed: true,
         stage: 'audit',
         decision: 'GRANTED',
-        reason: 'Владелец профиля',
+        reason: 'Владелец собственного профиля',
         auditEntry,
       };
     }
 
-    // CHILD PROFILE GUARDIAN CHECK (Requirement 19: Multiple Guardians)
     const childProfile = familyDoctorSharingService.getChildProfile(normalizedTargetId);
-    if (childProfile && childProfile.isChild) {
-      const isGuardian = childProfile.guardians.some((g) => g.userId === requesterUserId);
+    if (childProfile?.isChild) {
+      const isGuardian = childProfile.guardians.some((guardian) => guardian.userId === requesterUserId);
       if (isGuardian) {
         const auditEntry = this.logAudit({
           pipelineStage: 'audit',
@@ -258,205 +228,49 @@ export class PermissionService {
           scope,
           action,
           decision: 'GRANTED',
-          reason: `Доступ разрешен: Пользователь является зарегистрированным опекуном (Guardian) детского профиля ${childProfile.fullName}`,
+          reason: `Авторизованный guardian детского профиля ${childProfile.fullName}`,
           ipAddress,
           userAgent,
         });
-
         return {
           allowed: true,
           stage: 'audit',
           decision: 'GRANTED',
-          reason: `Опекун детского профиля (${childProfile.fullName})`,
+          reason: 'Авторизованный guardian детского профиля',
           auditEntry,
         };
       }
     }
 
-    // STAGE 2: PERMISSION — DENY BY DEFAULT
-    // Search for an active grant from target owner to requester
-    const ownerGrantIds = this.userGrantsIndex.get(normalizedTargetId) || new Set();
+    const ownerGrantIds = this.userGrantsIndex.get(normalizedTargetId) || new Set<string>();
     let matchedGrant: FamilyGrant | undefined;
-
-    for (const gId of ownerGrantIds) {
-      const g = this.grants.get(gId);
-      if (g && g.granteeUserId === requesterUserId) {
-        matchedGrant = g;
+    for (const grantId of ownerGrantIds) {
+      const candidate = this.grants.get(grantId);
+      if (candidate?.granteeUserId === requesterUserId) {
+        matchedGrant = candidate;
         break;
       }
     }
 
     if (!matchedGrant) {
-      const auditEntry = this.logAudit({
-        pipelineStage: 'permission',
-        requesterUserId,
-        targetSubjectProfileId: normalizedTargetId,
-        scope,
-        action,
-        decision: 'DENIED',
-        reason: 'Deny by Default: Нет активного разрешения от владельца медицинского профиля',
-        ipAddress,
-        userAgent,
-      });
-
-      return {
-        allowed: false,
-        stage: 'permission',
-        decision: 'DENIED',
-        reason: 'Deny by Default: Разрешение доступа отсутствует в реестре',
-        auditEntry,
-      };
-    }
-
-    // STAGE 3: VALIDATION
-    if (!ALL_SCOPES.includes(scope)) {
-      const auditEntry = this.logAudit({
-        pipelineStage: 'validation',
-        requesterUserId,
-        targetSubjectProfileId: normalizedTargetId,
-        scope,
-        action,
-        decision: 'DENIED',
-        reason: `Запрошен недействительный скоуп данных: ${scope}`,
-        ipAddress,
-        userAgent,
-      });
-
-      return {
-        allowed: false,
-        stage: 'validation',
-        decision: 'DENIED',
-        reason: 'Некорректный скоуп медицинских данных',
-        auditEntry,
-      };
-    }
-
-    // STAGE 4: POLICY ENFORCEMENT
-    // Policy Check 1: Instant Revocation
-    if (matchedGrant.status === 'revoked') {
-      const auditEntry = this.logAudit({
-        pipelineStage: 'policy',
-        requesterUserId,
-        targetSubjectProfileId: normalizedTargetId,
-        scope,
-        action,
-        decision: 'DENIED',
-        reason: 'Политика безопасности: Доступ был немедленно отозван (Instant Revoke)',
-        ipAddress,
-        userAgent,
-      });
-
-      return {
-        allowed: false,
-        stage: 'policy',
-        decision: 'DENIED',
-        reason: 'Доступ был ранее отозван владельцем профиля',
-        grant: matchedGrant,
-        auditEntry,
-      };
-    }
-
-    // Policy Check 2: Adult Relative Invitation / Consent Requirement
-    if (matchedGrant.isAdult && matchedGrant.status === 'pending_invitation') {
-      const auditEntry = this.logAudit({
-        pipelineStage: 'policy',
-        requesterUserId,
-        targetSubjectProfileId: normalizedTargetId,
-        scope,
-        action,
-        decision: 'DENIED',
-        reason: 'Политика безопасности: Взрослый родственник еще не принял приглашение и персональное согласие (Consent/Invitation Required)',
-        ipAddress,
-        userAgent,
-      });
-
-      return {
-        allowed: false,
-        stage: 'policy',
-        decision: 'DENIED',
-        reason: 'Подключение взрослого родственника требует подтверждения приглашения и согласия',
-        grant: matchedGrant,
-        auditEntry,
-      };
+      return deny('permission', 'Deny by default: разрешение отсутствует');
     }
 
     if (matchedGrant.status !== 'active') {
-      const auditEntry = this.logAudit({
-        pipelineStage: 'policy',
-        requesterUserId,
-        targetSubjectProfileId: normalizedTargetId,
-        scope,
-        action,
-        decision: 'DENIED',
-        reason: `Политика безопасности: Статус доступа "${matchedGrant.status}" не позволяет чтение/запись`,
-        ipAddress,
-        userAgent,
-      });
-
-      return {
-        allowed: false,
-        stage: 'policy',
-        decision: 'DENIED',
-        reason: 'Статус прав доступа не является активным',
-        grant: matchedGrant,
-        auditEntry,
-      };
+      return deny('policy', `Разрешение не активно: ${matchedGrant.status}`, matchedGrant);
     }
 
-    // Policy Check 3: Scope Match
-    const isScopeAllowed = matchedGrant.allowedScopes.includes(scope);
-    if (!isScopeAllowed) {
-      const auditEntry = this.logAudit({
-        pipelineStage: 'policy',
-        requesterUserId,
-        targetSubjectProfileId: normalizedTargetId,
-        scope,
-        action,
-        decision: 'DENIED',
-        reason: `Политика безопасности: Скоуп "${scope}" не был предоставлен в списке разрешений родственнику`,
-        ipAddress,
-        userAgent,
-      });
-
-      return {
-        allowed: false,
-        stage: 'policy',
-        decision: 'DENIED',
-        reason: `Скоуп "${scope}" не входит в список разрешённых категорий`,
-        grant: matchedGrant,
-        auditEntry,
-      };
+    if (!matchedGrant.allowedScopes.includes(scope)) {
+      return deny('policy', `Scope ${scope} не выдан`, matchedGrant);
     }
 
-    // Policy Check 4: Sensitive Scopes (mental, cycle, pregnancy, location) explicitly excluded from default shared access
-    const isSensitive = SENSITIVE_SCOPES.includes(scope);
-    if (isSensitive) {
-      const isExplicitlyGranted = matchedGrant.explicitSensitiveScopesGranted?.includes(scope);
-      if (!isExplicitlyGranted) {
-        const auditEntry = this.logAudit({
-          pipelineStage: 'policy',
-          requesterUserId,
-          targetSubjectProfileId: normalizedTargetId,
-          scope,
-          action,
-          decision: 'DENIED',
-          reason: `Политика безопасности: Сенситивный скоуп "${scope}" (mental/cycle/pregnancy/location) требует ЯВНОГО отдельного подтверждения владельца и не включается автоматически при семейном доступе`,
-          ipAddress,
-          userAgent,
-        });
-
-        return {
-          allowed: false,
-          stage: 'policy',
-          decision: 'DENIED',
-          reason: `Сенситивная категория "${scope}" не включена в семейный доступ по умолчанию. Требуется явное подтверждение владельца`,
-          grant: matchedGrant,
-          auditEntry,
-        };
-      }
+    if (
+      SENSITIVE_SCOPES.includes(scope) &&
+      !matchedGrant.explicitSensitiveScopesGranted.includes(scope)
+    ) {
+      return deny('policy', `Sensitive scope ${scope} требует отдельного согласия`, matchedGrant);
     }
 
-    // STAGE 5 & 6: EXECUTION & AUDIT LOGGING
     const auditEntry = this.logAudit({
       pipelineStage: 'audit',
       requesterUserId,
@@ -464,7 +278,7 @@ export class PermissionService {
       scope,
       action,
       decision: 'GRANTED',
-      reason: `Доступ успешно разрешен для скоупа "${scope}" по семейной политике`,
+      reason: `Доступ разрешён по grant ${matchedGrant.id}`,
       ipAddress,
       userAgent,
     });
@@ -479,9 +293,6 @@ export class PermissionService {
     };
   }
 
-  /**
-   * Create invitation for an adult relative or family member
-   */
   public createInvitation(params: {
     ownerUserId: string;
     granteeName: string;
@@ -491,89 +302,64 @@ export class PermissionService {
     allowedScopes: PermissionScope[];
     explicitSensitiveScopes?: PermissionScope[];
   }): FamilyGrant {
-    const {
-      ownerUserId,
-      granteeName,
-      granteeEmailOrPhone,
-      relationship,
-      isAdult,
-      allowedScopes,
-      explicitSensitiveScopes = [],
-    } = params;
-
-    const grantId = `grant-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-    const invitationCode = `INV-${Math.floor(100000 + Math.random() * 900000)}`;
-
-    // Sensitive scopes filter: only allow sensitive scopes if explicitly selected in explicitSensitiveScopes
-    const safeAllowedScopes = allowedScopes.filter(
-      (s) => !SENSITIVE_SCOPES.includes(s) || explicitSensitiveScopes.includes(s)
+    const explicitSensitive = uniqueScopes(params.explicitSensitiveScopes || []).filter((scope) =>
+      SENSITIVE_SCOPES.includes(scope)
+    );
+    const allowed = uniqueScopes(params.allowedScopes).filter(
+      (scope) => !SENSITIVE_SCOPES.includes(scope) || explicitSensitive.includes(scope)
     );
 
-    const newGrant: FamilyGrant = {
-      id: grantId,
-      ownerUserId,
-      granteeUserId: '', // set upon invitation acceptance
-      granteeEmailOrPhone,
-      granteeName,
-      relationship,
-      isAdult,
-      status: isAdult ? 'pending_invitation' : 'active', // adult relatives must accept invitation
-      invitationCode,
-      allowedScopes: safeAllowedScopes,
-      explicitSensitiveScopesGranted: explicitSensitiveScopes.filter((s) => SENSITIVE_SCOPES.includes(s)),
-      invitedAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+    const now = new Date().toISOString();
+    const grant: FamilyGrant = {
+      id: crypto.randomUUID(),
+      ownerUserId: params.ownerUserId,
+      granteeUserId: '',
+      granteeEmailOrPhone: params.granteeEmailOrPhone,
+      granteeName: params.granteeName,
+      relationship: params.relationship,
+      isAdult: params.isAdult,
+      status: params.isAdult ? 'pending_invitation' : 'active',
+      invitationCode: this.generateInvitationCode(),
+      allowedScopes: allowed,
+      explicitSensitiveScopesGranted: explicitSensitive,
+      invitedAt: now,
+      updatedAt: now,
     };
 
-    this.storeGrant(newGrant);
-
+    this.storeGrant(grant);
     this.logAudit({
       pipelineStage: 'policy',
-      requesterUserId: ownerUserId,
-      targetSubjectProfileId: ownerUserId,
+      requesterUserId: params.ownerUserId,
+      targetSubjectProfileId: params.ownerUserId,
       scope: 'grants',
       action: 'manage_grants',
       decision: 'GRANTED',
-      reason: `Создано ${isAdult ? 'приглашение для взрослого родственника' : 'разрешение'} (${granteeName}, ${relationship}). Код: ${invitationCode}`,
+      reason: `Создан grant ${grant.id}`,
     });
-
-    return newGrant;
+    return grant;
   }
 
-  /**
-   * Accept invitation via code with explicit consent
-   */
   public acceptInvitation(invitationCode: string, granteeUserId: string, granteeName?: string): FamilyGrant {
-    const grantId = this.invitationCodeIndex.get(invitationCode.trim().toUpperCase());
-    if (!grantId) {
-      throw new Error('Код приглашения не найден или недействителен');
-    }
+    const normalizedCode = invitationCode.trim().toUpperCase();
+    const grantId = this.invitationCodeIndex.get(normalizedCode);
+    if (!grantId) throw new Error('Код приглашения не найден или недействителен');
 
     const grant = this.grants.get(grantId);
-    if (!grant) {
-      throw new Error('Запись приглашения не найдена');
+    if (!grant) throw new Error('Запись приглашения не найдена');
+    if (grant.status === 'revoked' || grant.status === 'rejected') {
+      throw new Error('Приглашение больше не активно');
     }
-
-    if (grant.status === 'revoked') {
-      throw new Error('Данное приглашение было отозвано владельцем профиля');
-    }
-
-    if (grant.status === 'active' && grant.granteeUserId === granteeUserId) {
-      return grant;
+    if (grant.status === 'active' && grant.granteeUserId && grant.granteeUserId !== granteeUserId) {
+      throw new Error('Приглашение уже использовано другим аккаунтом');
     }
 
     grant.granteeUserId = granteeUserId;
-    if (granteeName) {
-      grant.granteeName = granteeName;
-    }
+    if (granteeName) grant.granteeName = granteeName;
     grant.status = 'active';
     grant.consentedAt = new Date().toISOString();
-    grant.updatedAt = new Date().toISOString();
+    grant.updatedAt = grant.consentedAt;
 
-    // Update grantee index
-    if (!this.granteeIndex.has(granteeUserId)) {
-      this.granteeIndex.set(granteeUserId, new Set());
-    }
+    if (!this.granteeIndex.has(granteeUserId)) this.granteeIndex.set(granteeUserId, new Set());
     this.granteeIndex.get(granteeUserId)!.add(grant.id);
 
     this.logAudit({
@@ -583,27 +369,21 @@ export class PermissionService {
       scope: 'grants',
       action: 'manage_grants',
       decision: 'GRANTED',
-      reason: `Приглашение (${invitationCode}) успешно принято с подтверждением персонального согласия`,
+      reason: `Приглашение ${normalizedCode} принято`,
     });
-
     return grant;
   }
 
-  /**
-   * Instant Revoke: Immediately revoke a family grant
-   */
   public revokeGrant(ownerUserId: string, grantId: string): boolean {
     const grant = this.grants.get(grantId);
     if (!grant) return false;
-
     if (grant.ownerUserId !== ownerUserId) {
-      throw new Error('Отмена доступа возможна только владельцем профиля');
+      throw new Error('Отозвать доступ может только владелец профиля');
     }
 
     grant.status = 'revoked';
     grant.revokedAt = new Date().toISOString();
-    grant.updatedAt = new Date().toISOString();
-
+    grant.updatedAt = grant.revokedAt;
     this.logAudit({
       pipelineStage: 'policy',
       requesterUserId: ownerUserId,
@@ -611,15 +391,11 @@ export class PermissionService {
       scope: 'grants',
       action: 'manage_grants',
       decision: 'GRANTED',
-      reason: `Мгновенный отзыв прав доступа (Instant Revoke) для родственника: ${grant.granteeName} (${grant.relationship})`,
+      reason: `Grant ${grantId} отозван`,
     });
-
     return true;
   }
 
-  /**
-   * Update scopes / sensitive scopes for an existing grant
-   */
   public updateGrantScopes(
     ownerUserId: string,
     grantId: string,
@@ -631,51 +407,29 @@ export class PermissionService {
       throw new Error('Разрешение не найдено или принадлежит другому пользователю');
     }
 
-    const safeAllowedScopes = allowedScopes.filter(
-      (s) => !SENSITIVE_SCOPES.includes(s) || explicitSensitiveScopes.includes(s)
+    const explicitSensitive = uniqueScopes(explicitSensitiveScopes).filter((scope) =>
+      SENSITIVE_SCOPES.includes(scope)
     );
-
-    grant.allowedScopes = safeAllowedScopes;
-    grant.explicitSensitiveScopesGranted = explicitSensitiveScopes.filter((s) => SENSITIVE_SCOPES.includes(s));
+    grant.allowedScopes = uniqueScopes(allowedScopes).filter(
+      (scope) => !SENSITIVE_SCOPES.includes(scope) || explicitSensitive.includes(scope)
+    );
+    grant.explicitSensitiveScopesGranted = explicitSensitive;
     grant.updatedAt = new Date().toISOString();
-
-    this.logAudit({
-      pipelineStage: 'policy',
-      requesterUserId: ownerUserId,
-      targetSubjectProfileId: ownerUserId,
-      scope: 'grants',
-      action: 'manage_grants',
-      decision: 'GRANTED',
-      reason: `Обновлен список доступных скоупов для ${grant.granteeName}. Сенситивные скоупы: [${grant.explicitSensitiveScopesGranted.join(', ')}]`,
-    });
-
     return grant;
   }
 
-  /**
-   * Get all grants issued BY a user (where user is owner)
-   */
   public getGrantsByOwner(ownerUserId: string): FamilyGrant[] {
-    const grantIds = this.userGrantsIndex.get(ownerUserId) || new Set();
-    const result: FamilyGrant[] = [];
-    for (const id of grantIds) {
-      const g = this.grants.get(id);
-      if (g) result.push(g);
-    }
-    return result;
+    const grantIds = this.userGrantsIndex.get(ownerUserId) || new Set<string>();
+    return Array.from(grantIds)
+      .map((id) => this.grants.get(id))
+      .filter((grant): grant is FamilyGrant => Boolean(grant));
   }
 
-  /**
-   * Get all grants received BY a user (where user is grantee)
-   */
   public getGrantsByGrantee(granteeUserId: string): FamilyGrant[] {
-    const grantIds = this.granteeIndex.get(granteeUserId) || new Set();
-    const result: FamilyGrant[] = [];
-    for (const id of grantIds) {
-      const g = this.grants.get(id);
-      if (g) result.push(g);
-    }
-    return result;
+    const grantIds = this.granteeIndex.get(granteeUserId) || new Set<string>();
+    return Array.from(grantIds)
+      .map((id) => this.grants.get(id))
+      .filter((grant): grant is FamilyGrant => Boolean(grant));
   }
 }
 
