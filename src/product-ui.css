@@ -1,0 +1,199 @@
+/* Aida product UI — visual continuation of the Promo Figma system.
+   Loaded after the legacy styles so existing application logic can stay intact. */
+
+:root{
+  --aida-bg:#eef0f3;
+  --aida-surface:#ffffff;
+  --aida-soft:#f7f8fa;
+  --aida-navy:#061d48;
+  --aida-text:#555864;
+  --aida-muted:#8e909a;
+  --aida-line:#d9dce2;
+  --aida-coral:#e9294f;
+  --aida-coral-soft:#fff2f5;
+  --aida-shadow:0 18px 48px rgba(64,69,87,.11);
+  --aida-shadow-sm:0 8px 22px rgba(64,69,87,.09);
+}
+
+html,body,#root{min-height:100%;background:var(--aida-bg)!important;color:var(--aida-navy)}
+body{font-family:Manrope,Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif!important}
+
+/* App top bar */
+header.sticky.top-0{
+  background:rgba(247,248,250,.92)!important;
+  border-color:rgba(6,29,72,.08)!important;
+  box-shadow:0 8px 30px rgba(64,69,87,.06)!important;
+  backdrop-filter:blur(20px)!important;
+  height:82px!important;
+}
+header.sticky.top-0 [class*="text-white"],
+header.sticky.top-0 [class*="text-gray-100"],
+header.sticky.top-0 [class*="text-gray-200"]{color:var(--aida-navy)!important}
+header.sticky.top-0 [class*="text-gray-400"],
+header.sticky.top-0 [class*="text-white/70"],
+header.sticky.top-0 [class*="text-white/80"]{color:var(--aida-muted)!important}
+header.sticky.top-0 [class*="bg-[#111827]"],
+header.sticky.top-0 [class*="bg-[#050711]"]{
+  background:#fff!important;
+  border-color:var(--aida-line)!important;
+  box-shadow:var(--aida-shadow-sm)!important;
+}
+header.sticky.top-0 button{border-radius:16px!important}
+header.sticky.top-0 button:hover{border-color:rgba(233,41,79,.45)!important;background:#fff7f9!important}
+header.sticky.top-0 svg{color:var(--aida-coral)!important}
+
+/* Main product canvas — replace legacy dark dashboard palette without changing data logic. */
+#root [class*="bg-[#090B10]"],
+#root [class*="bg-[#0A0B0D]"],
+#root [class*="bg-[#050711]"]{background:var(--aida-bg)!important;color:var(--aida-navy)!important}
+
+#root [class*="bg-[#111827]"],
+#root [class*="bg-[#14171C]"],
+#root [class*="bg-[#0F1115]"]{
+  background:var(--aida-surface)!important;
+  border-color:var(--aida-line)!important;
+  color:var(--aida-navy)!important;
+  box-shadow:var(--aida-shadow-sm)!important;
+}
+
+#root [class*="bg-gray-900"],
+#root [class*="bg-gray-800"]{
+  background:var(--aida-soft)!important;
+  border-color:var(--aida-line)!important;
+  color:var(--aida-navy)!important;
+}
+
+#root [class*="border-white/"],
+#root [class*="border-white["],
+#root [class*="border-gray-800"],
+#root [class*="border-gray-700"]{border-color:var(--aida-line)!important}
+
+#root [class*="text-white"],
+#root [class*="text-gray-100"],
+#root [class*="text-gray-200"]{color:var(--aida-navy)!important}
+#root [class*="text-gray-300"],
+#root [class*="text-white/70"],
+#root [class*="text-white/80"],
+#root [class*="text-white/90"]{color:var(--aida-text)!important}
+#root [class*="text-gray-400"],
+#root [class*="text-gray-500"],
+#root [class*="text-white/40"],
+#root [class*="text-white/50"]{color:var(--aida-muted)!important}
+
+/* Bring all legacy accent colors into one brand language. */
+#root [class*="text-[#3DD9C5]"],
+#root [class*="text-[#8B5CF6]"],
+#root [class*="text-emerald"],
+#root [class*="text-teal"],
+#root [class*="text-rose"],
+#root [class*="text-pink"],
+#root [class*="text-indigo"]{color:var(--aida-coral)!important}
+
+#root [class*="bg-[#3DD9C5]"],
+#root [class*="bg-[#8B5CF6]"],
+#root [class*="bg-emerald"],
+#root [class*="bg-teal"]{background:var(--aida-coral)!important}
+
+/* Cards */
+#root [class*="rounded-3xl"],
+#root [class*="rounded-2xl"]{border-radius:24px!important}
+#root [class*="shadow-xl"],
+#root [class*="shadow-2xl"]{box-shadow:var(--aida-shadow)!important}
+#root [class*="backdrop-blur"]{backdrop-filter:none!important}
+
+/* Dashboard metric tiles */
+#root [class*="h-[96px]"]{
+  min-height:126px!important;height:auto!important;
+  padding:18px!important;
+  background:#fff!important;
+  border:1px solid var(--aida-line)!important;
+  box-shadow:var(--aida-shadow-sm)!important;
+  transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease!important;
+}
+#root [class*="h-[96px]"]:hover{transform:translateY(-2px);border-color:rgba(233,41,79,.35)!important;box-shadow:0 14px 32px rgba(64,69,87,.12)!important}
+
+/* Empty-state chips */
+#root [class*="text-amber-400"][class*="bg-amber"]{
+  color:#9b6c00!important;background:#fff8e6!important;border-color:#f1dfa9!important
+}
+
+/* Buttons */
+#root button[class*="bg-[#111827]"],
+#root button[class*="bg-gray-800"]{background:#fff!important;color:var(--aida-navy)!important;border:1px solid var(--aida-line)!important;box-shadow:none!important}
+#root button[class*="bg-[#111827]"]:hover,
+#root button[class*="bg-gray-800"]:hover{background:var(--aida-coral-soft)!important;border-color:rgba(233,41,79,.38)!important}
+
+#root button[class*="bg-emerald-500"],
+#root button[class*="bg-[#3DD9C5]"]{background:var(--aida-coral)!important;color:#fff!important;border-color:var(--aida-coral)!important;box-shadow:0 12px 24px rgba(233,41,79,.18)!important}
+
+/* Inputs / forms / panels */
+#root input,#root textarea,#root select{
+  background:#fff!important;color:var(--aida-navy)!important;border-color:var(--aida-line)!important
+}
+#root input:focus,#root textarea:focus,#root select:focus{border-color:var(--aida-coral)!important;box-shadow:0 0 0 3px rgba(233,41,79,.08)!important}
+
+/* Dashboard ring: keep information hierarchy, switch to editorial coral/navy. */
+#root svg circle[stroke="url(#purpleTurquoiseGlow)"]{stroke:var(--aida-coral)!important}
+#root svg circle[stroke="rgba(255, 255, 255, 0.08)"]{stroke:#e6e8ed!important}
+
+/* Floating bottom navigation */
+#root nav[class*="fixed"],
+#root [class*="fixed bottom-"][class*="rounded"]{
+  background:rgba(255,255,255,.96)!important;
+  border-color:var(--aida-line)!important;
+  box-shadow:0 18px 44px rgba(64,69,87,.16)!important;
+}
+
+/* Desktop layout refinement */
+@media (min-width: 901px){
+  #root [class*="max-w-6xl"],#root [class*="lg:max-w-6xl"]{max-width:1320px!important}
+  #root [class*="min-h-screen"][class*="py-4"]{padding-top:28px!important;padding-bottom:72px!important}
+  header.sticky.top-0>div{max-width:1320px!important}
+}
+
+/* Tablet */
+@media (max-width: 900px){
+  header.sticky.top-0{height:68px!important;padding-left:14px!important;padding-right:14px!important}
+  header.sticky.top-0>div{gap:8px!important}
+  header.sticky.top-0 [class*="mx-2"]{margin-left:4px!important;margin-right:4px!important}
+  #root [class*="md:grid-cols-12"]{grid-template-columns:1fr!important}
+  #root [class*="md:col-span-"]{grid-column:1/-1!important}
+}
+
+/* Mobile product adaptation */
+@media (max-width: 640px){
+  html,body,#root{background:#f4f5f7!important}
+  header.sticky.top-0{height:62px!important;padding:0 10px!important}
+  header.sticky.top-0 [class*="w-10"][class*="h-10"]{width:38px!important;height:38px!important;border-radius:13px!important}
+  header.sticky.top-0 [class*="text-lg"]{font-size:17px!important}
+  header.sticky.top-0 button[class*="min-w-[40px]"]{min-width:38px!important;min-height:38px!important;padding:8px!important}
+  header.sticky.top-0 button span[class*="hidden md:inline"]{display:none!important}
+
+  #root [class*="min-h-screen"][class*="px-3"]{padding:14px 12px 96px!important}
+  #root [class*="max-w-[420px]"]{max-width:none!important;width:100%!important;space-y:0!important}
+  #root [class*="space-y-6"]>*+*{margin-top:14px!important}
+
+  #root [class*="grid-cols-1"]{gap:12px!important}
+  #root [class*="h-[96px]"]{min-height:112px!important;padding:15px!important;border-radius:20px!important}
+  #root [class*="rounded-3xl"],#root [class*="rounded-2xl"]{border-radius:20px!important}
+
+  #root [class*="w-[260px]"]{width:230px!important;height:230px!important}
+  #root [class*="text-xl"]{line-height:1.15!important}
+
+  /* Metric grid becomes two-column cards; single-column where space is constrained. */
+  #root [class*="grid-cols-2"]{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important}
+
+  /* Modals/dropdowns fit viewport. */
+  #root [class*="fixed"][class*="w-96"]{width:calc(100vw - 24px)!important;left:12px!important;right:12px!important}
+
+  #root button{min-height:42px}
+  #root input,#root textarea,#root select{font-size:16px!important}
+}
+
+@media (max-width: 380px){
+  #root [class*="grid-cols-2"]{grid-template-columns:1fr!important}
+  #root [class*="w-[260px]"]{width:210px!important;height:210px!important}
+}
+
+/* Respect users who reduce motion. */
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
