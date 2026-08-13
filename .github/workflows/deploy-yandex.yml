@@ -75,13 +75,13 @@ jobs:
           folder-id: ${{ env.YC_FOLDER_ID }}
           container-name: helt-aida
           revision-image-url: cr.yandex/${{ env.YC_REGISTRY_ID }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
-          revision-runtime: http
           revision-cores: 1
           revision-memory: 512Mb
           revision-concurrency: 8
           revision-execution-timeout: 60
           revision-service-account-id: ${{ secrets.YC_SA_ID }}
           revision-env: |
+            PORT=8080
             GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
             GEMINI_PROXY_URL=${{ secrets.GEMINI_PROXY_URL }}
             GEMINI_PROXY_SECRET=${{ secrets.GEMINI_PROXY_SECRET }}
