@@ -50,3 +50,36 @@ replaceOrFail(
 if (source === original) throw new Error('No access-hardening changes were produced');
 fs.writeFileSync(file, source);
 console.log('server.ts access hardening completed');
+
+const v1File = 'server/v1ApiContractRouter.ts';
+let v1 = fs.readFileSync(v1File, 'utf8');
+const v1Original = v1;
+
+function replaceV1OrFail(label, search, replacement) {
+  const next = v1.replace(search, replacement);
+  if (next === v1) throw new Error(`V1 hardening step did not match: ${label}`);
+  v1 = next;
+  console.log(`patched v1: ${label}`);
+}
+
+replaceV1OrFail(
+  'readiness must not claim frontend contract is complete',
+  '    readyForFrontendDevelopment: true,',
+  '    readyForFrontendDevelopment: false,'
+);
+
+replaceV1OrFail(
+  'readiness must keep UI waiting on partial contracts',
+  '    requiresUIWaiting: false,',
+  '    requiresUIWaiting: true,'
+);
+
+replaceV1OrFail(
+  'readiness message reflects partial contracts',
+  "    message: 'Frontend can continue against the typed contract, but production readiness is partial and must not be represented as complete.',",
+  "    message: 'Часть контрактов и legacy stores ещё не готовы для безопасного использования во всех профилях. UI должен уважать not-ready/empty states.',"
+);
+
+if (v1 === v1Original) throw new Error('No v1 readiness changes were produced');
+fs.writeFileSync(v1File, v1);
+console.log('v1 readiness hardening completed');
