@@ -70,6 +70,11 @@ const checks = [
       /user\.isVerified\s*=\s*true;\s*\n\s*\n\s*\/\/ Create session via AuthService/,
       /const\s*\{\s*code,\s*expiresAt\s*\}\s*=\s*authService\.requestRecovery/,
       /app\.use\(['"]\/api\/v1['"],\s*v1ApiRouter\)/,
+      /app\.post\(['"]\/api\/auth\/delete-account['"],\s*async/,
+      /app\.delete\(['"]\/api\/auth\/delete-account['"],\s*async/,
+      /if\s*\(req\.body\?\.userId\)/,
+      /app\.get\(['"]\/api\/security\/logs['"],\s*\(req,\s*res\)/,
+      /allowedScopes:\s*Array\.isArray\(allowedScopes\)\s*\?\s*allowedScopes\s*:\s*\[['"]emergency_card['"],\s*['"]medications['"]\]/,
     ],
   },
   {
@@ -103,4 +108,4 @@ if (failures > 0) {
   console.error(`\nProduction safety audit failed: ${failures} blocker(s).`);
   process.exit(1);
 }
-console.log('Production safety audit passed: no known fake/demo medical-data, auth or integration-readiness blockers found.');
+console.log('Production safety audit passed: no known fake/demo medical-data, auth, access or integration-readiness blockers found.');
