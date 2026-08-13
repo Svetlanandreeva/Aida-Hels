@@ -3,10 +3,10 @@ WORKDIR /app
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
 COPY . .
-# Production build must never ship legacy demo identities, guest fallback auth,
-# raw OTP responses or implicit consent defaults. Apply the deterministic
-# hardening codemod before compiling the server bundle.
+# Production build hardening is deterministic and runs before compilation.
 RUN node scripts/harden-server-auth.mjs
+RUN node scripts/harden-server-access.mjs
+RUN node scripts/harden-integrations.mjs
 RUN bun run build
 
 FROM node:20-slim
