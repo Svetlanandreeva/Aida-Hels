@@ -44,8 +44,8 @@
 
 @layer base {
   body {
-    background-color: var(--aida-bg, #050711);
-    color: var(--aida-text, #f7f8ff);
+    background-color: #f6f7fa;
+    color: #0e0f1b;
     font-family: var(--aida-font);
   }
 
@@ -58,6 +58,9 @@
     }
   }
 }
+
+.aida-app-main { margin-left: 272px; width: calc(100% - 272px) !important; min-height: 100vh; }
+@media (max-width: 900px) { .aida-app-main { margin-left: 0; width: 100% !important; } }
 
 /* Aida Design System Custom Styles */
 .aida-ring {
