@@ -36,6 +36,24 @@ replaceOrFail(
 );
 
 replaceOrFail(
+  'do not fabricate device brand/model during connection',
+  /    let deviceName = 'Виртуальный трекер';[\s\S]*?    } else if \(providerId === 'withings'\) \{\n      deviceName = 'Withings Body Scan';\n      model = 'Smart Scale HW 1\.0';\n    }/,
+  "    const deviceName = provider.name;\n    const model = 'not_reported';"
+);
+
+replaceOrFail(
+  'do not fabricate firmware version',
+  "      firmwareVersion: '1.0.0',",
+  "      firmwareVersion: 'not_reported',"
+);
+
+replaceOrFail(
+  'do not fabricate battery level',
+  "      batteryLevel: 88,",
+  "      batteryLevel: null,"
+);
+
+replaceOrFail(
   'do not fabricate missing diastolic pressure',
   "            diastolic: Number(rawSample.diastolic || rawSample.valueComponents?.diastolic || 80),",
   "            diastolic: rawSample.diastolic !== undefined || rawSample.valueComponents?.diastolic !== undefined\n              ? Number(rawSample.diastolic ?? rawSample.valueComponents?.diastolic)\n              : undefined,"
