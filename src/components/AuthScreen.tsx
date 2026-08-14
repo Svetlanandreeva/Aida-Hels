@@ -265,16 +265,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess, onDemoLo
         body: JSON.stringify({ email: normEmail }),
       });
       const data = await res.json();
-      const sentCode = data?.data?.code || Math.floor(100000 + Math.random() * 900000).toString();
-
-      const pending = JSON.parse(localStorage.getItem('app_pending_verifications') || '{}');
-      pending[normEmail] = {
-        code: String(sentCode),
-        createdAt: Date.now(),
-        password,
-        fullName,
-      };
-      localStorage.setItem('app_pending_verifications', JSON.stringify(pending));
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || 'Не удалось отправить новый код');
+      }
 
       setResendCountdown(60);
       setInfoMessage(`Новый код отправлен на ${normEmail}`);

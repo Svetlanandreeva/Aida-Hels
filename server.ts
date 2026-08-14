@@ -229,22 +229,26 @@ app.post('/api/auth/register', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Пользователь с таким email уже зарегистрирован' });
     }
 
-    // Hash password with bcrypt cost factor = 12
     const passwordHash = await bcrypt.hash(password, 12);
-    
-    // Generate 6-digit random code and hash with SHA-256 for secure storage
-    const rawCode = Math.floor(100000 + Math.random() * 900000).toString();
-    const verificationCodeHash = crypto.createHash('sha256').update(rawCode).digest('hex');
     const userId = `usr-${Date.now()}`;
+
+    // The existing Apps Script backend owns email delivery via MailApp.
+    const mailResult = await postToSheetsBackend('sendVerificationCode', userId, { email: normEmail });
+    const mailData = mailResult?.data;
+    if (!mailResult?.success || !mailData?.emailSent) {
+      console.error('[Auth] Verification email delivery failed:', mailResult?.error || mailData?.emailError || 'mail backend unavailable');
+      return res.status(503).json({
+        success: false,
+        message: 'Не удалось отправить письмо с кодом. Попробуйте ещё раз через минуту.',
+      });
+    }
 
     const newUser: UserAccount = {
       id: userId,
       email: normEmail,
       fullName: fullName || normEmail.split('@')[0],
       passwordHash,
-      isVerified: true,
-      verificationCodeHash,
-      verificationExpiresAt: Date.now() + 600 * 1000, // 10 minutes TTL
+      isVerified: false,
       createdAt: new Date().toISOString(),
     };
 
@@ -254,45 +258,23 @@ app.post('/api/auth/register', async (req, res) => {
         email: normEmail,
         fullName: newUser.fullName,
         passwordHash,
-        isVerified: true,
-        verificationCodeHash,
-        verificationExpiresAt: newUser.verificationExpiresAt,
+        isVerified: false,
       });
     }
 
     usersDb.set(normEmail, newUser);
+    otpAttemptsDb.delete(normEmail);
 
-    // Create session via AuthService
-    const session = authService.createSession(newUser.id, {
-      ip: req.ip || '',
-      userAgent: (req.headers['user-agent'] as string) || '',
-      email: newUser.email,
-      fullName: newUser.fullName,
-    });
-    const token = session.token;
-
-    res.cookie('session_token', token, {
-      httpOnly: true,
-      sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production',
-      maxAge: 7 * 24 * 3600 * 1000,
-    });
-
-    res.json({
+    res.status(201).json({
       success: true,
-      token,
       email: normEmail,
-      user: {
-        id: newUser.id,
-        email: newUser.email,
-        fullName: newUser.fullName,
-        isAuthenticated: true,
-      },
-      message: 'Регистрация успешно завершена.',
+      requiresVerification: true,
+      message: 'Код подтверждения отправлен на email.',
     });
-  } catch (err: any) {
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
     console.error('Registration error:', err);
-    res.status(500).json({ success: false, message: 'Ошибка при регистрации: ' + err.message });
+    res.status(500).json({ success: false, message: 'Ошибка при регистрации: ' + message });
   }
 });
 
@@ -305,16 +287,40 @@ app.post('/api/auth/send-code', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Укажите корректный адрес электронной почты' });
     }
 
-    const rawCode = Math.floor(100000 + Math.random() * 900000).toString();
-    const verificationCodeHash = crypto.createHash('sha256').update(rawCode).digest('hex');
+    let user = usersDb.get(normEmail) || null;
+    if (!user && isPostgresConfigured()) {
+      const dbUser = await getUserByEmail(normEmail);
+      if (dbUser) {
+        user = {
+          id: dbUser.id,
+          email: dbUser.email,
+          fullName: dbUser.fullName || dbUser.email.split('@')[0],
+          passwordHash: dbUser.passwordHash || '',
+          isVerified: dbUser.isVerified,
+          createdAt: dbUser.createdAt,
+        };
+        usersDb.set(normEmail, user);
+      }
+    }
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Пользователь не найден. Зарегистрируйтесь снова.' });
+    }
 
+    const mailResult = await postToSheetsBackend('sendVerificationCode', user.id, { email: normEmail });
+    const mailData = mailResult?.data;
+    if (!mailResult?.success || !mailData?.emailSent) {
+      console.error('[Auth] Verification resend failed:', mailResult?.error || mailData?.emailError || 'mail backend unavailable');
+      return res.status(503).json({ success: false, message: 'Не удалось отправить новый код. Попробуйте позже.' });
+    }
+
+    otpAttemptsDb.delete(normEmail);
     res.json({
       success: true,
-      data: { code: rawCode, email: normEmail, hash: verificationCodeHash },
-      message: 'Код подтверждения сгенерирован защищённым сервером',
+      message: 'Новый код подтверждения отправлен на email.',
     });
-  } catch (err: any) {
-    res.status(500).json({ success: false, message: 'Ошибка отправки кода: ' + err.message });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ success: false, message: 'Ошибка отправки кода: ' + message });
   }
 });
 
@@ -391,7 +397,15 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(401).json({ success: false, message: 'Неверный логин или пароль' });
     }
 
-    // Mark as verified upon successful login
+    // Email must be verified in the mail backend before login is allowed.
+    const verificationState = await postToSheetsBackend('checkEmailVerified', user.id, { email: normEmail });
+    if (!verificationState?.success || !verificationState?.data?.isVerified) {
+      return res.status(403).json({
+        success: false,
+        code: 'EMAIL_NOT_VERIFIED',
+        message: 'Сначала подтвердите email кодом из письма.',
+      });
+    }
     user.isVerified = true;
 
     // Create session via AuthService
@@ -441,7 +455,10 @@ app.post('/api/auth/verify-code', async (req, res) => {
     const normEmail = (email || '').trim().toLowerCase();
     const cleanCode = (code || '').trim();
 
-    // Check rate limiting (3 attempts -> 15 min lock)
+    if (!/^\d{6}$/.test(cleanCode)) {
+      return res.status(400).json({ success: false, message: 'Введите 6 цифр кода из письма.' });
+    }
+
     const attempts = otpAttemptsDb.get(normEmail) || { count: 0 };
     if (attempts.blockedUntil && Date.now() < attempts.blockedUntil) {
       const remainMins = Math.ceil((attempts.blockedUntil - Date.now()) / 60000);
@@ -451,23 +468,33 @@ app.post('/api/auth/verify-code', async (req, res) => {
       });
     }
 
-    const user = usersDb.get(normEmail);
+    let user = usersDb.get(normEmail) || null;
+    if (!user && isPostgresConfigured()) {
+      const dbUser = await getUserByEmail(normEmail);
+      if (dbUser) {
+        user = {
+          id: dbUser.id,
+          email: dbUser.email,
+          fullName: dbUser.fullName || dbUser.email.split('@')[0],
+          passwordHash: dbUser.passwordHash || '',
+          isVerified: dbUser.isVerified,
+          createdAt: dbUser.createdAt,
+        };
+        usersDb.set(normEmail, user);
+      }
+    }
+
     if (!user) {
       return res.status(400).json({ success: false, message: 'Пользователь не найден. Зарегистрируйтесь снова.' });
     }
 
-    // Check TTL (10 minutes)
-    if (!user.verificationCodeHash || !user.verificationExpiresAt || Date.now() > user.verificationExpiresAt) {
-      user.verificationCodeHash = undefined;
-      user.verificationExpiresAt = undefined;
-      return res.status(400).json({ success: false, message: 'Срок действия кода истёк' });
-    }
+    const verifyResult = await postToSheetsBackend('verifyEmailCode', user.id, {
+      email: normEmail,
+      code: cleanCode,
+    });
+    const verified = Boolean(verifyResult?.success && verifyResult?.data?.verified);
 
-    // Hash user input code with SHA-256 and compare
-    const inputHash = crypto.createHash('sha256').update(cleanCode).digest('hex');
-    let isCodeValid = user.verificationCodeHash === inputHash;
-
-    if (!isCodeValid) {
+    if (!verified) {
       attempts.count = (attempts.count || 0) + 1;
       if (attempts.count >= 3) {
         attempts.blockedUntil = Date.now() + 15 * 60 * 1000;
@@ -478,16 +505,16 @@ app.post('/api/auth/verify-code', async (req, res) => {
         });
       }
       otpAttemptsDb.set(normEmail, attempts);
-      return res.status(400).json({ success: false, message: `Неверный код подтверждения. Осталось попыток: ${3 - attempts.count}` });
+      const backendMessage = verifyResult?.data?.message || verifyResult?.error?.message;
+      return res.status(400).json({
+        success: false,
+        message: backendMessage || `Неверный код подтверждения. Осталось попыток: ${3 - attempts.count}`,
+      });
     }
 
-    // Code is valid: clear OTP records and rate limit
-    user.verificationCodeHash = undefined;
-    user.verificationExpiresAt = undefined;
     user.isVerified = true;
     otpAttemptsDb.delete(normEmail);
 
-    // Issue JWT session cookie
     const token = jwt.sign(
       { id: user.id, email: user.email, fullName: user.fullName },
       JWT_SECRET,
@@ -511,9 +538,10 @@ app.post('/api/auth/verify-code', async (req, res) => {
         isAuthenticated: true,
       },
     });
-  } catch (err: any) {
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
     console.error('Verify code error:', err);
-    res.status(500).json({ success: false, message: 'Ошибка проверки кода: ' + err.message });
+    res.status(500).json({ success: false, message: 'Ошибка проверки кода: ' + message });
   }
 });
 
