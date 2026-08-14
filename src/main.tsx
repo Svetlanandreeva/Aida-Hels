@@ -10,6 +10,7 @@ import './unified-ui.css';
 import './mental-diary-redesign.css';
 import './integrations-redesign.css';
 import './timeline-redesign.css';
+import './reminders-redesign.css';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
