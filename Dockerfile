@@ -7,7 +7,7 @@ COPY . .
 RUN node scripts/harden-server-auth.mjs
 RUN node scripts/harden-server-access.mjs
 RUN node scripts/harden-integrations.mjs
-RUN node scripts/harden-server-no-fabrication.mjs
+RUN node scripts/harden-server-no-fabrication-v2.mjs
 RUN bun run build
 
 FROM node:20-slim
