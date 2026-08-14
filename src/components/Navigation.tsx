@@ -26,7 +26,7 @@ interface NavigationProps {
 }
 
 export const Navigation: React.FC<NavigationProps> = ({
-  currentScreen, setCurrentScreen, setDashboardTab, user, onLogout,
+  currentScreen, setCurrentScreen, dashboardTab, setDashboardTab, user, onLogout,
   activeRemindersCount = 0, onRefreshAnalysis, isLoadingAnalysis = false,
 }) => {
   const go = (screen: ScreenId, tab?: DashboardTab) => {
@@ -39,9 +39,9 @@ export const Navigation: React.FC<NavigationProps> = ({
     ['Организм', Activity, 'body_map'],
     ['Психика', Brain, 'mental_diary'],
     ['Давление', HeartPulse, 'pressure_diary'],
-    ['Сон', Moon, 'mental_diary'],
+    ['Сон', Moon, 'sleep_diary'],
     ['Задачи', CalendarDays, 'reminders'],
-    ['Лекарства', Pill, 'reminders'],
+    ['Лекарства', Pill, 'medications'],
     ['Аида', MessageCircle, 'ai_chat'],
     ['История', History, 'timeline'],
   ] as const;
@@ -52,7 +52,7 @@ export const Navigation: React.FC<NavigationProps> = ({
         <button className="aida-sidebar-logo" onClick={() => go('dashboard','main')}><img src={AIDA_LOGO} alt="Аида"/></button>
         <nav>
           {items.map(([label,Icon,screen,tab]) => {
-            const active = currentScreen === screen && (screen !== 'dashboard' || label === 'Главная');
+            const active = currentScreen === screen && (screen !== 'dashboard' || dashboardTab === tab);
             return <button className={active ? 'active' : ''} key={label} onClick={() => go(screen as ScreenId, tab as DashboardTab | undefined)}><Icon size={19}/><span>{label}</span>{label === 'Задачи' && activeRemindersCount > 0 && <b>{activeRemindersCount}</b>}</button>;
           })}
         </nav>
@@ -66,7 +66,10 @@ export const Navigation: React.FC<NavigationProps> = ({
         <div className="aida-sidebar-footer"><button onClick={() => go('settings')}><Settings size={18}/> Настройки</button><button onClick={onLogout}><LogOut size={18}/> Выйти</button></div>
       </aside>
       <nav className="aida-mobile-nav">
-        {items.slice(0,5).map(([label,Icon,screen,tab]) => <button key={label} className={currentScreen===screen?'active':''} onClick={()=>go(screen as ScreenId,tab as DashboardTab|undefined)}><Icon size={20}/><span>{label}</span></button>)}
+        {items.slice(0,5).map(([label,Icon,screen,tab]) => {
+          const active = currentScreen === screen && (screen !== 'dashboard' || dashboardTab === tab);
+          return <button key={label} className={active?'active':''} onClick={()=>go(screen as ScreenId,tab as DashboardTab|undefined)}><Icon size={20}/><span>{label}</span></button>;
+        })}
       </nav>
     </>
   );

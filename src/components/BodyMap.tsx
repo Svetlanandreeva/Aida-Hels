@@ -1,271 +1,58 @@
 import React, { useState } from 'react';
-import { BodySystem, UserProfile, MedicalDocument, PressureLogEntry, DailyLogEntry } from '../types';
-import {
-  Activity,
-  Heart,
-  Brain,
-  Wind,
-  Apple,
-  Zap,
-  Shield,
-  Droplets,
-  Bone,
-  Eye,
-  Info,
-  ChevronRight,
-  AlertCircle,
-  CheckCircle2,
-  SlidersHorizontal,
-  Sparkles,
-  Layers,
-} from 'lucide-react';
+import { Activity, AlertCircle, Apple, Bone, Brain, CheckCircle2, ChevronRight, Droplets, Heart, Info, Layers, Shield, Sparkles, Wind, Zap } from 'lucide-react';
+import { BodySystem, DailyLogEntry, MedicalDocument, PressureLogEntry, UserProfile } from '../types';
 import { calculateOrganismAge } from '../utils/calculateOrganismAge';
 import { OrganismAgeBlock } from './OrganismAgeBlock';
 
-interface BodyMapProps {
-  systems: BodySystem[];
-  onSelectSystem: (system: BodySystem) => void;
-  onOpenOverviewModal?: () => void;
-  user?: UserProfile | null;
-  documents?: MedicalDocument[];
-  pressureLogs?: PressureLogEntry[];
-  dailyLogs?: DailyLogEntry[];
-  onNavigate?: (screen: any) => void;
-}
+interface BodyMapProps { systems: BodySystem[]; onSelectSystem: (system: BodySystem) => void; onOpenOverviewModal?: () => void; user?: UserProfile | null; documents?: MedicalDocument[]; pressureLogs?: PressureLogEntry[]; dailyLogs?: DailyLogEntry[]; onNavigate?: (screen: any) => void; }
 
-export const BodyMap: React.FC<BodyMapProps> = ({
-  systems,
-  onSelectSystem,
-  onOpenOverviewModal,
-  user,
-  documents = [],
-  pressureLogs = [],
-  dailyLogs = [],
-  onNavigate,
-}) => {
-  const [activeTab, setActiveTab] = useState<'age' | 'systems'>('age');
-  const [filter, setFilter] = useState<'all' | 'attention' | 'norm'>('all');
-
-  const organismAgeData = calculateOrganismAge(user, documents, pressureLogs, dailyLogs);
-
-  const getSystemIcon = (iconName: string) => {
-    switch (iconName?.toLowerCase()) {
-      case 'heart':
-      case 'cardio':
-        return <Heart className="w-5 h-5 text-red-400" />;
-      case 'brain':
-      case 'nervous':
-        return <Brain className="w-5 h-5 text-[#8E74FF]" />;
-      case 'lungs':
-      case 'wind':
-      case 'respiratory':
-        return <Wind className="w-5 h-5 text-cyan-400" />;
-      case 'digestive':
-      case 'apple':
-        return <Apple className="w-5 h-5 text-amber-400" />;
-      case 'endocrine':
-      case 'zap':
-        return <Zap className="w-5 h-5 text-yellow-400" />;
-      case 'immune':
-      case 'shield':
-        return <Shield className="w-5 h-5 text-emerald-400" />;
-      case 'urinary':
-      case 'droplets':
-        return <Droplets className="w-5 h-5 text-blue-400" />;
-      case 'bone':
-      case 'musculoskeletal':
-        return <Bone className="w-5 h-5 text-indigo-400" />;
-      default:
-        return <Activity className="w-5 h-5 text-[#8E74FF]" />;
-    }
-  };
-
-  const filteredSystems = systems.filter((sys) => {
-    if (filter === 'attention') return sys.status !== 'norm';
-    if (filter === 'norm') return sys.status === 'norm';
-    return true;
-  });
-
-  const normCount = systems.filter((s) => s.status === 'norm').length;
-  const attentionCount = systems.filter((s) => s.status !== 'norm').length;
-
-  return (
-    <div className="w-full max-w-[1000px] mx-auto space-y-5 px-2 sm:px-0">
-      {/* Header Banner & Sub-tab Switcher */}
-      <div className="bg-[#0B1320] border border-white/[0.08] rounded-2xl sm:rounded-3xl p-5 sm:p-6 shadow-xl relative overflow-hidden flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-        <div className="space-y-1.5 z-10">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl bg-[#8E74FF]/10 border border-[#8E74FF]/30 text-[#8E74FF] flex items-center justify-center">
-              <Activity className="w-4 h-4" />
-            </div>
-            <span className="text-xs font-bold text-[#8E74FF] uppercase tracking-wider">
-              Раздел «Организм»
-            </span>
-          </div>
-          <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">
-            Оценка здоровья и биологические маркеры
-          </h1>
-          <p className="text-xs text-white/60 max-w-xl">
-            Комплексный расчёт возраста организма и интерактивный статус 10 ключевых систем.
-          </p>
-        </div>
-
-        {/* Tab Switcher */}
-        <div className="flex items-center gap-1.5 bg-[#050810] border border-white/10 p-1.5 rounded-2xl shrink-0 z-10 w-full sm:w-auto">
-          <button
-            onClick={() => setActiveTab('age')}
-            className={`flex-1 sm:flex-initial px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 ${
-              activeTab === 'age'
-                ? 'bg-gradient-to-r from-[#6551E8] to-[#8968FF] text-white shadow-lg shadow-[#8968FF]/30'
-                : 'text-gray-400 hover:text-white hover:bg-white/5'
-            }`}
-          >
-            <Sparkles className="w-3.5 h-3.5 text-[#4DEBFF]" />
-            <span>Возраст организма</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('systems')}
-            className={`flex-1 sm:flex-initial px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 ${
-              activeTab === 'systems'
-                ? 'bg-gradient-to-r from-[#6551E8] to-[#8968FF] text-white shadow-lg shadow-[#8968FF]/30'
-                : 'text-gray-400 hover:text-white hover:bg-white/5'
-            }`}
-          >
-            <Layers className="w-3.5 h-3.5 text-purple-300" />
-            <span>Карта 10 систем</span>
-          </button>
-        </div>
-      </div>
-
-      {/* TAB 1: ORGANISM AGE BLOCK */}
-      {activeTab === 'age' && (
-        <OrganismAgeBlock
-          data={organismAgeData}
-          onOpenAddMetrics={() => onNavigate && onNavigate('dashboard')}
-        />
-      )}
-
-      {/* TAB 2: INTERACTIVE 10 SYSTEMS MAP */}
-      {activeTab === 'systems' && (
-        <div className="space-y-4">
-          {/* Filter Tabs & Quick Stats */}
-          <div className="flex flex-wrap items-center justify-between gap-3 bg-[#0F172A]/80 border border-white/[0.06] p-2.5 rounded-2xl">
-            <div className="flex items-center gap-1.5">
-              <button
-                onClick={() => setFilter('all')}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  filter === 'all'
-                    ? 'bg-[#8E74FF] text-white shadow-md'
-                    : 'text-white/60 hover:text-white hover:bg-white/5'
-                }`}
-              >
-                Все системы ({systems.length})
-              </button>
-              <button
-                onClick={() => setFilter('attention')}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                  filter === 'attention'
-                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                    : 'text-white/60 hover:text-amber-300 hover:bg-white/5'
-                }`}
-              >
-                <AlertCircle className="w-3.5 h-3.5 text-amber-400" />
-                <span>Требуют внимания ({attentionCount})</span>
-              </button>
-              <button
-                onClick={() => setFilter('norm')}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                  filter === 'norm'
-                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                    : 'text-white/60 hover:text-emerald-300 hover:bg-white/5'
-                }`}
-              >
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                <span>В норме ({normCount})</span>
-              </button>
-            </div>
-
-            {onOpenOverviewModal && (
-              <button
-                onClick={onOpenOverviewModal}
-                className="px-3 py-1.5 bg-[#8E74FF]/10 hover:bg-[#8E74FF]/20 border border-[#8E74FF]/30 rounded-xl text-xs font-bold text-[#8E74FF] hover:text-white transition-all cursor-pointer flex items-center gap-1.5"
-              >
-                <Info className="w-3.5 h-3.5" />
-                <span>Методология</span>
-              </button>
-            )}
-          </div>
-
-          {/* Systems Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-3.5">
-            {filteredSystems.map((sys) => {
-              const isNorm = sys.status === 'norm';
-              return (
-                <div
-                  key={sys.id}
-                  onClick={() => onSelectSystem(sys)}
-                  className="bg-[#0B1320] hover:bg-[#0E182A] border border-white/[0.08] hover:border-[#8E74FF]/40 rounded-2xl p-4 sm:p-5 transition-all cursor-pointer shadow-lg space-y-3 group flex flex-col justify-between"
-                >
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                          {getSystemIcon(sys.iconName)}
-                        </div>
-                        <div>
-                          <h3 className="font-extrabold text-white text-sm group-hover:text-[#8E74FF] transition-colors">
-                            {sys.name}
-                          </h3>
-                          <p className="text-[11px] text-white/50">{sys.description}</p>
-                        </div>
-                      </div>
-
-                      <ChevronRight className="w-4 h-4 text-white/30 group-hover:text-white group-hover:translate-x-1 transition-all shrink-0" />
-                    </div>
-
-                    {/* Score bar & Status */}
-                    <div className="pt-2 border-t border-white/[0.06] space-y-1.5">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-white/50 font-medium">Статус физиологии</span>
-                        <span
-                          className={`font-bold px-2.5 py-0.5 rounded-md text-[11px] ${
-                            isNorm
-                              ? 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-300'
-                              : 'bg-amber-500/15 border border-amber-500/30 text-amber-300'
-                          }`}
-                        >
-                          {sys.statusText} • {sys.score}%
-                        </span>
-                      </div>
-
-                      <div className="w-full bg-white/10 h-1.5 rounded-full overflow-hidden">
-                        <div
-                          className={`h-full rounded-full transition-all duration-500 ${
-                            isNorm ? 'bg-emerald-400' : 'bg-amber-400'
-                          }`}
-                          style={{ width: `${Math.max(10, Math.min(100, sys.score))}%` }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Bottom detail pill */}
-                  <div className="text-[11px] text-white/60 bg-[#101A28] p-2.5 rounded-xl border border-white/[0.04] flex items-center justify-between">
-                    <span>
-                      {sys.deviationsCount > 0
-                        ? `Зафиксировано ${sys.deviationsCount} маркёров для наблюдения`
-                        : 'Отклонений в анализах не выявлено'}
-                    </span>
-                    <span className="text-[#8E74FF] font-bold shrink-0 ml-2">Подробнее &rarr;</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-    </div>
-  );
+const iconFor = (name: string) => {
+  const props = { size: 21, strokeWidth: 1.8 };
+  switch (name?.toLowerCase()) {
+    case 'heart': case 'cardio': return <Heart {...props} />;
+    case 'brain': case 'nervous': return <Brain {...props} />;
+    case 'lungs': case 'wind': case 'respiratory': return <Wind {...props} />;
+    case 'digestive': case 'apple': return <Apple {...props} />;
+    case 'endocrine': case 'zap': return <Zap {...props} />;
+    case 'immune': case 'shield': return <Shield {...props} />;
+    case 'urinary': case 'droplets': return <Droplets {...props} />;
+    case 'bone': case 'musculoskeletal': return <Bone {...props} />;
+    default: return <Activity {...props} />;
+  }
 };
 
+export const BodyMap: React.FC<BodyMapProps> = ({ systems, onSelectSystem, onOpenOverviewModal, user, documents = [], pressureLogs = [], dailyLogs = [], onNavigate }) => {
+  const [activeTab, setActiveTab] = useState<'age' | 'systems'>('age');
+  const [filter, setFilter] = useState<'all' | 'attention' | 'norm'>('all');
+  const data = calculateOrganismAge(user, documents, pressureLogs, dailyLogs);
+  const normCount = systems.filter((s) => s.status === 'norm').length;
+  const attentionCount = systems.length - normCount;
+  const filtered = systems.filter((s) => filter === 'all' || (filter === 'norm' ? s.status === 'norm' : s.status !== 'norm'));
+
+  return <section className="aida-organism">
+    <header className="aida-organism-header">
+      <div><span className="aida-page-eyebrow"><Activity /> Раздел «Организм»</span><h1>Здоровье организма — в ясной картине</h1><p>Аида объединяет анализы, давление и самочувствие, чтобы показать состояние ключевых систем.</p></div>
+      <div className="aida-segmented" aria-label="Вид раздела">
+        <button className={activeTab === 'age' ? 'active' : ''} onClick={() => setActiveTab('age')}><Sparkles /> Возраст организма</button>
+        <button className={activeTab === 'systems' ? 'active' : ''} onClick={() => setActiveTab('systems')}><Layers /> Карта систем</button>
+      </div>
+    </header>
+
+    {activeTab === 'age' ? <OrganismAgeBlock data={data} onOpenAddMetrics={() => onNavigate?.('dashboard')} /> : <div className="aida-systems-view">
+      <div className="aida-systems-toolbar"><div className="aida-filter-tabs">
+        <button className={filter === 'all' ? 'active' : ''} onClick={() => setFilter('all')}>Все · {systems.length}</button>
+        <button className={filter === 'attention' ? 'active' : ''} onClick={() => setFilter('attention')}><AlertCircle /> Внимание · {attentionCount}</button>
+        <button className={filter === 'norm' ? 'active' : ''} onClick={() => setFilter('norm')}><CheckCircle2 /> В норме · {normCount}</button>
+      </div>{onOpenOverviewModal && <button className="aida-method-button" onClick={onOpenOverviewModal}><Info /> Как формируется карта</button>}</div>
+      <div className="aida-systems-grid">{filtered.map((system) => {
+        const ok = system.status === 'norm';
+        return <button key={system.id} className="aida-system-card" onClick={() => onSelectSystem(system)}>
+          <div className="aida-system-card-top"><span className="aida-system-icon">{iconFor(system.iconName)}</span><span className={`aida-system-status ${ok ? 'ok' : 'attention'}`}>{ok ? 'В норме' : 'Наблюдение'}</span></div>
+          <h3>{system.name}</h3><p>{system.description}</p>
+          <div className="aida-system-score"><span><i style={{ width: `${Math.max(8, system.score)}%` }} /></span><strong>{system.score}%</strong></div>
+          <footer><span>{system.deviationsCount ? `${system.deviationsCount} маркера требуют внимания` : 'Отклонений не выявлено'}</span><ChevronRight /></footer>
+        </button>;
+      })}</div>
+    </div>}
+  </section>;
+};

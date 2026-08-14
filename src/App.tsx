@@ -37,7 +37,7 @@ import { StartScreen } from './components/StartScreen';
 import { Questionnaire } from './components/Questionnaire';
 import { Dashboard } from './components/Dashboard';
 import { MedicalProfile } from './components/MedicalProfile';
-import { SettingsScreen } from './components/SettingsScreen';
+import { SettingsDrawer } from './components/SettingsDrawer';
 import { AiAssistant } from './components/AiAssistant';
 import { DailyCheckin } from './components/DailyCheckin';
 import { BodyMap } from './components/BodyMap';
@@ -47,6 +47,7 @@ import { PressureDiary } from './components/PressureDiary';
 import { TimelineScreen } from './components/TimelineScreen';
 import { WearablesIntegrationsScreen } from './components/WearablesIntegrationsScreen';
 import { PermissionSettingsScreen } from './components/PermissionSettingsScreen';
+import { WellnessOverview } from './components/WellnessOverview';
 
 import { SecurityLockModal } from './components/SecurityLockModal';
 import { checkAndTriggerReminders } from './services/notificationService';
@@ -97,6 +98,7 @@ export default function App() {
     return 'start';
   });
   const [dashboardTab, setDashboardTab] = useState<DashboardTab>('main');
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [authTab, setAuthTab] = useState<'login' | 'register'>('register');
 
   // Application Data States
@@ -508,6 +510,15 @@ export default function App() {
   const [isDoctorReportOpen, setIsDoctorReportOpen] = useState(false);
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
 
+  const navigateTo = (screen: ScreenId) => {
+    if (screen === 'settings') {
+      setIsSettingsOpen(true);
+      return;
+    }
+    setIsSettingsOpen(false);
+    setCurrentScreen(screen);
+  };
+
   // Handlers
   const handleAuthSuccess = (userData?: Partial<UserProfile>) => {
     const isNewRegistration = userData?.isQuestionnaireCompleted === false;
@@ -642,7 +653,7 @@ export default function App() {
       {currentScreen !== 'start' && currentScreen !== 'auth' && user.isAuthenticated && (
         <Navigation
           currentScreen={currentScreen}
-          setCurrentScreen={setCurrentScreen}
+          setCurrentScreen={navigateTo}
           dashboardTab={dashboardTab}
           setDashboardTab={setDashboardTab}
           user={user}
@@ -739,37 +750,6 @@ export default function App() {
           />
         )}
 
-        {/* SCREEN 8: SETTINGS & PARTNER CYCLE SYNC */}
-        {currentScreen === 'settings' && (
-          <SettingsScreen
-            user={user}
-            setUser={setUser}
-            reminders={reminders}
-            setReminders={setReminders}
-            documents={documents}
-            setDocuments={setDocuments}
-            onLogout={handleLogout}
-            onDeleteProfile={handleDeleteProfile}
-            onNavigate={(screen) => setCurrentScreen(screen)}
-            biometricsEnabled={biometricsEnabled}
-            setBiometricsEnabled={(enabled) => {
-              setBiometricsEnabled(enabled);
-              localStorage.setItem('app_biometrics_enabled', JSON.stringify(enabled));
-              logSecurityEvent(`Изменение настроек безопасности: биометрическая защита ${enabled ? 'включена' : 'отключена'}`, 'high');
-            }}
-            userPin={userPin}
-            setUserPin={(pin) => {
-              setUserPin(pin);
-              localStorage.setItem('app_pin_code', pin);
-              logSecurityEvent(`Изменение настроек безопасности: ${pin ? 'установлен новый PIN-код' : 'PIN-код сброшен'}`, 'high');
-            }}
-            onLockApp={() => {
-              setIsAppLocked(true);
-              logSecurityEvent('Ручная блокировка экрана приложения пользователем', 'low');
-            }}
-          />
-        )}
-
         {/* SCREEN 9: AI CHAT ASSISTANT */}
         {currentScreen === 'ai_chat' && (
           <AiAssistant
@@ -831,6 +811,14 @@ export default function App() {
           />
         )}
 
+        {currentScreen === 'sleep_diary' && (
+          <WellnessOverview mode="sleep" onPrimary={() => setCurrentScreen('daily_checkin')} />
+        )}
+
+        {currentScreen === 'medications' && (
+          <WellnessOverview mode="medications" onPrimary={() => setCurrentScreen('reminders')} />
+        )}
+
         {/* SCREEN 14: PRESSURE & PULSE DIARY */}
         {currentScreen === 'pressure_diary' && (
           <PressureDiary
@@ -871,6 +859,13 @@ export default function App() {
           />
         )}
       </main>
+
+      <SettingsDrawer
+        isOpen={isSettingsOpen}
+        user={user}
+        onClose={() => setIsSettingsOpen(false)}
+        onNavigate={navigateTo}
+      />
 
       {/* OVERLAY MODALS */}
 

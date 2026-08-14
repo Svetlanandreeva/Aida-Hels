@@ -14,6 +14,8 @@ export type ScreenId =
   | 'body_map'
   | 'reminders'
   | 'mental_diary'
+  | 'sleep_diary'
+  | 'medications'
   | 'pressure_diary'
   | 'timeline'
   | 'integrations'

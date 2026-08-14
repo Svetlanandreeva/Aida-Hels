@@ -5,6 +5,7 @@ import './index.css';
 import './figma-theme.css';
 import './product-ui.css';
 import './aida-screen-coverage.css';
+import './internal-redesign.css';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
