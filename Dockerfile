@@ -26,7 +26,9 @@ RUN pip install --no-cache-dir \
     pymongo==4.6.3 \
     motor==3.3.1 \
     pydantic>=2.6.4 \
-    python-multipart>=0.0.9
+    python-multipart>=0.0.9 \
+    google-auth>=2.35.0 \
+    google-api-python-client>=2.149.0
 
 RUN python - <<'PY'
 from pathlib import Path
@@ -77,7 +79,6 @@ async def _startup():
             except Exception:
                 logging.exception("seed on startup failed")
 ''')
-# Keep AI/OCR endpoints explicit when the Emergent runtime is unavailable.
 s = s.replace(
 'if not EMERGENT_LLM_KEY:\n        raise HTTPException(500, "LLM key is not configured")',
 'if not EMERGENT_LLM_KEY or LlmChat is None:\n        raise HTTPException(503, "Aida AI provider is not configured on this deployment")')
