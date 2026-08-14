@@ -132,7 +132,7 @@ export const RemindersScreen: React.FC<RemindersScreenProps> = ({
     const res = await requestNotificationPermission();
     setNotifPermission(res);
     if (res === 'granted') {
-      showToast('Всплывающие PUSH-уведомления в браузере успешно включены! 🎉');
+      showToast('Уведомления включены');
     } else if (res === 'denied') {
       showToast('Доступ к уведомлениям заблокирован в настройках браузера.');
     }
@@ -145,7 +145,7 @@ export const RemindersScreen: React.FC<RemindersScreenProps> = ({
     }
     const success = sendTestNotification();
     if (success) {
-      showToast('Тестовое всплывающее PUSH-уведомление отправлено!');
+      showToast('Тестовое уведомление отправлено');
     } else {
       showToast('Не удалось отправить тестовое уведомление.');
     }
@@ -331,7 +331,7 @@ export const RemindersScreen: React.FC<RemindersScreenProps> = ({
     switch (category) {
       case 'medication':
         return {
-          label: 'Медикамент / Витамины',
+          label: 'Лекарство',
           bg: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
           icon: <Pill className="w-3.5 h-3.5" />,
         };
@@ -357,7 +357,7 @@ export const RemindersScreen: React.FC<RemindersScreenProps> = ({
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 pb-32 sm:pb-36">
+    <div className="aida-reminders-screen max-w-5xl mx-auto space-y-5 pb-32 sm:pb-36">
       {/* Toast Alert Banner */}
       {toastMessage && (
         <div className="fixed top-24 right-4 z-[120] bg-emerald-500 text-slate-950 font-bold px-4 py-3 rounded-2xl shadow-2xl border border-emerald-300 flex items-center gap-2 animate-bounce">
@@ -416,7 +416,7 @@ export const RemindersScreen: React.FC<RemindersScreenProps> = ({
 
           <div className="space-y-1">
             <div className="flex items-center gap-2">
-              <h3 className="font-bold text-sm text-gray-100">Всплывающие PUSH-уведомления браузера (Notification API)</h3>
+              <h3 className="font-bold text-sm text-gray-100">Уведомления о приёме и важных событиях</h3>
               <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border ${
                 notifPermission === 'granted'
                   ? 'bg-[#65F4C0]/15 text-[#65F4C0] border-[#65F4C0]/30'
@@ -448,7 +448,7 @@ export const RemindersScreen: React.FC<RemindersScreenProps> = ({
               className="px-4 py-2 bg-gradient-to-r from-[#8968FF] to-[#47D8FF] hover:brightness-110 text-[#050711] font-extrabold text-xs rounded-2xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer w-full sm:w-auto"
             >
               <ShieldCheck className="w-4 h-4" />
-              <span>Включить PUSH в браузере</span>
+              <span>Включить уведомления</span>
             </button>
           ) : (
             <button
@@ -456,7 +456,7 @@ export const RemindersScreen: React.FC<RemindersScreenProps> = ({
               className="px-4 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer w-full sm:w-auto"
             >
               <BellRing className="w-4 h-4" />
-              <span>Проверить PUSH на столе</span>
+              <span>Проверить уведомление</span>
             </button>
           )}
         </div>
@@ -497,54 +497,14 @@ export const RemindersScreen: React.FC<RemindersScreenProps> = ({
         </div>
       </div>
 
-      {/* Quick Presets Section */}
-      <div className="bg-[#14171C] p-4 rounded-2xl border border-gray-800 space-y-2">
-        <span className="text-xs font-bold text-gray-400 uppercase tracking-wider block">
-          Быстрые шаблоны напоминаний:
-        </span>
-        <div className="flex items-center gap-2 overflow-x-auto pb-1">
-          <button
-            onClick={() => handleQuickAddPreset('Приём L-тироксина', 'medication', '07:30', '50 мкг натощак', 'За 30 минут до еды')}
-            className="px-3 py-1.5 bg-[#0F1115] hover:bg-emerald-500/10 hover:border-emerald-500/30 border border-gray-800 text-gray-300 text-xs font-medium rounded-xl shrink-0 transition-colors cursor-pointer flex items-center gap-1.5"
-          >
-            <Pill className="w-3.5 h-3.5 text-emerald-400" />
-            <span>+ L-тироксина (07:30)</span>
-          </button>
-
-          <button
-            onClick={() => handleQuickAddPreset('Витамин D3', 'medication', '09:00', '5000 МЕ', 'Во время завтрака')}
-            className="px-3 py-1.5 bg-[#0F1115] hover:bg-emerald-500/10 hover:border-emerald-500/30 border border-gray-800 text-gray-300 text-xs font-medium rounded-xl shrink-0 transition-colors cursor-pointer flex items-center gap-1.5"
-          >
-            <Pill className="w-3.5 h-3.5 text-emerald-400" />
-            <span>+ Витамин D3 (09:00)</span>
-          </button>
-
-          <button
-            onClick={() => handleQuickAddPreset('Магний B6 перед сном', 'medication', '22:00', '2 таблетки', 'Перед сном для расслабления')}
-            className="px-3 py-1.5 bg-[#0F1115] hover:bg-teal-500/10 hover:border-teal-500/30 border border-gray-800 text-gray-300 text-xs font-medium rounded-xl shrink-0 transition-colors cursor-pointer flex items-center gap-1.5"
-          >
-            <Pill className="w-3.5 h-3.5 text-teal-400" />
-            <span>+ Магний B6 (22:00)</span>
-          </button>
-
-          <button
-            onClick={() => handleQuickAddPreset('Ежедневный опрос самочувствия', 'checkin', '21:00', undefined, 'Фиксация сна и стресса')}
-            className="px-3 py-1.5 bg-[#0F1115] hover:bg-pink-500/10 hover:border-pink-500/30 border border-gray-800 text-gray-300 text-xs font-medium rounded-xl shrink-0 transition-colors cursor-pointer flex items-center gap-1.5"
-          >
-            <Heart className="w-3.5 h-3.5 text-pink-400" />
-            <span>+ Чек-ин дня (21:00)</span>
-          </button>
-        </div>
-      </div>
-
       {/* Filter Tabs */}
       <div className="flex items-center gap-2 overflow-x-auto pb-1">
         {[
           { id: 'all', label: 'Все напоминания' },
-          { id: 'medication', label: '💊 Лекарства & Витамины' },
+          { id: 'medication', label: '💊 Лекарства' },
           { id: 'appointment', label: '🩺 Приёмы врачей' },
           { id: 'checkin', label: '❤️ Ежедневный опрос' },
-          { id: 'custom', label: '⚙️ Позиции' },
+          { id: 'custom', label: 'Другое' },
         ].map((tab) => (
           <button
             key={tab.id}
@@ -718,7 +678,7 @@ export const RemindersScreen: React.FC<RemindersScreenProps> = ({
                     { id: 'medication', label: '💊 Лекарство / Витамины' },
                     { id: 'appointment', label: '🩺 Приём врача' },
                     { id: 'checkin', label: '❤️ Чек-ин самочувствия' },
-                    { id: 'custom', label: '⚙️ Позиция' },
+                    { id: 'custom', label: 'Другое' },
                   ].map((cat) => (
                     <button
                       key={cat.id}
