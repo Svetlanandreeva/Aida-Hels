@@ -32,6 +32,7 @@ import {
   UserProfile,
 } from '../types';
 import './AidaRedesign.css';
+import './HomeDashboardV2.css';
 
 export interface HomeDashboardProps {
   user: UserProfile;
