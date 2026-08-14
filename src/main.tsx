@@ -11,6 +11,7 @@ import './mental-diary-redesign.css';
 import './integrations-redesign.css';
 import './timeline-redesign.css';
 import './reminders-redesign.css';
+import './lab-research-redesign.css';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
