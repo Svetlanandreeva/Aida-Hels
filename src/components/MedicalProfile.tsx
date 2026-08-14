@@ -9,7 +9,11 @@ import {
   Printer,
   Sparkles,
   Edit2,
-  Calendar,
+  CalendarDays,
+  Droplets,
+  Ruler,
+  Weight,
+  Activity,
 } from 'lucide-react';
 
 interface MedicalProfileProps {
@@ -18,195 +22,250 @@ interface MedicalProfileProps {
   onEditQuestionnaire: () => void;
 }
 
+const ValueCard = ({
+  label,
+  value,
+  icon,
+}: {
+  label: string;
+  value: React.ReactNode;
+  icon: React.ReactNode;
+}) => (
+  <div className="rounded-[20px] border border-[#e2e6ee] bg-[#f7f8fa] p-4">
+    <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-white text-[#e9294f] shadow-sm">
+      {icon}
+    </div>
+    <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#8a91a0]">{label}</p>
+    <div className="mt-1.5 text-[17px] font-extrabold text-[#061d48]">{value}</div>
+  </div>
+);
+
+const Section = ({
+  title,
+  subtitle,
+  icon,
+  children,
+  className = '',
+}: {
+  title: string;
+  subtitle?: string;
+  icon: React.ReactNode;
+  children: React.ReactNode;
+  className?: string;
+}) => (
+  <section className={`rounded-[28px] border border-[#e2e6ee] bg-white p-5 shadow-[0_18px_45px_rgba(6,29,72,0.06)] sm:p-6 ${className}`}>
+    <div className="mb-5 flex items-start gap-3">
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[#fff1f3] text-[#e9294f]">
+        {icon}
+      </div>
+      <div>
+        <h2 className="text-[16px] font-extrabold text-[#061d48]">{title}</h2>
+        {subtitle && <p className="mt-1 text-xs leading-5 text-[#737b8c]">{subtitle}</p>}
+      </div>
+    </div>
+    {children}
+  </section>
+);
+
 export const MedicalProfile: React.FC<MedicalProfileProps> = ({
   user,
   onOpenDoctorReport,
   onEditQuestionnaire,
 }) => {
+  const hasAnthropometry = Boolean(user.height || user.weight);
+  const bmi = user.height > 0 && user.weight > 0
+    ? (user.weight / Math.pow(user.height / 100, 2)).toFixed(1)
+    : null;
+
+  const bloodValue = user.bloodType
+    ? `${user.bloodType}${user.rhFactor ? ` · ${user.rhFactor}` : ''}`
+    : 'Нет данных';
+
+  const chronicDiagnoses = Array.isArray(user.chronicDiagnoses) ? user.chronicDiagnoses : [];
+  const allergies = Array.isArray(user.allergies) ? user.allergies : [];
+
   return (
-    <div className="max-w-4xl mx-auto space-y-6 pb-32 sm:pb-36 text-white font-[SF Pro Display],Inter">
-      {/* Header */}
-      <div className="bg-[#0B1320] p-6 sm:p-8 rounded-3xl border border-white/[0.08] shadow-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div className="space-y-1">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#34F5AA]/10 text-[#34F5AA] border border-[#34F5AA]/20 text-xs font-bold">
-            <FileText className="w-3.5 h-3.5" />
-            <span>Паспорт анамнеза (Только чтение)</span>
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-            {user.fullName}
-          </h1>
-          <p className="text-xs text-white/60">
-            Электронная медицинская карта • Дата рождения: {user.birthDate}
-          </p>
-        </div>
-
-        <div className="flex flex-wrap gap-2.5 w-full sm:w-auto">
-          <button
-            onClick={onEditQuestionnaire}
-            className="flex-1 sm:flex-none px-4 py-2.5 bg-white/10 hover:bg-white/15 text-white font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer border border-white/10"
-          >
-            <Edit2 className="w-4 h-4" />
-            <span>Редактировать анкету</span>
-          </button>
-          <button
-            onClick={onOpenDoctorReport}
-            className="flex-1 sm:flex-none px-5 py-2.5 bg-[#34F5AA] hover:bg-[#2ce093] text-[#050A12] font-bold text-xs rounded-xl shadow-lg shadow-[#34F5AA]/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
-          >
-            <Printer className="w-4 h-4" />
-            <span>Сформировать отчёт для врача</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Grid of Profile Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Card 1: Антропометрия и демография */}
-        <div className="bg-[#0B1320] p-6 rounded-2xl border border-white/[0.08] shadow-xl space-y-4">
-          <div className="flex items-center gap-2 border-b border-white/[0.08] pb-3 text-white font-bold text-sm">
-            <User className="w-4 h-4 text-[#34F5AA]" />
-            <span>1. Антропометрия и физиология</span>
-          </div>
-          <div className="grid grid-cols-2 gap-3 text-xs">
-            <div className="bg-[#101C2B] p-3 rounded-xl border border-white/[0.04]">
-              <span className="text-white/50 block text-[11px]">Рост</span>
-              <strong className="text-white text-sm">{user.height ? `${user.height} см` : 'Не указан'}</strong>
+    <div className="mx-auto max-w-[1080px] space-y-6 pb-32 text-[#061d48] sm:pb-36">
+      <section className="relative overflow-hidden rounded-[34px] border border-[#e2e6ee] bg-white p-6 shadow-[0_24px_70px_rgba(6,29,72,0.08)] sm:p-8">
+        <div className="pointer-events-none absolute -right-20 -top-24 h-64 w-64 rounded-full bg-[#fff0f3] blur-3xl" />
+        <div className="relative z-10 flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+          <div className="max-w-2xl">
+            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-[#f4cfd7] bg-[#fff6f8] px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.12em] text-[#c71f45]">
+              <FileText className="h-3.5 w-3.5" />
+              Медицинский паспорт
             </div>
-            <div className="bg-[#101C2B] p-3 rounded-xl border border-white/[0.04]">
-              <span className="text-white/50 block text-[11px]">Вес</span>
-              <strong className="text-white text-sm">{user.weight ? `${user.weight} кг` : 'Не указан'}</strong>
-            </div>
-            <div className="bg-[#101C2B] p-3 rounded-xl border border-white/[0.04]">
-              <span className="text-white/50 block text-[11px]">ИМТ (Индекс массы)</span>
-              <strong className="text-[#34F5AA] text-sm">
-                {(user.height > 0 && user.weight > 0)
-                  ? `${(user.weight / Math.pow(user.height / 100, 2)).toFixed(1)} кг/м²`
-                  : '—'}
-              </strong>
-            </div>
-            <div className="bg-[#101C2B] p-3 rounded-xl border border-white/[0.04]">
-              <span className="text-white/50 block text-[11px]">Пол</span>
-              <strong className="text-white text-sm">
-                {user.gender === 'female' ? 'Женский' : 'Мужской'}
-              </strong>
-            </div>
-          </div>
-        </div>
-
-        {/* Card 2: Группа крови и иммунитет */}
-        <div className="bg-[#0B1320] p-6 rounded-2xl border border-white/[0.08] shadow-xl space-y-4">
-          <div className="flex items-center gap-2 border-b border-white/[0.08] pb-3 text-white font-bold text-sm">
-            <Heart className="w-4 h-4 text-[#34F5AA]" />
-            <span>2. Кровь, аллергии и ОРВИ</span>
-          </div>
-          <div className="space-y-3 text-xs">
-            <div className="flex justify-between items-center bg-[#101C2B] p-3 rounded-xl border border-white/[0.04]">
-              <span className="text-white/70">Группа крови и резус:</span>
-              <span className="font-extrabold text-[#34F5AA] bg-[#050A12] px-2.5 py-1 rounded border border-[#34F5AA]/30">
-                {user.bloodType} ({user.rhFactor})
+            <h1 className="text-3xl font-black tracking-[-0.04em] text-[#061d48] sm:text-4xl">
+              {user.fullName || 'Профиль здоровья'}
+            </h1>
+            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-[#747d8e]">
+              <span className="inline-flex items-center gap-1.5">
+                <CalendarDays className="h-4 w-4 text-[#e9294f]" />
+                {user.birthDate ? `Дата рождения: ${user.birthDate}` : 'Дата рождения не указана'}
               </span>
+              <span className="h-1 w-1 rounded-full bg-[#c7ccd6]" />
+              <span>Данные отображаются только из вашего профиля</span>
             </div>
+          </div>
 
-            <div>
-              <span className="text-white/50 block mb-1">Аллергологический анамнез:</span>
-              <div className="flex flex-wrap gap-1.5">
-                {user.allergies.length > 0 ? (
-                  user.allergies.map((a, i) => (
-                    <span
-                      key={i}
-                      className="px-2.5 py-1 bg-rose-500/15 text-rose-300 border border-rose-500/30 rounded-lg font-semibold"
-                    >
-                      {a}
-                    </span>
-                  ))
-                ) : (
-                  <span className="text-white/40">Аллергии не зафиксированы</span>
-                )}
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <button
+              onClick={onEditQuestionnaire}
+              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-[#dce1ea] bg-[#f7f8fa] px-4 py-3 text-sm font-bold text-[#061d48] transition hover:bg-[#eef1f5]"
+            >
+              <Edit2 className="h-4 w-4" />
+              Редактировать анкету
+            </button>
+            <button
+              onClick={onOpenDoctorReport}
+              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#061d48] px-5 py-3 text-sm font-bold text-white shadow-[0_12px_28px_rgba(6,29,72,0.2)] transition hover:-translate-y-0.5"
+            >
+              <Printer className="h-4 w-4" />
+              Отчёт для врача
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <Section
+          title="Основные параметры"
+          subtitle="Антропометрия и базовые физиологические данные"
+          icon={<User className="h-5 w-5" />}
+        >
+          <div className="grid grid-cols-2 gap-3">
+            <ValueCard label="Рост" value={user.height ? `${user.height} см` : 'Нет данных'} icon={<Ruler className="h-4 w-4" />} />
+            <ValueCard label="Вес" value={user.weight ? `${user.weight} кг` : 'Нет данных'} icon={<Weight className="h-4 w-4" />} />
+            <ValueCard label="ИМТ" value={bmi ? `${bmi} кг/м²` : 'Нет данных'} icon={<Activity className="h-4 w-4" />} />
+            <ValueCard
+              label="Пол"
+              value={user.gender === 'female' ? 'Женский' : user.gender === 'male' ? 'Мужской' : 'Нет данных'}
+              icon={<User className="h-4 w-4" />}
+            />
+          </div>
+          {!hasAnthropometry && (
+            <p className="mt-4 rounded-2xl bg-[#f7f8fa] px-4 py-3 text-xs leading-5 text-[#737b8c]">
+              Добавьте рост и вес в анкете, чтобы здесь появились расчётные показатели.
+            </p>
+          )}
+        </Section>
+
+        <Section
+          title="Кровь и аллергии"
+          subtitle="Группа крови, резус-фактор и зарегистрированные аллергии"
+          icon={<Heart className="h-5 w-5" />}
+        >
+          <div className="rounded-[22px] border border-[#e2e6ee] bg-[#f7f8fa] p-4">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#8a91a0]">Группа крови</p>
+                <p className="mt-1 text-xl font-black text-[#061d48]">{bloodValue}</p>
+              </div>
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white text-[#e9294f] shadow-sm">
+                <Droplets className="h-5 w-5" />
               </div>
             </div>
-
-            <div className="flex justify-between items-center pt-1">
-              <span className="text-white/70">Частота ОРВИ:</span>
-              <span className="font-bold text-white">{user.orviFrequency}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Card 3: Хронические заболевания */}
-        <div className="bg-[#0B1320] p-6 rounded-2xl border border-white/[0.08] shadow-xl space-y-4 md:col-span-2">
-          <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
-            <div className="flex items-center gap-2 text-white font-bold text-sm">
-              <ShieldCheck className="w-4 h-4 text-[#34F5AA]" />
-              <span>3. Хронические заболевания и фармакотерапия</span>
-            </div>
-            <span className="text-xs text-white/50">{user.chronicDiagnoses.length} записи</span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {user.chronicDiagnoses.map((d) => (
-              <div
-                key={d.id}
-                className="p-4 bg-[#101C2B] rounded-xl border border-white/[0.04] text-xs space-y-1"
-              >
-                <div className="flex justify-between font-bold text-white">
-                  <span>{d.name}</span>
-                  <span className="text-white/50 font-normal">Установлен в {d.sinceYear} г.</span>
+          <div className="mt-4">
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#8a91a0]">Аллергии</p>
+            {allergies.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {allergies.map((allergy, index) => (
+                  <span key={`${allergy}-${index}`} className="rounded-full border border-[#f2cbd4] bg-[#fff4f6] px-3 py-1.5 text-xs font-bold text-[#bd2145]">
+                    {allergy}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-dashed border-[#dfe3ea] px-4 py-4 text-sm text-[#7b8392]">Нет данных об аллергиях</div>
+            )}
+          </div>
+
+          <div className="mt-4 flex items-center justify-between rounded-2xl border border-[#e2e6ee] px-4 py-3 text-sm">
+            <span className="text-[#737b8c]">Частота ОРВИ</span>
+            <strong className="text-[#061d48]">{user.orviFrequency || 'Нет данных'}</strong>
+          </div>
+        </Section>
+
+        <Section
+          title="Хронические заболевания"
+          subtitle="Только диагнозы и назначения, сохранённые в профиле"
+          icon={<ShieldCheck className="h-5 w-5" />}
+          className="lg:col-span-2"
+        >
+          {chronicDiagnoses.length > 0 ? (
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              {chronicDiagnoses.map((diagnosis) => (
+                <div key={diagnosis.id} className="rounded-[22px] border border-[#e2e6ee] bg-[#f7f8fa] p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <h3 className="font-extrabold text-[#061d48]">{diagnosis.name}</h3>
+                      <p className="mt-1 text-xs text-[#7a8392]">
+                        {diagnosis.sinceYear ? `С ${diagnosis.sinceYear} года` : 'Год постановки не указан'}
+                      </p>
+                    </div>
+                    <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[#89909e] shadow-sm">запись</span>
+                  </div>
+                  <div className="mt-4 rounded-2xl bg-white px-3.5 py-3 text-sm">
+                    <span className="block text-[11px] font-semibold uppercase tracking-[0.1em] text-[#9299a6]">Назначение</span>
+                    <strong className="mt-1 block text-[#061d48]">{diagnosis.medication || 'Нет данных'}</strong>
+                  </div>
                 </div>
-                <p className="text-[#34F5AA] font-medium pt-1">
-                  Текущее назначение: {d.medication}
-                </p>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-[22px] border border-dashed border-[#dfe3ea] bg-[#fafbfc] px-5 py-7 text-center">
+              <ShieldCheck className="mx-auto h-6 w-6 text-[#aeb5c1]" />
+              <p className="mt-3 font-bold text-[#061d48]">Нет сохранённых диагнозов</p>
+              <p className="mt-1 text-xs text-[#7c8492]">Пустой список не означает отсутствие заболеваний — только отсутствие записей в профиле.</p>
+            </div>
+          )}
+        </Section>
+
+        <Section
+          title="Психоэмоциональный профиль"
+          subtitle="Данные из психологической части анкеты"
+          icon={<Brain className="h-5 w-5" />}
+        >
+          <div className="space-y-3">
+            {[
+              ['Уровень стресса', user.psychology?.stressLevel !== undefined ? `${user.psychology.stressLevel} из 10` : 'Нет данных'],
+              ['Сон', user.psychology?.sleepHours !== undefined ? `${user.psychology.sleepHours} ч` : 'Нет данных'],
+              ['Настроение', user.psychology?.mood || 'Нет данных'],
+            ].map(([label, value]) => (
+              <div key={String(label)} className="flex items-center justify-between gap-4 rounded-2xl border border-[#e2e6ee] bg-[#f7f8fa] px-4 py-3">
+                <span className="text-sm text-[#737b8c]">{label}</span>
+                <strong className="text-sm text-[#061d48]">{value}</strong>
               </div>
             ))}
           </div>
-        </div>
+        </Section>
 
-        {/* Card 4: Психологический статус */}
-        <div className="bg-[#0B1320] p-6 rounded-2xl border border-white/[0.08] shadow-xl space-y-4">
-          <div className="flex items-center gap-2 border-b border-white/[0.08] pb-3 text-white font-bold text-sm">
-            <Brain className="w-4 h-4 text-[#34F5AA]" />
-            <span>4. Психология и соматика</span>
-          </div>
-          <div className="space-y-3 text-xs">
-            <div className="flex justify-between items-center bg-[#101C2B] p-2.5 rounded-xl border border-white/[0.04]">
-              <span className="text-white/70">Уровень стресса:</span>
-              <span className="font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded">
-                {user.psychology.stressLevel} из 10
-              </span>
-            </div>
-            <div className="flex justify-between items-center bg-[#101C2B] p-2.5 rounded-xl border border-white/[0.04]">
-              <span className="text-white/70">Суточный сон:</span>
-              <span className="font-bold text-cyan-300 bg-cyan-500/15 border border-cyan-500/30 px-2 py-0.5 rounded">
-                {user.psychology.sleepHours} часов
-              </span>
-            </div>
-            <div className="flex justify-between items-center bg-[#101C2B] p-2.5 rounded-xl border border-white/[0.04]">
-              <span className="text-white/70">Настроение:</span>
-              <span className="font-bold text-white capitalize">{user.psychology.mood}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Card 5: Женское здоровье (Если женщина) */}
-        {user.gender === 'female' && user.womenHealth && (
-          <div className="bg-[#0B1320] p-6 rounded-2xl border border-pink-500/20 shadow-xl space-y-4">
-            <div className="flex items-center gap-2 border-b border-pink-500/20 pb-3 text-pink-300 font-bold text-sm">
-              <Sparkles className="w-4 h-4 text-pink-400" />
-              <span>5. Репродуктивный паспорт</span>
-            </div>
-            <div className="space-y-3 text-xs">
-              <div className="flex justify-between items-center bg-[#101C2B] p-2.5 rounded-xl border border-white/[0.04]">
-                <span className="text-white/70">Длительность цикла:</span>
-                <span className="font-bold text-pink-300">{user.womenHealth.cycleLength} дней</span>
+        {user.gender === 'female' && (
+          <Section
+            title="Женское здоровье"
+            subtitle="Параметры цикла, сохранённые в анкете"
+            icon={<Sparkles className="h-5 w-5" />}
+          >
+            {user.womenHealth ? (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between rounded-2xl border border-[#f1d8df] bg-[#fff7f9] px-4 py-3">
+                  <span className="text-sm text-[#8a6170]">Длительность цикла</span>
+                  <strong className="text-sm text-[#8f1d3d]">{user.womenHealth.cycleLength ? `${user.womenHealth.cycleLength} дней` : 'Нет данных'}</strong>
+                </div>
+                <div className="flex items-center justify-between rounded-2xl border border-[#f1d8df] bg-[#fff7f9] px-4 py-3">
+                  <span className="text-sm text-[#8a6170]">Последняя менструация</span>
+                  <strong className="text-sm text-[#8f1d3d]">{user.womenHealth.lastPeriodDate || 'Нет данных'}</strong>
+                </div>
+                <div className="flex items-center justify-between rounded-2xl border border-[#f1d8df] bg-[#fff7f9] px-4 py-3">
+                  <span className="text-sm text-[#8a6170]">Болезненность</span>
+                  <strong className="text-sm text-[#8f1d3d]">{user.womenHealth.painLevel !== undefined ? `${user.womenHealth.painLevel} / 10` : 'Нет данных'}</strong>
+                </div>
               </div>
-              <div className="flex justify-between items-center bg-[#101C2B] p-2.5 rounded-xl border border-white/[0.04]">
-                <span className="text-white/70">Дата последних месячных:</span>
-                <span className="font-bold text-pink-300">{user.womenHealth.lastPeriodDate}</span>
-              </div>
-              <div className="flex justify-between items-center bg-[#101C2B] p-2.5 rounded-xl border border-white/[0.04]">
-                <span className="text-white/70">Болезненность цикла:</span>
-                <span className="font-bold text-pink-300">{user.womenHealth.painLevel} / 10</span>
-              </div>
-            </div>
-          </div>
+            ) : (
+              <div className="rounded-[22px] border border-dashed border-[#ead8de] bg-[#fffafb] px-4 py-6 text-center text-sm text-[#8a7480]">Нет сохранённых данных</div>
+            )}
+          </Section>
         )}
       </div>
     </div>
