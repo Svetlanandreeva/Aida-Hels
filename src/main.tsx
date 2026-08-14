@@ -12,6 +12,7 @@ import './integrations-redesign.css';
 import './timeline-redesign.css';
 import './reminders-redesign.css';
 import './lab-research-redesign.css';
+import './appointments-redesign.css';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
