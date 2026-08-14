@@ -76,6 +76,7 @@ import { SurveyHistoryModal } from './modals/SurveyHistoryModal';
 import { MedicationTodaySection } from './dashboard/MedicationTodaySection';
 import HomeDashboard from './HomeDashboard';
 import LabResearchScreen from './LabResearchScreen';
+import AppointmentsScreen from './AppointmentsScreen';
 import { deduplicateMarkers } from '../utils/markerUtils';
 
 interface DashboardProps {
@@ -131,13 +132,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
 
-  // New Appointment Modal State
-  const [showAddApptModal, setShowAddApptModal] = useState(false);
-  const [newSpecialty, setNewSpecialty] = useState('Невролог');
-  const [newDoctorName, setNewDoctorName] = useState('Д-р Ильин А. В.');
-  const [newClinic, setNewClinic] = useState('МедЦентр «Здоровье»');
-  const [newDateTime, setNewDateTime] = useState('2026-08-18 в 10:00');
-  const [newPurpose, setNewPurpose] = useState('Консультация по вечерним головным болям');
 
   // Trend Chart State for Main Tab
   const [chartPeriod, setChartPeriod] = useState<'7d' | '14d' | '30d'>('7d');
@@ -329,21 +323,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
     }
   };
 
-  // Add Appointment Submit
-  const handleCreateAppointment = (e: React.FormEvent) => {
-    e.preventDefault();
-    const created: Appointment = {
-      id: `app-${Date.now()}`,
-      specialty: newSpecialty,
-      doctorName: newDoctorName,
-      clinic: newClinic,
-      dateTime: newDateTime,
-      status: 'upcoming',
-      purpose: newPurpose,
-    };
-    setAppointments((prev) => [created, ...prev]);
-    setShowAddApptModal(false);
-  };
 
   // Calculate completeness score
   const completeness = 92;
@@ -421,193 +400,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
       {/* SUB-TAB 3: ПРИЁМЫ ВРАЧЕЙ */}
       {activeTab === 'appointments' && (
-        <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="font-bold text-gray-100 text-lg">Записи и визиты к врачам</h3>
-              <p className="text-xs text-gray-400">
-                Календарный график плановых и прошедших консультаций.
-              </p>
-            </div>
-            <button
-              onClick={() => setShowAddApptModal(true)}
-              className="px-4 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs rounded-xl shadow-lg shadow-emerald-500/20 transition-all flex items-center gap-1.5 cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Записаться к врачу</span>
-            </button>
-          </div>
-
-          {/* Upcoming Section */}
-          <div className="space-y-3">
-            <span className="text-xs font-bold text-gray-400 uppercase tracking-wider block">
-              Предстоящие приёмы
-            </span>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {appointments
-                .filter((a) => a.status === 'upcoming')
-                .map((appt) => (
-                  <div
-                    key={appt.id}
-                    className="bg-[#14171C] p-5 rounded-2xl border border-gray-800 shadow-sm space-y-3 relative overflow-hidden"
-                  >
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <span className="text-xs font-extrabold text-emerald-300 bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-1 rounded-lg inline-block mb-1">
-                          {appt.dateTime}
-                        </span>
-                        <h4 className="font-bold text-gray-100 text-base">{appt.specialty}</h4>
-                        <p className="text-xs text-gray-400">{appt.doctorName}</p>
-                      </div>
-                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
-                    </div>
-
-                    <p className="text-xs text-gray-400 bg-[#0F1115] p-2.5 rounded-xl border border-gray-800/60">
-                      Клиника: <strong className="text-gray-200">{appt.clinic}</strong>
-                      <br />
-                      Цель: {appt.purpose}
-                    </p>
-
-                    <div className="pt-1 flex items-center justify-between text-xs">
-                      <button
-                        onClick={onOpenDoctorReport}
-                        className="text-emerald-400 font-bold hover:underline cursor-pointer"
-                      >
-                        Подготовить отчёт для приёма →
-                      </button>
-                      <button
-                        onClick={() =>
-                          setAppointments((prev) => prev.filter((a) => a.id !== appt.id))
-                        }
-                        className="text-gray-500 hover:text-rose-400 text-[11px] cursor-pointer"
-                      >
-                        Отменить
-                      </button>
-                    </div>
-                  </div>
-                ))}
-            </div>
-          </div>
-
-          {/* Completed Section */}
-          <div className="space-y-3 pt-4">
-            <span className="text-xs font-bold text-gray-400 uppercase tracking-wider block">
-              Прошедшие приёмы
-            </span>
-            <div className="space-y-2">
-              {appointments
-                .filter((a) => a.status === 'completed')
-                .map((appt) => (
-                  <div
-                    key={appt.id}
-                    className="bg-[#0F1115] p-4 rounded-xl border border-gray-800 text-xs flex items-center justify-between"
-                  >
-                    <div>
-                      <span className="font-bold text-gray-200">
-                        {appt.specialty} — {appt.doctorName}
-                      </span>
-                      <p className="text-gray-400 mt-0.5">
-                        {appt.clinic} • {appt.dateTime}
-                      </p>
-                    </div>
-                    <span className="px-2.5 py-1 bg-gray-800 text-gray-300 rounded font-semibold text-[10px]">
-                      Завершен
-                    </span>
-                  </div>
-                ))}
-            </div>
-          </div>
-        </div>
+        <AppointmentsScreen
+          appointments={appointments}
+          setAppointments={setAppointments}
+          onOpenDoctorReport={onOpenDoctorReport}
+        />
       )}
 
-      {/* Modal for adding appointment */}
-      {showAddApptModal && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-[#14171C] rounded-2xl max-w-md w-full p-6 border border-gray-800 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-gray-800 pb-3">
-              <h3 className="font-bold text-gray-100 text-base">Запись к врачу / Добавить приём</h3>
-              <button
-                onClick={() => setShowAddApptModal(false)}
-                className="text-gray-400 hover:text-gray-200 text-lg font-bold cursor-pointer"
-              >
-                ×
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateAppointment} className="space-y-3 text-xs">
-              <div>
-                <label className="block font-medium text-gray-300 mb-1">Специальность врача</label>
-                <input
-                  type="text"
-                  required
-                  value={newSpecialty}
-                  onChange={(e) => setNewSpecialty(e.target.value)}
-                  className="w-full px-3 py-2 bg-gray-900 border border-gray-700 text-gray-100 rounded-lg"
-                />
-              </div>
-
-              <div>
-                <label className="block font-medium text-gray-300 mb-1">ФИО врача</label>
-                <input
-                  type="text"
-                  required
-                  value={newDoctorName}
-                  onChange={(e) => setNewDoctorName(e.target.value)}
-                  className="w-full px-3 py-2 bg-gray-900 border border-gray-700 text-gray-100 rounded-lg"
-                />
-              </div>
-
-              <div>
-                <label className="block font-medium text-gray-300 mb-1">Медицинский центр / Клиника</label>
-                <input
-                  type="text"
-                  required
-                  value={newClinic}
-                  onChange={(e) => setNewClinic(e.target.value)}
-                  className="w-full px-3 py-2 bg-gray-900 border border-gray-700 text-gray-100 rounded-lg"
-                />
-              </div>
-
-              <div>
-                <label className="block font-medium text-gray-300 mb-1">Дата и время приёма</label>
-                <input
-                  type="text"
-                  required
-                  value={newDateTime}
-                  onChange={(e) => setNewDateTime(e.target.value)}
-                  className="w-full px-3 py-2 bg-gray-900 border border-gray-700 text-gray-100 rounded-lg"
-                />
-              </div>
-
-              <div>
-                <label className="block font-medium text-gray-300 mb-1">Цель визита / Жалобы</label>
-                <textarea
-                  rows={2}
-                  value={newPurpose}
-                  onChange={(e) => setNewPurpose(e.target.value)}
-                  className="w-full px-3 py-2 bg-gray-900 border border-gray-700 text-gray-100 rounded-lg"
-                />
-              </div>
-
-              <div className="pt-2 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowAddApptModal(false)}
-                  className="px-4 py-2 text-gray-400 hover:bg-gray-800 rounded-lg font-semibold cursor-pointer"
-                >
-                  Отмена
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 bg-emerald-500 text-slate-950 font-bold rounded-lg hover:bg-emerald-400 cursor-pointer"
-                >
-                  Сохранить запись
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
       {/* Voluntary Questionnaire Proposal Modal */}
       <QuestionnaireProposalModal
         isOpen={isProposalOpen}
