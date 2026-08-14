@@ -1,5 +1,8 @@
 import * as ydbModule from 'ydb-sdk';
 import dotenv from 'dotenv';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import { CLINICAL_YQL_TABLE_DEFS } from './schema';
 
 dotenv.config();
@@ -33,6 +36,27 @@ export function isPostgresConfigured(): boolean {
 }
 
 let driverInstance: YdbDriver | null = null;
+let credentialsPrepared = false;
+
+function prepareYdbCredentials(): void {
+  if (credentialsPrepared) return;
+  credentialsPrepared = true;
+
+  if (process.env.YDB_SERVICE_ACCOUNT_KEY_FILE_CREDENTIALS) return;
+
+  const credentialsJson = process.env.YDB_SA_JSON_CREDENTIALS?.trim();
+  if (!credentialsJson) return;
+
+  try {
+    JSON.parse(credentialsJson);
+    const credentialsPath = path.join(os.tmpdir(), 'aida-ydb-service-account.json');
+    fs.writeFileSync(credentialsPath, credentialsJson, { mode: 0o600 });
+    process.env.YDB_SERVICE_ACCOUNT_KEY_FILE_CREDENTIALS = credentialsPath;
+    console.log('[YDB] Service-account credentials prepared from the protected environment.');
+  } catch (err) {
+    console.error('[YDB] Service-account credentials are not valid JSON:', err);
+  }
+}
 
 export async function getYdbDriver(): Promise<YdbDriver | null> {
   if (!isYdbConfigured()) {
@@ -40,6 +64,7 @@ export async function getYdbDriver(): Promise<YdbDriver | null> {
   }
   if (!driverInstance) {
     try {
+      prepareYdbCredentials();
       const endpoint = process.env.YDB_ENDPOINT!;
       const database = process.env.YDB_DATABASE!;
 

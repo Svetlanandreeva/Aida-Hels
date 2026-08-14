@@ -52,10 +52,18 @@ jobs:
             "$IMAGE"
 
           healthy=0
+          consecutive=0
           for attempt in $(seq 1 20); do
-            if curl --fail --silent --show-error http://127.0.0.1:18080/ >/tmp/aida-smoke-response.html; then
-              healthy=1
-              break
+            if curl --fail --silent --show-error http://127.0.0.1:18080/ >/tmp/aida-smoke-response.html \
+              && grep -q 'id="root"' /tmp/aida-smoke-response.html \
+              && grep -q '<script' /tmp/aida-smoke-response.html; then
+              consecutive=$((consecutive + 1))
+              if [ "$consecutive" -ge 3 ]; then
+                healthy=1
+                break
+              fi
+            else
+              consecutive=0
             fi
             if ! docker ps --format '{{.Names}}' | grep -qx aida-smoke; then
               break
@@ -110,14 +118,22 @@ jobs:
           URL="https://${{ steps.deploy.outputs.id }}.containers.yandexcloud.net/"
           echo "Checking deployed container endpoint: $URL"
           healthy=0
-          for attempt in $(seq 1 20); do
+          consecutive=0
+          for attempt in $(seq 1 30); do
             code=$(curl --silent --show-error --output /tmp/deployed-response.txt --write-out '%{http_code}' "$URL" || true)
-            if [[ "$code" =~ ^2|3 ]]; then
-              healthy=1
-              break
+            if [[ "$code" =~ ^[23][0-9]{2}$ ]] \
+              && grep -q 'id="root"' /tmp/deployed-response.txt \
+              && grep -q '<script' /tmp/deployed-response.txt; then
+              consecutive=$((consecutive + 1))
+              if [ "$consecutive" -ge 3 ]; then
+                healthy=1
+                break
+              fi
+            else
+              consecutive=0
+              echo "Attempt $attempt returned HTTP $code or an invalid frontend document"
+              cat /tmp/deployed-response.txt || true
             fi
-            echo "Attempt $attempt returned HTTP $code"
-            cat /tmp/deployed-response.txt || true
             sleep 2
           done
 

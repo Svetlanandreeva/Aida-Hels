@@ -3033,9 +3033,11 @@ async function startServer() {
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://0.0.0.0:${PORT}`);
-    if (isPostgresConfigured()) {
+    if (isPostgresConfigured() && process.env.YDB_INIT_SCHEMA_ON_STARTUP === 'true') {
       console.log('[Server] Connecting to YDB database and verifying schema in background...');
       ensureSchema().catch((err) => console.error('[Server] Schema initialization error:', err));
+    } else if (isPostgresConfigured()) {
+      console.log('[Server] YDB configured. Connection will be opened lazily on the first database request.');
     } else {
       console.log('[Server] YDB environment variables not set. Using in-memory database fallback.');
     }
