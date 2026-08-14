@@ -72,28 +72,35 @@ replaceOrFail(
   "    if (!password || password.length < 8) {\n      return res.status(400).json({ success: false, message: 'Пароль должен содержать не менее 8 символов' });\n    }"
 );
 
-replaceOrFail(
-  'crypto OTP generator on registration',
-  "    const rawCode = Math.floor(100000 + Math.random() * 900000).toString();",
-  "    const rawCode = crypto.randomInt(100000, 1000000).toString();"
-);
+const usesRealEmailVerification = source.includes("postToSheetsBackend('sendVerificationCode'")
+  && source.includes("postToSheetsBackend('verifyEmailCode'")
+  && source.includes("postToSheetsBackend('checkEmailVerified'");
 
-replaceOrFail(
-  'registration requires verification',
-  "      isVerified: true,",
-  "      isVerified: false,"
-);
+if (usesRealEmailVerification) {
+  console.log('verified: real email verification flow already present; skipping legacy OTP hardening replacements');
+} else {
+  replaceOrFail(
+    'crypto OTP generator on registration',
+    "    const rawCode = Math.floor(100000 + Math.random() * 900000).toString();",
+    "    const rawCode = crypto.randomInt(100000, 1000000).toString();"
+  );
 
-replaceOrFail(
-  'database registration requires verification',
-  "        isVerified: true,",
-  "        isVerified: false,"
-);
+  replaceOrFail(
+    'registration requires verification',
+    "      isVerified: true,",
+    "      isVerified: false,"
+  );
 
-replaceOrFail(
-  'do not create authenticated session before verification',
-  /\n    \/\/ Create session via AuthService[\s\S]*?message: 'Регистрация успешно завершена\.',\n    \}\);/,
-  `
+  replaceOrFail(
+    'database registration requires verification',
+    "        isVerified: true,",
+    "        isVerified: false,"
+  );
+
+  replaceOrFail(
+    'do not create authenticated session before verification',
+    /\n    \/\/ Create session via AuthService[\s\S]*?message: 'Регистрация успешно завершена\.',\n    \}\);/,
+    `
     // Do not issue an authenticated session before ownership of the address is verified.
     res.status(201).json({
       success: true,
@@ -108,12 +115,12 @@ replaceOrFail(
       },
       message: 'Аккаунт создан. Требуется подтверждение адреса электронной почты.',
     });`
-);
+  );
 
-replaceOrFail(
-  'verification endpoint must not return raw OTP',
-  /\/\/ Send verification code endpoint\napp\.post\('\/api\/auth\/send-code',[\s\S]*?\n\}\);\n\n\/\/ Helper function to completely remove user account and data/,
-  `// Send verification code endpoint.
+  replaceOrFail(
+    'verification endpoint must not return raw OTP',
+    /\/\/ Send verification code endpoint\napp\.post\('\/api\/auth\/send-code',[\s\S]*?\n\}\);\n\n\/\/ Helper function to completely remove user account and data/,
+    `// Send verification code endpoint.
 // Until a real mail/SMS adapter is configured, never expose OTP in an API response.
 app.post('/api/auth/send-code', async (req, res) => {
   try {
@@ -125,7 +132,6 @@ app.post('/api/auth/send-code', async (req, res) => {
 
     const user = usersDb.get(normEmail) || (isPostgresConfigured() ? await getUserByEmail(normEmail) : null);
     if (!user) {
-      // Do not disclose whether an account exists.
       return res.json({ success: true, deliveryRequired: true, message: 'Если аккаунт существует, код будет отправлен.' });
     }
 
@@ -137,7 +143,6 @@ app.post('/api/auth/send-code', async (req, res) => {
       cached.verificationExpiresAt = Date.now() + 10 * 60 * 1000;
     }
 
-    // TODO: deliver rawCode through an approved mail/SMS provider. It is intentionally not returned here.
     return res.status(503).json({
       success: false,
       error: 'OTP_DELIVERY_NOT_CONFIGURED',
@@ -150,13 +155,14 @@ app.post('/api/auth/send-code', async (req, res) => {
 });
 
 // Helper function to completely remove user account and data`
-);
+  );
 
-replaceOrFail(
-  'login must not auto-verify',
-  "    // Mark as verified upon successful login\n    user.isVerified = true;\n\n    // Create session via AuthService",
-  "    if (!user.isVerified) {\n      return res.status(403).json({ success: false, error: 'EMAIL_NOT_VERIFIED', message: 'Сначала подтвердите адрес электронной почты.' });\n    }\n\n    // Create session via AuthService"
-);
+  replaceOrFail(
+    'login must not auto-verify',
+    "    // Mark as verified upon successful login\n    user.isVerified = true;\n\n    // Create session via AuthService",
+    "    if (!user.isVerified) {\n      return res.status(403).json({ success: false, error: 'EMAIL_NOT_VERIFIED', message: 'Сначала подтвердите адрес электронной почты.' });\n    }\n\n    // Create session via AuthService"
+  );
+}
 
 replaceOrFail(
   'recovery request must not return raw code',
