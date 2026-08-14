@@ -8,6 +8,7 @@ import './aida-screen-coverage.css';
 import './internal-redesign.css';
 import './unified-ui.css';
 import './mental-diary-redesign.css';
+import './integrations-redesign.css';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
