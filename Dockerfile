@@ -6,6 +6,7 @@ RUN git clone --depth 1 --branch main https://github.com/Svetlanandreeva/Aida2-0
 
 WORKDIR /src/aida2/frontend
 ENV EXPO_NO_TELEMETRY=1
+RUN sed -i '/      <View style=.*fabWrap/,/      <\/View>/d' 'app/(tabs)/index.tsx'
 RUN corepack enable && yarn install --frozen-lockfile
 RUN npx expo export --platform web
 
