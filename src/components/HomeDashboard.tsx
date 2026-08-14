@@ -202,7 +202,7 @@ export default function HomeDashboard({
               <strong>{activeReminders.length ? `${activeReminders.length} запланировано` : 'Не добавлены'}</strong>
               <ChevronRight size={16}/>
             </button>
-            <button onClick={() => onNavigate('tasks')}>
+            <button onClick={() => setActiveTab('appointments')}>
               <span><CalendarDays size={18}/><b>Задачи</b></span>
               <strong>{upcomingAppointment ? 'Есть ближайшее событие' : 'Нет запланированных'}</strong>
               <ChevronRight size={16}/>
@@ -271,7 +271,7 @@ export default function HomeDashboard({
             <div className="aida-detail-title"><span><FileText size={18}/></span><b>История здоровья</b></div>
             <strong>{hasAnyData ? 'Есть записи' : 'Пока пусто'}</strong>
             <p>Анализы, симптомы, измерения и события в одной ленте.</p>
-            <button onClick={() => onNavigate('history')}>{hasAnyData ? 'Открыть' : 'Начать'}</button>
+            <button onClick={() => onNavigate('timeline')}>{hasAnyData ? 'Открыть' : 'Начать'}</button>
           </article>
 
           <article className="aida-detail-card">
@@ -285,7 +285,7 @@ export default function HomeDashboard({
             <div className="aida-detail-title"><span><HeartPulse size={18}/></span><b>Организм</b></div>
             <strong>{knownSystems.length ? `${knownSystems.length} систем с данными` : 'Нет данных'}</strong>
             <p>Системы организма и связанные показатели.</p>
-            <button onClick={() => setActiveTab('body')}>{knownSystems.length ? 'Открыть' : 'Добавить данные'}</button>
+            <button onClick={() => onNavigate('body_map')}>{knownSystems.length ? 'Открыть' : 'Добавить данные'}</button>
           </article>
         </section>
 
