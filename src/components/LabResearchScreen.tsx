@@ -32,6 +32,15 @@ const statusClass = (status?: string) => {
   return 'aida-lab-status aida-lab-status--normal';
 };
 
+const getFriendlyUploadStatus = (internalStep: string, progress: number) => {
+  const normalized = internalStep.toLowerCase();
+  if (normalized.includes('распозн') || normalized.includes('ocr')) return 'Считываем данные из документа…';
+  if (normalized.includes('анализ') || normalized.includes('маркер') || normalized.includes('нормал')) return 'Разбираем показатели…';
+  if (normalized.includes('готов') || progress >= 90) return 'Почти готово…';
+  if (progress >= 45) return 'Обрабатываем медицинские данные…';
+  return 'Подготавливаем документ…';
+};
+
 export const LabResearchScreen: React.FC<LabResearchScreenProps> = ({
   documents,
   setDocuments,
@@ -45,6 +54,7 @@ export const LabResearchScreen: React.FC<LabResearchScreenProps> = ({
   handleRetryUpload,
 }) => {
   const visibleDocuments = documents.filter((doc) => docFilter === 'all' || doc.category === docFilter);
+  const friendlyUploadStatus = getFriendlyUploadStatus(uploadStatusStep, uploadProgress);
 
   const totals = React.useMemo(() => {
     const markers = documents.flatMap((doc) =>
@@ -96,7 +106,7 @@ export const LabResearchScreen: React.FC<LabResearchScreenProps> = ({
           </div>
           <div className="aida-lab-upload-state__copy">
             <strong>{uploadError ? 'Не удалось обработать документ' : 'Обрабатываем документ'}</strong>
-            <span>{uploadError || uploadStatusStep}</span>
+            <span>{uploadError ? 'Попробуйте загрузить файл ещё раз. Если ошибка повторится, выберите другой файл.' : friendlyUploadStatus}</span>
             {!uploadError && (
               <div className="aida-lab-progress"><i style={{ width: `${Math.max(4, uploadProgress)}%` }} /></div>
             )}
