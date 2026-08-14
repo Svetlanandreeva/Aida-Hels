@@ -1,0 +1,102 @@
+name: Cleanup user-facing fabrications once
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Remove fabricated defaults and misleading states
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace(path, old, new, label):
+              p = Path(path)
+              s = p.read_text()
+              if old not in s:
+                  raise SystemExit(f'missing expected block: {label}')
+              p.write_text(s.replace(old, new))
+              print('updated', label)
+
+          # Settings: remove prefilled medication facts, fake water consumption,
+          # invented partner codes, and unverified sync claims.
+          path = 'src/components/SettingsScreen.tsx'
+          p = Path(path)
+          s = p.read_text()
+
+          s = s.replace("const [doseForm, setDoseForm] = useState<string>('капсула');", "const [doseForm, setDoseForm] = useState<string>('');")
+          s = s.replace("const [doseActiveIngredient, setDoseActiveIngredient] = useState<string>('100 мг');", "const [doseActiveIngredient, setDoseActiveIngredient] = useState<string>('');")
+          s = s.replace("morning: { enabled: true, time: '08:00' },\n    afternoon: { enabled: false, time: '13:00' },\n    evening: { enabled: false, time: '19:00' },", "morning: { enabled: false, time: '08:00' },\n    afternoon: { enabled: false, time: '13:00' },\n    evening: { enabled: false, time: '19:00' },", 1)
+
+          s = s.replace("time: d.schedule?.morning?.time || '08:00',", "time: d.schedule?.morning?.enabled ? d.schedule.morning.time : d.schedule?.afternoon?.enabled ? d.schedule.afternoon.time : d.schedule?.evening?.enabled ? d.schedule.evening.time : '',")
+          s = s.replace("time: '20:00',\n            notes: 'Назначено специалистом (психологический профиль)',", "time: '',\n            notes: 'Указано в психологическом профиле; время приёма не задано',")
+          s = s.replace("userMeds.forEach((m) => {\n          const exists", "userMeds.forEach((m) => {\n          if (!m.time) return;\n          const exists")
+
+          s = s.replace("targetMl: 2000,\n            consumedMl: 1000,\n            logs: [],\n            remindersEnabled: true,\n            schedule: {\n              morning: { enabled: true, time: '08:30' },\n              afternoon: { enabled: true, time: '13:30' },\n              evening: { enabled: true, time: '19:30' },", "targetMl: 2000,\n            consumedMl: 0,\n            logs: [],\n            remindersEnabled: false,\n            schedule: {\n              morning: { enabled: false, time: '08:30' },\n              afternoon: { enabled: false, time: '13:30' },\n              evening: { enabled: false, time: '19:30' },")
+          s = s.replace("return { targetMl: 2000, consumedMl: 1000, logs: [], remindersEnabled: true };", "return { targetMl: 2000, consumedMl: 0, logs: [], remindersEnabled: false };")
+
+          old_copy = """  const handleCopyCode = () => {\n    const code =\n      user.womenHealth?.partnerSyncCode && user.womenHealth.partnerSyncCode !== 'PARTNER-DEMO-RU'\n        ? user.womenHealth.partnerSyncCode\n        : (user.id && user.id !== 'usr-new'\n          ? `PARTNER-${user.id.replace(/[^A-Za-z0-9]/g, '').slice(-4).toUpperCase()}-RU`\n          : `PARTNER-${(user.fullName || 'USER').replace(/[^A-Za-z0-9]/g, '').slice(0, 4).toUpperCase() || 'A1B2'}-RU`);\n    navigator.clipboard.writeText(code);\n    setCopied(true);\n    setTimeout(() => setCopied(false), 2000);\n  };"""
+          new_copy = """  const handleCopyCode = () => {\n    const code = user.womenHealth?.partnerSyncCode?.trim();\n    if (!code || code === 'PARTNER-DEMO-RU') {\n      alert('Код партнёра ещё не создан.');\n      return;\n    }\n    navigator.clipboard.writeText(code);\n    setCopied(true);\n    setTimeout(() => setCopied(false), 2000);\n  };"""
+          if old_copy not in s:
+              raise SystemExit('missing partner copy block')
+          s = s.replace(old_copy, new_copy)
+
+          s = s.replace("...(prev.womenHealth || { cycleLength: 28, periodDuration: 5, isRegular: true, pmsSymptoms: [], painLevel: 1, lastPeriodDate: '', partnerSyncCode: '', isPartnerSynced: false }),", "...(prev.womenHealth || ({} as any)),")
+          s = s.replace("partnerSyncCode: code,\n          isPartnerSynced: true,", "linkedPartnerCode: code,\n          isPartnerSynced: false,")
+          s = s.replace("alert(`Аккаунт партнёра (${code}) успешно привязан! Синхронизация активирована.`);", "alert('Код партнёра сохранён. Синхронизация станет активной только после подтверждённого подключения.');")
+
+          s = s.replace("setDoseForm('капсула');", "setDoseForm('');")
+          s = s.replace("setDoseActiveIngredient('100 мг');", "setDoseActiveIngredient('');")
+          s = s.replace("morning: { enabled: true, time: '08:00' },\n      afternoon: { enabled: false, time: '13:00' },\n      evening: { enabled: false, time: '19:00' },", "morning: { enabled: false, time: '08:00' },\n      afternoon: { enabled: false, time: '13:00' },\n      evening: { enabled: false, time: '19:00' },")
+          s = s.replace("setDoseForm(med.doseForm || 'капсула');", "setDoseForm(med.doseForm || '');")
+          s = s.replace("evening?.enabled ? medSchedule.evening.time : '09:00';", "evening?.enabled ? medSchedule.evening.time : '';")
+          s = s.replace("if (editingMedId) {", "if (!primaryTime) {\n      alert('Выберите хотя бы одно время приёма.');\n      return;\n    }\n\n    if (editingMedId) {", 1)
+          s = s.replace("notes: medNotes || 'Принимать строго по инструкции',", "notes: medNotes,")
+
+          p.write_text(s)
+
+          # Body map: unknown/missing data must not be labelled normal or attention.
+          path = 'src/components/BodyMap.tsx'
+          p = Path(path)
+          s = p.read_text()
+          s = s.replace("const attentionCount = systems.length - normCount;", "const attentionCount = systems.filter((s) => Boolean(s.status) && s.status !== 'norm').length;")
+          s = s.replace("const filtered = systems.filter((s) => filter === 'all' || (filter === 'norm' ? s.status === 'norm' : s.status !== 'norm'));", "const filtered = systems.filter((s) => filter === 'all' || (filter === 'norm' ? s.status === 'norm' : Boolean(s.status) && s.status !== 'norm'));")
+          old_card = """        const ok = system.status === 'norm';\n        return <button key={system.id} className=\"aida-system-card\" onClick={() => onSelectSystem(system)}>\n          <div className=\"aida-system-card-top\"><span className=\"aida-system-icon\">{iconFor(system.iconName)}</span><span className={`aida-system-status ${ok ? 'ok' : 'attention'}`}>{ok ? 'В норме' : 'Наблюдение'}</span></div>\n          <h3>{system.name}</h3><p>{system.description}</p>\n          <div className=\"aida-system-score\"><span><i style={{ width: `${Math.max(8, system.score)}%` }} /></span><strong>{system.score}%</strong></div>\n          <footer><span>{system.deviationsCount ? `${system.deviationsCount} маркера требуют внимания` : 'Отклонений не выявлено'}</span><ChevronRight /></footer>\n        </button>;"""
+          new_card = """        const hasStatus = Boolean(system.status);\n        const ok = system.status === 'norm';\n        const hasScore = typeof system.score === 'number' && Number.isFinite(system.score);\n        return <button key={system.id} className=\"aida-system-card\" onClick={() => onSelectSystem(system)}>\n          <div className=\"aida-system-card-top\"><span className=\"aida-system-icon\">{iconFor(system.iconName)}</span><span className={`aida-system-status ${!hasStatus ? '' : ok ? 'ok' : 'attention'}`}>{!hasStatus ? 'Нет данных' : ok ? 'В норме' : 'Наблюдение'}</span></div>\n          <h3>{system.name}</h3><p>{system.description}</p>\n          {hasScore ? <div className=\"aida-system-score\"><span><i style={{ width: `${Math.max(0, Math.min(100, system.score))}%` }} /></span><strong>{system.score}%</strong></div> : <div className=\"aida-system-score\"><span></span><strong>—</strong></div>}\n          <footer><span>{!hasStatus ? 'Недостаточно данных для оценки' : system.deviationsCount ? `${system.deviationsCount} маркера требуют внимания` : ok ? 'По доступным данным отклонений не отмечено' : 'Требуется уточнение данных'}</span><ChevronRight /></footer>\n        </button>;"""
+          if old_card not in s:
+              raise SystemExit('missing body map card block')
+          s = s.replace(old_card, new_card)
+          p.write_text(s)
+
+          # AI chat: never expose raw backend error messages to the user.
+          path = 'src/components/AiAssistant.tsx'
+          p = Path(path)
+          s = p.read_text()
+          s = s.replace("if (!response.ok || !data.success) throw new Error(data.message || 'Не удалось сохранить запись');", "if (!response.ok || !data.success) throw new Error('Не удалось сохранить запись');")
+          s = s.replace("text: error?.message || 'Не удалось сохранить запись. Попробуйте ещё раз.',", "text: 'Не удалось сохранить запись. Попробуйте ещё раз.',")
+          p.write_text(s)
+
+          # Remove the one-time workflow from the resulting commit.
+          Path('.github/workflows/cleanup-user-facing-fabrications-once.yml').unlink()
+          PY
+
+      - name: Commit cleanup
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "fix(data): remove fabricated settings and organism states"
+          git push origin main
