@@ -1,0 +1,291 @@
+/* Final visual coverage pass for legacy product screens.
+   Scoped to the authenticated app so the promo page stays untouched. */
+
+.aida-app-main {
+  min-height: 100vh;
+  padding: 32px 36px 110px;
+  background:
+    radial-gradient(circle at 86% 3%, rgba(233, 41, 79, 0.055), transparent 26rem),
+    #f3f5f8 !important;
+  color: #061d48;
+}
+
+.aida-app-main > div {
+  width: 100%;
+}
+
+.aida-app-main h1,
+.aida-app-main h2,
+.aida-app-main h3,
+.aida-app-main h4,
+.aida-app-main strong {
+  color: #061d48 !important;
+}
+
+.aida-app-main p,
+.aida-app-main label {
+  color: #6f727d;
+}
+
+/* Old dark panels that escaped the first design-system pass. */
+.aida-app-main [class*="bg-[#101A28]"],
+.aida-app-main [class*="bg-[#0B1320]"],
+.aida-app-main [class*="bg-[#0F142A]"],
+.aida-app-main [class*="bg-[#14171C]"],
+.aida-app-main [class*="bg-[#0F1115]"],
+.aida-app-main [class*="bg-[#090B10]"],
+.aida-app-main [class*="bg-[#0A0B0D]"],
+.aida-app-main [class*="bg-[#050711]"],
+.aida-app-main [class*="bg-gray-950"],
+.aida-app-main [class*="bg-slate-950"],
+.aida-app-main [class*="bg-pink-950"] {
+  background: #fff !important;
+  background-image: none !important;
+  border-color: #e1e4ea !important;
+  color: #061d48 !important;
+  box-shadow: 0 16px 38px rgba(54, 62, 82, 0.09) !important;
+}
+
+.aida-app-main [class*="bg-gray-900"],
+.aida-app-main [class*="bg-gray-800"],
+.aida-app-main [class*="bg-slate-900"],
+.aida-app-main [class*="bg-slate-800"] {
+  background: #f7f8fa !important;
+  background-image: none !important;
+  border-color: #e1e4ea !important;
+  color: #061d48 !important;
+}
+
+.aida-app-main [class*="bg-gradient-to"] {
+  background-image: linear-gradient(135deg, #fff 0%, #fff7f9 100%) !important;
+  border-color: #e1e4ea !important;
+}
+
+.aida-app-main [class*="border-[#99AEFF]"],
+.aida-app-main [class*="border-[#8968FF]"],
+.aida-app-main [class*="border-[#47D8FF]"],
+.aida-app-main [class*="border-white/"],
+.aida-app-main [class*="border-gray-800"],
+.aida-app-main [class*="border-gray-700"] {
+  border-color: #e1e4ea !important;
+}
+
+/* One accent language: coral for actions, navy for information. */
+.aida-app-main [class*="text-[#47D8FF]"],
+.aida-app-main [class*="text-[#4DEBFF]"],
+.aida-app-main [class*="text-[#3DD9C5]"],
+.aida-app-main [class*="text-[#8968FF]"],
+.aida-app-main [class*="text-[#8E74FF]"],
+.aida-app-main [class*="text-[#C7B9FF]"],
+.aida-app-main [class*="text-emerald"],
+.aida-app-main [class*="text-teal"],
+.aida-app-main [class*="text-indigo"],
+.aida-app-main [class*="text-violet"],
+.aida-app-main [class*="text-pink"] {
+  color: #e9294f !important;
+}
+
+.aida-app-main [class*="text-white"],
+.aida-app-main [class*="text-gray-100"],
+.aida-app-main [class*="text-gray-200"] {
+  color: #061d48 !important;
+}
+
+.aida-app-main [class*="text-gray-300"],
+.aida-app-main [class*="text-gray-400"],
+.aida-app-main [class*="text-gray-500"] {
+  color: #7d808a !important;
+}
+
+.aida-app-main svg[class*="text-"] {
+  color: #e9294f;
+}
+
+/* Page headers and content cards share the same geometry. */
+.aida-app-main [class*="rounded-3xl"],
+.aida-app-main [class*="rounded-2xl"] {
+  border-radius: 24px !important;
+}
+
+.aida-app-main [class*="shadow-xl"],
+.aida-app-main [class*="shadow-2xl"] {
+  box-shadow: 0 18px 44px rgba(54, 62, 82, 0.1) !important;
+}
+
+.aida-app-main [class*="backdrop-blur"] {
+  backdrop-filter: none !important;
+}
+
+/* Primary and secondary actions. */
+.aida-app-main button[class*="bg-emerald"],
+.aida-app-main button[class*="bg-teal"],
+.aida-app-main button[class*="bg-[#3DD9C5]"],
+.aida-app-main button[class*="bg-[#47D8FF]"],
+.aida-app-main button[class*="bg-[#8968FF]"],
+.aida-app-main button[class*="from-[#"] {
+  background: #e9294f !important;
+  background-image: none !important;
+  color: #fff !important;
+  border-color: #e9294f !important;
+  box-shadow: 0 12px 25px rgba(233, 41, 79, 0.2) !important;
+}
+
+.aida-app-main button[class*="bg-gray-900"],
+.aida-app-main button[class*="bg-gray-800"],
+.aida-app-main button[class*="bg-[#0F1115]"],
+.aida-app-main button[class*="bg-[#101A28]"] {
+  background: #fff !important;
+  color: #061d48 !important;
+  border: 1px solid #dfe2e8 !important;
+  box-shadow: 0 7px 18px rgba(54, 62, 82, 0.06) !important;
+}
+
+.aida-app-main button:hover {
+  border-color: rgba(233, 41, 79, 0.42) !important;
+}
+
+.aida-app-main input,
+.aida-app-main textarea,
+.aida-app-main select {
+  min-height: 46px;
+  background: #fff !important;
+  color: #061d48 !important;
+  border: 1px solid #dfe2e8 !important;
+  border-radius: 14px !important;
+}
+
+.aida-app-main input:focus,
+.aida-app-main textarea:focus,
+.aida-app-main select:focus {
+  border-color: #e9294f !important;
+  box-shadow: 0 0 0 3px rgba(233, 41, 79, 0.08) !important;
+}
+
+.aida-app-main table {
+  overflow: hidden;
+  border-radius: 18px;
+  background: #fff;
+}
+
+.aida-app-main thead {
+  background: #f7f8fa !important;
+  color: #061d48 !important;
+}
+
+.aida-app-main [role="dialog"] {
+  color: #061d48;
+}
+
+/* Auth screen: original logo and the same calm product surface. */
+.aida-auth-page {
+  background:
+    radial-gradient(circle at 18% 18%, rgba(233, 41, 79, 0.09), transparent 24rem),
+    radial-gradient(circle at 82% 84%, rgba(6, 29, 72, 0.07), transparent 25rem),
+    #eef0f3 !important;
+}
+
+.aida-auth-card {
+  max-width: 520px !important;
+  background: #fff !important;
+  border: 1px solid rgba(6, 29, 72, 0.08) !important;
+  border-radius: 30px !important;
+  box-shadow: 0 28px 70px rgba(54, 62, 82, 0.14) !important;
+}
+
+.aida-auth-hero {
+  background: linear-gradient(145deg, #fff 0%, #f7f8fa 68%, #fff1f4 100%) !important;
+  border-color: #e1e4ea !important;
+  color: #061d48 !important;
+}
+
+.aida-auth-hero h2 {
+  color: #061d48 !important;
+  font-size: 34px !important;
+  letter-spacing: -1.4px !important;
+}
+
+.aida-auth-hero p {
+  color: #737680 !important;
+}
+
+.aida-auth-logo {
+  width: 196px;
+  min-height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #e9294f;
+}
+
+.aida-auth-logo img {
+  width: 100%;
+  height: 72px;
+  object-fit: contain;
+}
+
+.aida-auth-card [class*="bg-[#0F1115]"],
+.aida-auth-card [class*="bg-[#14171C]"],
+.aida-auth-card [class*="bg-gray-900"],
+.aida-auth-card [class*="bg-gray-800"] {
+  background: #fff !important;
+  color: #061d48 !important;
+  border-color: #e1e4ea !important;
+}
+
+.aida-auth-card [class*="text-gray-100"],
+.aida-auth-card [class*="text-gray-200"],
+.aida-auth-card [class*="text-gray-300"] {
+  color: #061d48 !important;
+}
+
+.aida-auth-card [class*="text-gray-400"],
+.aida-auth-card [class*="text-gray-500"] {
+  color: #7d808a !important;
+}
+
+.aida-auth-card [class*="text-emerald"],
+.aida-auth-card [class*="text-teal"] {
+  color: #e9294f !important;
+}
+
+.aida-auth-card button[class*="bg-emerald"] {
+  background: #e9294f !important;
+  color: #fff !important;
+  border-color: #e9294f !important;
+}
+
+.aida-auth-card input {
+  background: #fff !important;
+  color: #061d48 !important;
+  border-color: #dfe2e8 !important;
+}
+
+@media (max-width: 900px) {
+  .aida-app-main {
+    padding: 22px 16px 108px;
+  }
+}
+
+@media (max-width: 640px) {
+  .aida-app-main {
+    padding: 16px 12px 104px;
+  }
+
+  .aida-app-main [class*="rounded-3xl"],
+  .aida-app-main [class*="rounded-2xl"] {
+    border-radius: 20px !important;
+  }
+
+  .aida-auth-page {
+    padding: 0 !important;
+    align-items: flex-start !important;
+    background: #fff !important;
+  }
+
+  .aida-auth-card {
+    min-height: 100vh;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+}

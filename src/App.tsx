@@ -684,7 +684,7 @@ export default function App() {
               setAuthTab('register');
               setCurrentScreen('auth');
             }}
-            onGoToDashboard={() => setCurrentScreen('dashboard')}
+            onGoToDashboard={handleDemoLogin}
             onLoginClick={() => {
               setAuthTab('login');
               setCurrentScreen('auth');

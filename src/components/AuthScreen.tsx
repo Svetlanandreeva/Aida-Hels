@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Heart,
   Lock,
   Mail,
   User,
@@ -15,6 +14,8 @@ import {
 } from 'lucide-react';
 import { UserProfile } from '../types';
 import { logSecurityEvent } from '../App';
+import { AIDA_LOGO } from '../assets/aidaBrandAssets';
+import './AuthScreen.css';
 
 interface AuthScreenProps {
   onLoginSuccess: (userData?: Partial<UserProfile>) => void;
@@ -290,19 +291,19 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess, onDemoLo
   };
 
   return (
-    <div className="flex-1 w-full min-h-screen flex items-center justify-center py-6 sm:py-10 px-4 bg-[#0A0B0D]">
-      <div className="w-full max-w-md bg-[#14171C] rounded-2xl shadow-2xl border border-gray-800 overflow-hidden">
+    <div className="aida-auth-page flex-1 w-full min-h-screen flex items-center justify-center py-6 sm:py-10 px-4 bg-[#0A0B0D]">
+      <div className="aida-auth-card w-full max-w-md bg-[#14171C] rounded-2xl shadow-2xl border border-gray-800 overflow-hidden">
         {/* Header Banner */}
-        <div className="bg-gradient-to-br from-[#0F1115] via-[#1A1D24] to-[#0A0B0D] p-8 text-white text-center relative overflow-hidden border-b border-gray-800">
+        <div className="aida-auth-hero bg-gradient-to-br from-[#0F1115] via-[#1A1D24] to-[#0A0B0D] p-8 text-white text-center relative overflow-hidden border-b border-gray-800">
           <div className="absolute -right-6 -bottom-6 w-32 h-32 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none" />
-          <div className="w-14 h-14 mx-auto mb-3 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center text-white shadow-lg shadow-emerald-500/20">
+          <div className="aida-auth-logo mx-auto mb-4">
             {step === 'verify_code' ? (
               <KeyRound className="w-8 h-8 stroke-[2.2]" />
             ) : (
-              <Heart className="w-8 h-8 fill-current" />
+              <img src={AIDA_LOGO} alt="Аида" />
             )}
           </div>
-          <h2 className="text-2xl font-bold tracking-tight text-gray-100">Единый Медпрофиль</h2>
+          <h2 className="text-2xl font-bold tracking-tight text-gray-100">Аида</h2>
           <p className="text-xs text-gray-400 mt-1">
             {step === 'verify_code'
               ? 'Подтверждение электронного адреса'
