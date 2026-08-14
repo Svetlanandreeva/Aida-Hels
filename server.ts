@@ -83,17 +83,6 @@ const usersDb = new Map<string, UserAccount>();
 // Store failed OTP attempts per normalized email for rate-limiting
 const otpAttemptsDb = new Map<string, { count: number; blockedUntil?: number }>();
 
-// Store default demo user account
-const defaultDemoPasswordHash = bcrypt.hashSync('demo1234', 10);
-usersDb.set('anna.ivanova@health.ru', {
-  id: 'usr-1',
-  email: 'anna.ivanova@health.ru',
-  fullName: 'Анна Иванова',
-  passwordHash: defaultDemoPasswordHash,
-  isVerified: true,
-  createdAt: new Date().toISOString(),
-});
-
 // Storage for user data
 const userDataStore = new Map<string, any>();
 
@@ -152,23 +141,17 @@ export interface AuthenticatedRequest extends express.Request {
 
 function requireAuth(req: AuthenticatedRequest, res: express.Response, next: express.NextFunction) {
   const token = req.cookies?.session_token || req.headers.authorization?.replace('Bearer ', '');
-  if (token) {
-    try {
-      const decoded = jwt.verify(token, JWT_SECRET) as { id: string; email: string; fullName?: string };
-      req.user = decoded;
-      return next();
-    } catch (err) {
-      // Invalid/expired token - fall through to fallback demo session
-    }
+  if (!token) {
+    return res.status(401).json({ success: false, message: 'Необходима авторизация.' });
   }
 
-  // Allow seamless access for demo/guest users
-  req.user = {
-    id: 'usr-1',
-    email: 'anna.ivanova@health.ru',
-    fullName: 'Анна Иванова',
-  };
-  next();
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET) as { id: string; email: string; fullName?: string };
+    req.user = decoded;
+    return next();
+  } catch {
+    return res.status(401).json({ success: false, message: 'Сессия недействительна или истекла.' });
+  }
 }
 
 // ==========================================
