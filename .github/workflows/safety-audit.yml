@@ -21,14 +21,13 @@ jobs:
       - name: Install dependencies
         run: npm install --no-audit --no-fund
 
-      - name: Apply production hardening
-        run: |
-          node scripts/harden-server-auth.mjs
-          node scripts/harden-server-access.mjs
-          node scripts/harden-integrations.mjs
+      - name: Production safety audit on repository source
+        run: npm run audit:safety
 
       - name: TypeScript check
         run: npm run lint
 
-      - name: Production safety audit
-        run: npm run audit:safety
+      - name: Production build check
+        env:
+          JWT_SECRET: ci-safety-audit-only-secret-not-for-production
+        run: npm run build
