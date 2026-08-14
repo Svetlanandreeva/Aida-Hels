@@ -1,8 +1,6 @@
 name: Deploy Aida 2 to Yandex Cloud
 
 on:
-  push:
-    branches: [main, migration/aida2]
   workflow_dispatch: {}
 
 env:
