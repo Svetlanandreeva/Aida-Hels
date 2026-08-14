@@ -91,7 +91,7 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
         body: JSON.stringify({ candidateId: candidate.id, confirmationToken: candidate.confirmationToken }),
       });
       const data = await response.json();
-      if (!response.ok || !data.success) throw new Error(data.message || 'Не удалось сохранить запись');
+      if (!response.ok || !data.success) throw new Error('Не удалось сохранить запись');
       setMessages((prev) => prev.map((m) => m.id === messageId
         ? { ...m, stagedCandidate: { ...m.stagedCandidate, status: 'CONFIRMED' } }
         : m));
@@ -99,7 +99,7 @@ export const AiAssistant: React.FC<AiAssistantProps> = ({
       setMessages((prev) => [...prev, {
         id: `${Date.now()}-save-error`,
         sender: 'ai',
-        text: error?.message || 'Не удалось сохранить запись. Попробуйте ещё раз.',
+        text: 'Не удалось сохранить запись. Попробуйте ещё раз.',
         timestamp: timeNow(),
       }]);
     }

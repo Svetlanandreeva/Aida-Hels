@@ -26,8 +26,8 @@ export const BodyMap: React.FC<BodyMapProps> = ({ systems, onSelectSystem, onOpe
   const [filter, setFilter] = useState<'all' | 'attention' | 'norm'>('all');
   const data = calculateOrganismAge(user, documents, pressureLogs, dailyLogs);
   const normCount = systems.filter((s) => s.status === 'norm').length;
-  const attentionCount = systems.length - normCount;
-  const filtered = systems.filter((s) => filter === 'all' || (filter === 'norm' ? s.status === 'norm' : s.status !== 'norm'));
+  const attentionCount = systems.filter((s) => Boolean(s.status) && s.status !== 'norm').length;
+  const filtered = systems.filter((s) => filter === 'all' || (filter === 'norm' ? s.status === 'norm' : Boolean(s.status) && s.status !== 'norm'));
 
   return <section className="aida-organism">
     <header className="aida-organism-header">
@@ -45,12 +45,14 @@ export const BodyMap: React.FC<BodyMapProps> = ({ systems, onSelectSystem, onOpe
         <button className={filter === 'norm' ? 'active' : ''} onClick={() => setFilter('norm')}><CheckCircle2 /> В норме · {normCount}</button>
       </div>{onOpenOverviewModal && <button className="aida-method-button" onClick={onOpenOverviewModal}><Info /> Как формируется карта</button>}</div>
       <div className="aida-systems-grid">{filtered.map((system) => {
+        const hasStatus = Boolean(system.status);
         const ok = system.status === 'norm';
+        const hasScore = typeof system.score === 'number' && Number.isFinite(system.score);
         return <button key={system.id} className="aida-system-card" onClick={() => onSelectSystem(system)}>
-          <div className="aida-system-card-top"><span className="aida-system-icon">{iconFor(system.iconName)}</span><span className={`aida-system-status ${ok ? 'ok' : 'attention'}`}>{ok ? 'В норме' : 'Наблюдение'}</span></div>
+          <div className="aida-system-card-top"><span className="aida-system-icon">{iconFor(system.iconName)}</span><span className={`aida-system-status ${!hasStatus ? '' : ok ? 'ok' : 'attention'}`}>{!hasStatus ? 'Нет данных' : ok ? 'В норме' : 'Наблюдение'}</span></div>
           <h3>{system.name}</h3><p>{system.description}</p>
-          <div className="aida-system-score"><span><i style={{ width: `${Math.max(8, system.score)}%` }} /></span><strong>{system.score}%</strong></div>
-          <footer><span>{system.deviationsCount ? `${system.deviationsCount} маркера требуют внимания` : 'Отклонений не выявлено'}</span><ChevronRight /></footer>
+          {hasScore ? <div className="aida-system-score"><span><i style={{ width: `${Math.max(0, Math.min(100, system.score))}%` }} /></span><strong>{system.score}%</strong></div> : <div className="aida-system-score"><span></span><strong>—</strong></div>}
+          <footer><span>{!hasStatus ? 'Недостаточно данных для оценки' : system.deviationsCount ? `${system.deviationsCount} маркера требуют внимания` : ok ? 'По доступным данным отклонений не отмечено' : 'Требуется уточнение данных'}</span><ChevronRight /></footer>
         </button>;
       })}</div>
     </div>}

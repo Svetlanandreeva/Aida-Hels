@@ -160,11 +160,11 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   
   // Structured dosage fields
   const [doseQuantity, setDoseQuantity] = useState<number>(1);
-  const [doseForm, setDoseForm] = useState<string>('капсула');
-  const [doseActiveIngredient, setDoseActiveIngredient] = useState<string>('100 мг');
+  const [doseForm, setDoseForm] = useState<string>('');
+  const [doseActiveIngredient, setDoseActiveIngredient] = useState<string>('');
   
   const [medSchedule, setMedSchedule] = useState<MedicationSchedule>({
-    morning: { enabled: true, time: '08:00' },
+    morning: { enabled: false, time: '08:00' },
     afternoon: { enabled: false, time: '13:00' },
     evening: { enabled: false, time: '19:00' },
   });
@@ -192,7 +192,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
         if (d.medication && d.medication !== 'Без медикаментов' && d.medication.trim()) {
           userMeds.push({
             title: d.medication.trim(),
-            time: d.schedule?.morning?.time || '08:00',
+            time: d.schedule?.morning?.enabled ? d.schedule.morning.time : d.schedule?.afternoon?.enabled ? d.schedule.afternoon.time : d.schedule?.evening?.enabled ? d.schedule.evening.time : '',
             notes: `Назначено по диагнозу: ${d.name}`,
           });
         }
@@ -204,8 +204,8 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
         if (medName && medName !== 'Без медикаментов' && medName.trim()) {
           userMeds.push({
             title: medName.trim(),
-            time: '20:00',
-            notes: 'Назначено специалистом (психологический профиль)',
+            time: '',
+            notes: 'Указано в психологическом профиле; время приёма не задано',
           });
         }
       });
@@ -216,6 +216,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
         let changed = false;
         const updated = [...prev];
         userMeds.forEach((m) => {
+          if (!m.time) return;
           const exists = updated.some(
             (r) => r.category === 'medication' && r.title.toLowerCase().trim() === m.title.toLowerCase().trim()
           );
@@ -246,17 +247,17 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
         ? JSON.parse(saved)
         : {
             targetMl: 2000,
-            consumedMl: 1000,
+            consumedMl: 0,
             logs: [],
-            remindersEnabled: true,
+            remindersEnabled: false,
             schedule: {
-              morning: { enabled: true, time: '08:30' },
-              afternoon: { enabled: true, time: '13:30' },
-              evening: { enabled: true, time: '19:30' },
+              morning: { enabled: false, time: '08:30' },
+              afternoon: { enabled: false, time: '13:30' },
+              evening: { enabled: false, time: '19:30' },
             },
           };
     } catch (e) {
-      return { targetMl: 2000, consumedMl: 1000, logs: [], remindersEnabled: true };
+      return { targetMl: 2000, consumedMl: 0, logs: [], remindersEnabled: false };
     }
   });
 
@@ -300,12 +301,11 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   });
 
   const handleCopyCode = () => {
-    const code =
-      user.womenHealth?.partnerSyncCode && user.womenHealth.partnerSyncCode !== 'PARTNER-DEMO-RU'
-        ? user.womenHealth.partnerSyncCode
-        : (user.id && user.id !== 'usr-new'
-          ? `PARTNER-${user.id.replace(/[^A-Za-z0-9]/g, '').slice(-4).toUpperCase()}-RU`
-          : `PARTNER-${(user.fullName || 'USER').replace(/[^A-Za-z0-9]/g, '').slice(0, 4).toUpperCase() || 'A1B2'}-RU`);
+    const code = user.womenHealth?.partnerSyncCode?.trim();
+    if (!code || code === 'PARTNER-DEMO-RU') {
+      alert('Код партнёра ещё не создан.');
+      return;
+    }
     navigator.clipboard.writeText(code);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -323,14 +323,14 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
       setUser((prev) => ({
         ...prev,
         womenHealth: {
-          ...(prev.womenHealth || { cycleLength: 28, periodDuration: 5, isRegular: true, pmsSymptoms: [], painLevel: 1, lastPeriodDate: '', partnerSyncCode: '', isPartnerSynced: false }),
-          partnerSyncCode: code,
-          isPartnerSynced: true,
+          ...(prev.womenHealth || ({} as any)),
+          linkedPartnerCode: code,
+          isPartnerSynced: false,
         },
       }));
     }
     setPartnerCodeInput('');
-    alert(`Аккаунт партнёра (${code}) успешно привязан! Синхронизация активирована.`);
+    alert('Код партнёра сохранён. Синхронизация станет активной только после подтверждённого подключения.');
   };
 
   const handleUnlinkPartnerCode = () => {
@@ -340,7 +340,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
       setUser((prev) => ({
         ...prev,
         womenHealth: {
-          ...(prev.womenHealth || { cycleLength: 28, periodDuration: 5, isRegular: true, pmsSymptoms: [], painLevel: 1, lastPeriodDate: '', partnerSyncCode: '', isPartnerSynced: false }),
+          ...(prev.womenHealth || ({} as any)),
           partnerSyncCode: '',
           isPartnerSynced: false,
         },
@@ -409,10 +409,10 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     setEditingMedId(null);
     setMedTitle('');
     setDoseQuantity(1);
-    setDoseForm('капсула');
-    setDoseActiveIngredient('100 мг');
+    setDoseForm('');
+    setDoseActiveIngredient('');
     setMedSchedule({
-      morning: { enabled: true, time: '08:00' },
+      morning: { enabled: false, time: '08:00' },
       afternoon: { enabled: false, time: '13:00' },
       evening: { enabled: false, time: '19:00' },
     });
@@ -426,7 +426,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     setEditingMedId(med.id);
     setMedTitle(med.title);
     setDoseQuantity(med.doseQuantity || 1);
-    setDoseForm(med.doseForm || 'капсула');
+    setDoseForm(med.doseForm || '');
     setDoseActiveIngredient(med.doseActiveIngredient || '');
     setMedSchedule(med.schedule || {
       morning: { enabled: true, time: med.time || '08:00' },
@@ -445,7 +445,12 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     const primaryTime =
       medSchedule.morning?.enabled ? medSchedule.morning.time :
       medSchedule.afternoon?.enabled ? medSchedule.afternoon.time :
-      medSchedule.evening?.enabled ? medSchedule.evening.time : '09:00';
+      medSchedule.evening?.enabled ? medSchedule.evening.time : '';
+
+    if (!primaryTime) {
+      alert('Выберите хотя бы одно время приёма.');
+      return;
+    }
 
     if (editingMedId) {
       setReminders((prev) =>
@@ -480,7 +485,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
         schedule: medSchedule,
         startDate,
         frequency: medFrequency,
-        notes: medNotes || 'Принимать строго по инструкции',
+        notes: medNotes,
         isEnabled: true,
         sound: soundMode === 'pulse' ? 'pulse' : 'gentle',
       };
