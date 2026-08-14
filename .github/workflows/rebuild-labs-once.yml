@@ -1,0 +1,72 @@
+name: Apply analyses redesign once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/rebuild-labs-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-labs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Replace legacy analyses block
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('src/components/Dashboard.tsx')
+          text = path.read_text()
+
+          import_line = "import LabResearchScreen from './LabResearchScreen';\n"
+          if import_line not in text:
+              anchor = "import HomeDashboard from './HomeDashboard';\n"
+              if anchor not in text:
+                  raise SystemExit('HomeDashboard import anchor not found')
+              text = text.replace(anchor, anchor + import_line, 1)
+
+          start = text.find('      {/* SUB-TAB 2: ИССЛЕДОВАНИЯ И АНАЛИЗЫ */}')
+          end = text.find('      {/* SUB-TAB 3: ПРИЁМЫ ВРАЧЕЙ */}')
+          if start < 0 or end < 0 or end <= start:
+              raise SystemExit('Analyses block markers not found')
+
+          replacement = '''      {/* SUB-TAB 2: ИССЛЕДОВАНИЯ И АНАЛИЗЫ */}
+      {activeTab === 'lab' && (
+        <LabResearchScreen
+          documents={documents}
+          setDocuments={setDocuments}
+          docFilter={docFilter}
+          setDocFilter={setDocFilter}
+          isUploading={isUploading}
+          uploadProgress={uploadProgress}
+          uploadStatusStep={uploadStatusStep}
+          uploadError={uploadError}
+          handleFileUpload={handleFileUpload}
+          handleRetryUpload={handleRetryUpload}
+        />
+      )}
+
+'''
+          text = text[:start] + replacement + text[end:]
+          path.write_text(text)
+          PY
+
+      - name: Commit redesigned analyses screen
+        run: |
+          git config user.name "Svetlana Andreeva"
+          git config user.email "AnbreevaSveta@yandex.ru"
+          git add src/components/Dashboard.tsx
+          if git diff --cached --quiet; then
+            echo "No changes"
+            exit 0
+          fi
+          git commit -m "refactor(labs): replace legacy analyses block with dedicated Aida screen"
+          git push
