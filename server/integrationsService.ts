@@ -188,8 +188,8 @@ export class IntegrationsService {
     {
       id: 'apple_health',
       name: 'Apple Health (HealthKit)',
-      status: 'supported',
-      statusMessage: 'Официальный адаптер активен. Нативная синхронизация с iOS HealthKit.',
+      status: 'preview_bridge',
+      statusMessage: 'Контракт и canonical mapping подготовлены. Нативный HealthKit bridge ещё не подключён; реальная синхронизация недоступна.',
       category: 'mobile_os',
       authType: 'system_sdk',
       iconName: 'Apple',
@@ -208,8 +208,8 @@ export class IntegrationsService {
     {
       id: 'health_connect',
       name: 'Android Health Connect',
-      status: 'supported',
-      statusMessage: 'Официальный адаптер активен. Единое хранилище Android Health Connect.',
+      status: 'preview_bridge',
+      statusMessage: 'Контракт и canonical mapping подготовлены. Нативный Health Connect bridge ещё не подключён; реальная синхронизация недоступна.',
       category: 'mobile_os',
       authType: 'system_sdk',
       iconName: 'Smartphone',
@@ -383,6 +383,9 @@ export class IntegrationsService {
     if (!provider) {
       throw new Error(`Неизвестный провайдер интеграции: ${providerId}`);
     }
+    if (provider.status !== 'supported') {
+      throw new Error(`INTEGRATION_NOT_READY: ${provider.name}. ${provider.statusMessage}`);
+    }
 
     const userData = (await canonicalDataLayer.getUserData(userId)) || {
       profile: { id: userId },
@@ -402,24 +405,8 @@ export class IntegrationsService {
     const sourceId = `cs-${providerId}-${Date.now().toString(36)}`;
     const deviceId = `dev-${providerId}-${Date.now().toString(36)}`;
 
-    let deviceName = 'Виртуальный трекер';
-    let model = 'Generic Mobile';
-    if (providerId === 'apple_health') {
-      deviceName = 'Apple Watch Series 9';
-      model = 'A2980 Watch OS 10.4';
-    } else if (providerId === 'health_connect') {
-      deviceName = 'Google Pixel Watch 2';
-      model = 'Wear OS 4.0';
-    } else if (providerId === 'garmin') {
-      deviceName = 'Garmin Forerunner 965';
-      model = 'SW v18.23';
-    } else if (providerId === 'oura') {
-      deviceName = 'Oura Ring Gen3 Horizon';
-      model = 'Firmware v2.9.12';
-    } else if (providerId === 'withings') {
-      deviceName = 'Withings Body Scan';
-      model = 'Smart Scale HW 1.0';
-    }
+    const deviceName = provider.name;
+    const model = 'not_reported';
 
     const newSource: ConnectedSource = {
       id: sourceId,
@@ -445,9 +432,9 @@ export class IntegrationsService {
       providerId: provider.id,
       deviceName,
       model,
-      firmwareVersion: '1.0.0',
+      firmwareVersion: 'not_reported',
       hardwareId: `HW-${crypto.randomBytes(4).toString('hex').toUpperCase()}`,
-      batteryLevel: 88,
+      batteryLevel: null,
       lastSeenAt: nowIso,
       isPrimaryTracker: existingDevices.length === 0,
     };
@@ -496,6 +483,9 @@ export class IntegrationsService {
     const provider = this.providersRegistry.find((p) => p.id === providerId);
     if (!provider) {
       throw new Error(`Неизвестный или неподдерживаемый провайдер: ${providerId}`);
+    }
+    if (provider.status !== 'supported') {
+      throw new Error(`INTEGRATION_NOT_READY: ${provider.name}. ${provider.statusMessage}`);
     }
 
     const userData = (await canonicalDataLayer.getUserData(userId)) || {
@@ -681,7 +671,9 @@ export class IntegrationsService {
           normalizedUnit = 'mmHg';
           valueComponents = {
             systolic: Number(rawSample.systolic || rawSample.valueComponents?.systolic || numVal),
-            diastolic: Number(rawSample.diastolic || rawSample.valueComponents?.diastolic || 80),
+            diastolic: rawSample.diastolic !== undefined || rawSample.valueComponents?.diastolic !== undefined
+              ? Number(rawSample.diastolic ?? rawSample.valueComponents?.diastolic)
+              : undefined,
             pulse: rawSample.pulse ? Number(rawSample.pulse) : undefined,
           };
           normalizedValue = valueComponents.systolic || numVal;
@@ -712,10 +704,10 @@ export class IntegrationsService {
           normalizedUnit = 'hours';
           valueComponents = {
             durationMinutes: rawSample.durationMinutes ?? Math.round(numVal * 60),
-            deepSleepMinutes: rawSample.deepSleepMinutes ?? Math.round(numVal * 60 * 0.25),
-            remSleepMinutes: rawSample.remSleepMinutes ?? Math.round(numVal * 60 * 0.20),
-            lightSleepMinutes: rawSample.lightSleepMinutes ?? Math.round(numVal * 60 * 0.45),
-            awakeMinutes: rawSample.awakeMinutes ?? Math.round(numVal * 60 * 0.10),
+            deepSleepMinutes: rawSample.deepSleepMinutes,
+            remSleepMinutes: rawSample.remSleepMinutes,
+            lightSleepMinutes: rawSample.lightSleepMinutes,
+            awakeMinutes: rawSample.awakeMinutes,
           };
           break;
         case 'vendor_sleep_score':
@@ -746,7 +738,7 @@ export class IntegrationsService {
         case 'workout':
           normalizedUnit = 'kcal';
           valueComponents = {
-            activityType: rawSample.activityType || 'general_workout',
+            activityType: rawSample.activityType,
             durationSeconds: rawSample.durationSeconds || Math.round(numVal * 60),
             activeCalories: numVal,
             avgHeartRate: rawSample.avgHeartRate,
@@ -781,9 +773,9 @@ export class IntegrationsService {
         case 'cycle_record':
           normalizedUnit = 'day';
           valueComponents = {
-            cycleDay: rawSample.cycleDay || numVal,
-            cyclePhase: rawSample.cyclePhase || 'follicular',
-            flowLevel: rawSample.flowLevel || 'light',
+            cycleDay: rawSample.cycleDay ?? numVal,
+            cyclePhase: rawSample.cyclePhase,
+            flowLevel: rawSample.flowLevel,
           };
           break;
         case 'nutrition_hydration':

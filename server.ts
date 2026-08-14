@@ -57,7 +57,10 @@ dotenv.config();
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
-const JWT_SECRET = process.env.SESSION_SECRET || process.env.JWT_SECRET || 'helt_aida_secure_session_secret_2026';
+const JWT_SECRET = process.env.SESSION_SECRET || process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  throw new Error('SESSION_SECRET or JWT_SECRET must be configured.');
+}
 
 app.use(express.json({ limit: '10mb' }));
 app.use(cookieParser());
@@ -167,10 +170,10 @@ function requireConsent(req: AuthenticatedRequest, res: express.Response, next: 
   const storedData = userDataStore.get(userId) || {};
   const profile = req.body?.profile || storedData?.profile || {};
 
-  const consentPersonal = profile.consentPersonalData ?? profile.consentPersonal ?? true;
-  const consentMedical = profile.consentMedicalData ?? profile.consentMedical ?? true;
+  const consentPersonal = profile.consentPersonalData ?? profile.consentPersonal ?? false;
+  const consentMedical = profile.consentMedicalData ?? profile.consentMedical ?? false;
 
-  if (consentPersonal === false || consentMedical === false) {
+  if (consentPersonal !== true || consentMedical !== true) {
     return res.status(403).json({
       success: false,
       error: 'CONSENT_REQUIRED',
@@ -184,7 +187,7 @@ function requireConsent(req: AuthenticatedRequest, res: express.Response, next: 
 // ==========================================
 // API V1 CONTRACT ROUTER (Requirement 22)
 // ==========================================
-app.use('/api/v1', v1ApiRouter);
+app.use('/api/v1', requireAuth, v1ApiRouter);
 
 // ==========================================
 // AUTHENTICATION API ROUTES
@@ -199,8 +202,8 @@ app.post('/api/auth/register', async (req, res) => {
     if (!normEmail || !normEmail.includes('@')) {
       return res.status(400).json({ success: false, message: 'Укажите корректный адрес электронной почты' });
     }
-    if (!password || password.length < 4) {
-      return res.status(400).json({ success: false, message: 'Пароль должен содержать не менее 4 символов' });
+    if (!password || password.length < 8) {
+      return res.status(400).json({ success: false, message: 'Пароль должен содержать не менее 8 символов' });
     }
 
     if (isPostgresConfigured()) {
@@ -255,9 +258,8 @@ app.post('/api/auth/register', async (req, res) => {
       message: 'Код подтверждения отправлен на email.',
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
     console.error('Registration error:', err);
-    res.status(500).json({ success: false, message: 'Ошибка при регистрации: ' + message });
+    res.status(500).json({ success: false, message: 'Не удалось завершить регистрацию. Попробуйте ещё раз.' });
   }
 });
 
@@ -302,8 +304,8 @@ app.post('/api/auth/send-code', async (req, res) => {
       message: 'Новый код подтверждения отправлен на email.',
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    res.status(500).json({ success: false, message: 'Ошибка отправки кода: ' + message });
+    console.error('Verification code send error:', err);
+    res.status(500).json({ success: false, message: 'Не удалось отправить код. Попробуйте позже.' });
   }
 });
 
@@ -389,7 +391,7 @@ app.post('/api/auth/login', async (req, res) => {
         message: 'Сначала подтвердите email кодом из письма.',
       });
     }
-    user.isVerified = true;
+    // Verification was confirmed by the mail backend above; no local trust escalation is needed.
 
     // Create session via AuthService
     const session = authService.createSession(user.id, {
@@ -425,9 +427,9 @@ app.post('/api/auth/login', async (req, res) => {
       },
       userData: storedData,
     });
-  } catch (err: any) {
+  } catch (err) {
     console.error('Login error:', err);
-    res.status(500).json({ success: false, message: 'Ошибка при входе: ' + err.message });
+    res.status(500).json({ success: false, message: 'Не удалось выполнить вход. Попробуйте ещё раз.' });
   }
 });
 
@@ -488,10 +490,9 @@ app.post('/api/auth/verify-code', async (req, res) => {
         });
       }
       otpAttemptsDb.set(normEmail, attempts);
-      const backendMessage = verifyResult?.data?.message || verifyResult?.error?.message;
       return res.status(400).json({
         success: false,
-        message: backendMessage || `Неверный код подтверждения. Осталось попыток: ${3 - attempts.count}`,
+        message: `Неверный код подтверждения. Осталось попыток: ${3 - attempts.count}`,
       });
     }
 
@@ -522,9 +523,8 @@ app.post('/api/auth/verify-code', async (req, res) => {
       },
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
     console.error('Verify code error:', err);
-    res.status(500).json({ success: false, message: 'Ошибка проверки кода: ' + message });
+    res.status(500).json({ success: false, message: 'Не удалось проверить код. Попробуйте ещё раз.' });
   }
 });
 
@@ -590,11 +590,12 @@ app.post('/api/auth/recovery/request', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Укажите email или номер телефона' });
     }
 
-    const { code, expiresAt } = authService.requestRecovery(norm);
-    res.json({
-      success: true,
-      data: { code, expiresAt },
-      message: 'Код восстановления сформирован сервером',
+    const { expiresAt, deliveryRequired } = authService.requestRecovery(norm);
+    res.status(503).json({
+      success: false,
+      error: 'RECOVERY_DELIVERY_NOT_CONFIGURED',
+      data: { expiresAt, deliveryRequired },
+      message: 'Восстановление пароля временно недоступно: безопасная доставка кода не настроена.',
     });
   } catch (err: any) {
     res.status(500).json({ success: false, message: 'Ошибка запроса восстановления: ' + err.message });
@@ -607,8 +608,8 @@ app.post('/api/auth/recovery/confirm', async (req, res) => {
     const { emailOrPhone, code, newPassword } = req.body;
     const norm = (emailOrPhone || '').trim().toLowerCase();
 
-    if (!norm || !code || !newPassword || newPassword.length < 4) {
-      return res.status(400).json({ success: false, message: 'Укажите корректный код и новый пароль (не менее 4 символов)' });
+    if (!norm || !code || !newPassword || newPassword.length < 8) {
+      return res.status(400).json({ success: false, message: 'Укажите корректный код и новый пароль (не менее 8 символов)' });
     }
 
     await authService.confirmRecovery(norm, code, newPassword);
@@ -672,7 +673,7 @@ app.post('/api/auth/revoke-sessions', requireAuth, handleRevokeSessions);
 app.post('/api/auth/devices/revoke', requireAuth, handleRevokeSessions);
 
 // Delete account endpoints
-app.post('/api/auth/delete-account', async (req: AuthenticatedRequest, res) => {
+app.post('/api/auth/delete-account', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const token = req.cookies?.session_token || req.headers.authorization?.replace('Bearer ', '');
     let userId = req.user?.id;
@@ -684,10 +685,6 @@ app.post('/api/auth/delete-account', async (req: AuthenticatedRequest, res) => {
         userId = userId || decoded.id;
         email = email || decoded.email;
       } catch {}
-    }
-
-    if (req.body?.userId) {
-      userId = req.body.userId;
     }
 
     if (!userId && !email) {
@@ -707,7 +704,7 @@ app.post('/api/auth/delete-account', async (req: AuthenticatedRequest, res) => {
   }
 });
 
-app.delete('/api/auth/delete-account', async (req: AuthenticatedRequest, res) => {
+app.delete('/api/auth/delete-account', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const token = req.cookies?.session_token || req.headers.authorization?.replace('Bearer ', '');
     let userId = req.user?.id;
@@ -719,10 +716,6 @@ app.delete('/api/auth/delete-account', async (req: AuthenticatedRequest, res) =>
         userId = userId || decoded.id;
         email = email || decoded.email;
       } catch {}
-    }
-
-    if (req.body?.userId) {
-      userId = req.body.userId;
     }
 
     await performDeleteUserAccount(userId || '', email || '');
@@ -773,7 +766,7 @@ app.post('/api/security/log', (req, res) => {
   }
 });
 
-app.get('/api/security/logs', (req, res) => {
+app.get('/api/security/logs', requireAuth, (req, res) => {
   res.json({ success: true, count: securityAuditLogs.length, logs: securityAuditLogs.slice(-50) });
 });
 
@@ -821,7 +814,7 @@ app.post('/api/permissions/invitation/create', requireAuth, async (req: Authenti
       granteeEmailOrPhone: granteeEmailOrPhone ? sanitizeText(granteeEmailOrPhone) : undefined,
       relationship: sanitizeText(relationship),
       isAdult: Boolean(isAdult),
-      allowedScopes: Array.isArray(allowedScopes) ? allowedScopes : ['emergency_card', 'medications'],
+      allowedScopes: Array.isArray(allowedScopes) ? allowedScopes : [],
       explicitSensitiveScopes: Array.isArray(explicitSensitiveScopes) ? explicitSensitiveScopes : [],
     });
 
@@ -1070,9 +1063,9 @@ app.put('/api/user/module-config', requireAuth, handleUpdatePuzzleConfig);
 // AGGREGATED HOME API ENDPOINTS (GET /profiles/:id/home)
 // ==========================================
 
-const handleGetHomePayload = async (req: express.Request, res: express.Response) => {
+const handleGetHomePayload = async (req: AuthenticatedRequest, res: express.Response) => {
   try {
-    let userId = 'default_user';
+    let userId = req.user!.id;
     const token = req.cookies?.session_token || req.headers.authorization?.replace('Bearer ', '');
     if (token) {
       try {
@@ -1084,8 +1077,8 @@ const handleGetHomePayload = async (req: express.Request, res: express.Response)
     }
 
     const requestedProfileId = req.params.id || (req.query.profileId as string) || (req.query.subject_profile_id as string);
-    if (requestedProfileId && requestedProfileId !== 'self' && requestedProfileId !== 'me') {
-      userId = requestedProfileId;
+    if (requestedProfileId && requestedProfileId !== 'self' && requestedProfileId !== 'me' && requestedProfileId !== req.user!.id) {
+      return res.status(403).json({ success: false, message: 'Нет доступа к данным этого профиля.' });
     }
 
     const homePayload = await homeApiService.getHomePayload(userId, requestedProfileId);
@@ -1096,17 +1089,17 @@ const handleGetHomePayload = async (req: express.Request, res: express.Response)
   }
 };
 
-app.get('/profiles/:id/home', handleGetHomePayload);
-app.get('/api/profiles/:id/home', handleGetHomePayload);
-app.get('/api/home', handleGetHomePayload);
+app.get('/profiles/:id/home', requireAuth, handleGetHomePayload);
+app.get('/api/profiles/:id/home', requireAuth, handleGetHomePayload);
+app.get('/api/home', requireAuth, handleGetHomePayload);
 
 // ==========================================
 // UNIFIED HEALTH TIMELINE API ENDPOINTS (GET /profiles/:id/timeline)
 // ==========================================
 
-const handleGetTimeline = async (req: express.Request, res: express.Response) => {
+const handleGetTimeline = async (req: AuthenticatedRequest, res: express.Response) => {
   try {
-    let userId = 'default_user';
+    let userId = req.user!.id;
     const token = req.cookies?.session_token || req.headers.authorization?.replace('Bearer ', '');
     if (token) {
       try {
@@ -1118,8 +1111,8 @@ const handleGetTimeline = async (req: express.Request, res: express.Response) =>
     }
 
     const requestedProfileId = req.params.id || (req.query.profileId as string) || (req.query.subject_profile_id as string);
-    if (requestedProfileId && requestedProfileId !== 'self' && requestedProfileId !== 'me') {
-      userId = requestedProfileId;
+    if (requestedProfileId && requestedProfileId !== 'self' && requestedProfileId !== 'me' && requestedProfileId !== req.user!.id) {
+      return res.status(403).json({ success: false, message: 'Нет доступа к данным этого профиля.' });
     }
 
     const { from, to, types, cursor, limit } = req.query;
@@ -1139,9 +1132,9 @@ const handleGetTimeline = async (req: express.Request, res: express.Response) =>
   }
 };
 
-app.get('/profiles/:id/timeline', handleGetTimeline);
-app.get('/api/profiles/:id/timeline', handleGetTimeline);
-app.get('/api/timeline', handleGetTimeline);
+app.get('/profiles/:id/timeline', requireAuth, handleGetTimeline);
+app.get('/api/profiles/:id/timeline', requireAuth, handleGetTimeline);
+app.get('/api/timeline', requireAuth, handleGetTimeline);
 
 // ==========================================
 // PERSISTENT DATA STORAGE ENDPOINTS
@@ -1210,7 +1203,7 @@ app.get('/api/integrations/providers', requireAuth, (req, res) => {
 // 2. Get Connected Sources for Current User
 app.get('/api/integrations/connected-sources', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const userId = req.user?.id || 'default_user';
+    const userId = req.user!.id;
     const sources = await integrationsService.getConnectedSources(userId);
     return res.json({ success: true, sources });
   } catch (err: any) {
@@ -1221,7 +1214,7 @@ app.get('/api/integrations/connected-sources', requireAuth, async (req: Authenti
 // 3. Get Connected Devices for Current User
 app.get('/api/integrations/devices', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const userId = req.user?.id || 'default_user';
+    const userId = req.user!.id;
     const devices = await integrationsService.getConnectedDevices(userId);
     return res.json({ success: true, devices });
   } catch (err: any) {
@@ -1232,7 +1225,7 @@ app.get('/api/integrations/devices', requireAuth, async (req: AuthenticatedReque
 // 4. Connect Integration Source & Device
 app.post('/api/integrations/connect', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const userId = req.user?.id || 'default_user';
+    const userId = req.user!.id;
     const { providerId } = req.body;
     if (!providerId) {
       return res.status(400).json({ success: false, error: 'Идентификатор провайдера обязателен (providerId)' });
@@ -1248,7 +1241,7 @@ app.post('/api/integrations/connect', requireAuth, async (req: AuthenticatedRequ
 // 5. Disconnect Integration Source
 app.post('/api/integrations/disconnect', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const userId = req.user?.id || 'default_user';
+    const userId = req.user!.id;
     const { sourceId } = req.body;
     if (!sourceId) {
       return res.status(400).json({ success: false, error: 'Идентификатор подключенного источника обязателен (sourceId)' });
@@ -1264,7 +1257,7 @@ app.post('/api/integrations/disconnect', requireAuth, async (req: AuthenticatedR
 // 6. Execute 7-Stage Batch Adapter Pipeline
 app.post('/api/integrations/sync-batch', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const userId = req.user?.id || 'default_user';
+    const userId = req.user!.id;
     const { providerId, samples } = req.body;
 
     if (!providerId || !Array.isArray(samples)) {
@@ -1284,8 +1277,11 @@ app.post('/api/integrations/sync-batch', requireAuth, async (req: AuthenticatedR
 
 // 7. Simulate Live Sample Batch (For UI Testing & Demonstration)
 app.post('/api/integrations/simulate-sample', requireAuth, async (req: AuthenticatedRequest, res) => {
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(404).json({ success: false, message: 'Недоступно' });
+  }
   try {
-    const userId = req.user?.id || 'default_user';
+    const userId = req.user!.id;
     const { providerId } = req.body;
 
     const pId = providerId || 'apple_health';
@@ -1365,24 +1361,13 @@ app.get('/api/lab/trends', requireAuth, async (req: AuthenticatedRequest, res) =
 
     const allResults: any[] = [];
     docs.forEach((d: any) => {
-      const researchDate = d.researchDate || d.uploadDate || '2026-06-01';
+      const researchDate = d.researchDate || d.uploadDate || null;
       if (Array.isArray(d.results)) {
         d.results.forEach((r: any) => {
           allResults.push({ ...r, date: researchDate });
         });
       }
     });
-
-    if (allResults.length === 0) {
-      allResults.push(
-        { category: 'Гематология', originalName: 'Гемоглобин', normalizedName: 'hemoglobin', value: 115, unit: 'г/л', referenceMin: 120, referenceMax: 150, status: 'low', date: '2026-06-01' },
-        { category: 'Гематология', originalName: 'Гемоглобин', normalizedName: 'hemoglobin', value: 132, unit: 'г/л', referenceMin: 120, referenceMax: 150, status: 'normal', date: '2026-08-04' },
-        { category: 'Биохимия', originalName: 'Ферритин', normalizedName: 'ferritin', value: 18, unit: 'мкг/л', referenceMin: 20, referenceMax: 120, status: 'low', date: '2026-05-15' },
-        { category: 'Биохимия', originalName: 'Ферритин', normalizedName: 'ferritin', value: 35, unit: 'мкг/л', referenceMin: 20, referenceMax: 120, status: 'normal', date: '2026-07-20' },
-        { category: 'Витамины', originalName: 'Витамин D', normalizedName: 'vitamin_d', value: 22, unit: 'нг/мл', referenceMin: 30, referenceMax: 100, status: 'low', date: '2026-04-10' },
-        { category: 'Витамины', originalName: 'Витамин D', normalizedName: 'vitamin_d', value: 42, unit: 'нг/мл', referenceMin: 30, referenceMax: 100, status: 'normal', date: '2026-08-01' }
-      );
-    }
 
     const grouped = new Map<string, any>();
     allResults.forEach((item) => {
@@ -1392,16 +1377,16 @@ app.get('/api/lab/trends', requireAuth, async (req: AuthenticatedRequest, res) =
           marker: key,
           title: item.originalName || key,
           unit: item.unit || '',
-          reference_min: item.referenceMin ?? 0,
-          reference_max: item.referenceMax ?? 100,
+          reference_min: item.referenceMin ?? null,
+          reference_max: item.referenceMax ?? null,
           history: [],
         });
       }
       const entry = grouped.get(key);
       entry.history.push({
         date: item.date,
-        value: Number(item.value) || 0,
-        status: item.status || 'normal',
+        value: Number.isFinite(Number(item.value)) ? Number(item.value) : null,
+        status: item.status || 'unknown',
       });
     });
 
@@ -1436,10 +1421,20 @@ app.post('/api/reports/doctor-pdf', requireAuth, async (req: AuthenticatedReques
       return t >= fromMs && t <= toMs;
     });
 
-    const avgState = periodLogs.length ? (periodLogs.reduce((a: number, b: any) => a + (b.state_score || b.score || 7), 0) / periodLogs.length).toFixed(1) : '7.0';
-    const avgEnergy = periodLogs.length ? (periodLogs.reduce((a: number, b: any) => a + (b.energy_score || b.energy || 7), 0) / periodLogs.length).toFixed(1) : '7.0';
-    const avgAnxiety = periodLogs.length ? (periodLogs.reduce((a: number, b: any) => a + (b.anxiety_score || b.anxiety || 3), 0) / periodLogs.length).toFixed(1) : '3.0';
-    const avgStress = periodLogs.length ? (periodLogs.reduce((a: number, b: any) => a + (b.stress_score || b.stress || 3), 0) / periodLogs.length).toFixed(1) : '3.0';
+    const averageKnown = (rows: any[], keys: string[]) => {
+      const values = rows.map((row) => {
+        for (const key of keys) {
+          const value = row?.[key];
+          if (value !== undefined && value !== null && Number.isFinite(Number(value))) return Number(value);
+        }
+        return null;
+      }).filter((value): value is number => value !== null);
+      return values.length ? (values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(1) : null;
+    };
+    const avgState = averageKnown(periodLogs, ['state_score', 'score']);
+    const avgEnergy = averageKnown(periodLogs, ['energy_score', 'energy']);
+    const avgAnxiety = averageKnown(periodLogs, ['anxiety_score', 'anxiety']);
+    const avgStress = averageKnown(periodLogs, ['stress_score', 'stress']);
 
     const abnormalLabs: any[] = [];
     documents.forEach((doc: any) => {
@@ -1473,17 +1468,17 @@ app.post('/api/reports/doctor-pdf', requireAuth, async (req: AuthenticatedReques
 </head>
 <body>
   <h1>Медицинский сводный отчёт за период ${date_from || 'всё время'} — ${date_to || 'сегодня'}</h1>
-  <p><strong>Пациент:</strong> ${profile.fullName || req.user?.fullName || 'Анна Иванова'} | <strong>Возраст:</strong> ${calculateAgeInYears(profile.birthDate) || 34} лет</p>
+  <p><strong>Пациент:</strong> ${profile.fullName || req.user?.fullName || 'Не указано'} | <strong>Возраст:</strong> ${profile.birthDate ? (calculateAgeInYears(profile.birthDate) + ' лет') : 'Нет данных'}</p>
 
   <h2>1. Общий профиль здоровья</h2>
   <div class="grid">
     <div class="card">
       <strong>Хронические состояния:</strong>
-      <p>${(profile.chronicConditions || ['Артериальная гипертензия (легкая степень)']).join(', ')}</p>
+      <p>${Array.isArray(profile.chronicConditions) && profile.chronicConditions.length ? profile.chronicConditions.join(', ') : 'Нет данных'}</p>
     </div>
     <div class="card">
       <strong>Аллергии и непереносимости:</strong>
-      <p>${(profile.allergies || ['Пенициллин']).join(', ')}</p>
+      <p>${Array.isArray(profile.allergies) && profile.allergies.length ? profile.allergies.join(', ') : 'Нет данных'}</p>
     </div>
   </div>
 
@@ -1494,19 +1489,19 @@ app.post('/api/reports/doctor-pdf', requireAuth, async (req: AuthenticatedReques
 
   <h2>3. Динамика дневника и симптомов (Средние значения)</h2>
   <div class="grid">
-    <div class="card"><strong>Оценка состояния:</strong> ${avgState} / 10</div>
-    <div class="card"><strong>Уровень энергии:</strong> ${avgEnergy} / 10</div>
-    <div class="card"><strong>Индекс тревожности:</strong> ${avgAnxiety} / 10</div>
-    <div class="card"><strong>Индекс стресса:</strong> ${avgStress} / 10</div>
+    <div class="card"><strong>Оценка состояния:</strong> ${avgState ? avgState + ' / 10' : 'Нет данных'}</div>
+    <div class="card"><strong>Уровень энергии:</strong> ${avgEnergy ? avgEnergy + ' / 10' : 'Нет данных'}</div>
+    <div class="card"><strong>Индекс тревожности:</strong> ${avgAnxiety ? avgAnxiety + ' / 10' : 'Нет данных'}</div>
+    <div class="card"><strong>Индекс стресса:</strong> ${avgStress ? avgStress + ' / 10' : 'Нет данных'}</div>
   </div>
 
   <h2>4. Лабораторные маркёры вне референсов</h2>
   <ul>
-    ${abnormalLabs.length ? abnormalLabs.map((a: any) => `<li><span class="tag tag-warn">${a.status.toUpperCase()}</span> <strong>${a.originalName}:</strong> ${a.value} ${a.unit || ''} (норма ${a.referenceMin || 0}–${a.referenceMax || 100})</li>`).join('') : '<li>Все измеренные показатели находятся в пределах нормы.</li>'}
+    ${abnormalLabs.length ? abnormalLabs.map((a: any) => `<li><span class="tag tag-warn">${String(a.status || 'unknown').toUpperCase()}</span> <strong>${a.originalName || 'Показатель'}:</strong> ${a.value ?? 'Нет данных'} ${a.unit || ''}${a.referenceMin != null || a.referenceMax != null ? ' (референс ' + (a.referenceMin ?? '—') + '–' + (a.referenceMax ?? '—') + ')' : ''}</li>`).join('') : '<li>Подтверждённых отклонений в доступных данных не найдено. Это не означает, что все показатели в норме.</li>'}
   </ul>
 
   <h2>5. ИИ-Резюме и заключение ИИ-Медассистента</h2>
-  <p>${sanitizeText(userData.aiSummary || 'Состояние пациента стабильное, рекомендовано плановое наблюдение.')}</p>
+  <p>${userData.aiSummary ? sanitizeText(userData.aiSummary) : 'ИИ-резюме недоступно: недостаточно подтверждённых данных.'}</p>
 
   <footer>
     Сгенерировано защищённой системой «Здоровье — Персональный ИИ-Медассистент». Документ носит информационный характер для лечащего врача.
@@ -1549,20 +1544,11 @@ app.post('/api/medications/check-safety', requireAuth, async (req: Authenticated
 }`;
 
     if (!ai) {
-      const lowerNew = cleanNew.toLowerCase();
-      let conflict = false;
-      let severity: 'LOW' | 'MEDIUM' | 'HIGH' = 'LOW';
-      let desc = `Препарат "${cleanNew}" не имеет выраженных прямых противопоказаний с вашим профилем.`;
-
-      if (cleanAllergies.some((a) => lowerNew.includes(a.toLowerCase()))) {
-        conflict = true;
-        severity = 'HIGH';
-        desc = `Внимание! Зафиксировано совпадение с указанной аллергией ("${cleanAllergies.join(', ')}"). Приём противопоказан!`;
-      } else if (cleanCurrent.length > 0) {
-        desc = `Совместимость "${cleanNew}" с текущими препаратами (${cleanCurrent.join(', ')}) удовлетворительная. Соблюдайте интервал приёма.`;
-      }
-
-      return res.json({ success: true, has_conflict: conflict, severity, description: desc });
+      return res.status(503).json({
+        success: false,
+        status: 'unavailable',
+        message: 'Проверка лекарственной совместимости сейчас недоступна. Не считайте отсутствие ответа подтверждением безопасности.',
+      });
     }
 
     const response = await ai.models.generateContent({
@@ -1580,11 +1566,10 @@ app.post('/api/medications/check-safety', requireAuth, async (req: Authenticated
     });
   } catch (err: any) {
     console.error('Medication safety check error:', err);
-    res.json({
-      success: true,
-      has_conflict: false,
-      severity: 'LOW',
-      description: 'Проверка совместимости выполнена. Рекомендуется уточнить у лечащего врача.',
+    return res.status(503).json({
+      success: false,
+      status: 'unavailable',
+      message: 'Не удалось проверить совместимость препаратов. Уточните совместимость у врача или фармацевта.',
     });
   }
 });
@@ -1644,16 +1629,16 @@ app.get('/api/health/systems-status', requireAuth, async (req: AuthenticatedRequ
     }
 
     const systems = [
-      { id: 'hematopoietic', title: 'Кроветворная система', status: abnormalBySystem.hematopoietic.total > 0 && (abnormalBySystem.hematopoietic.abnormal / abnormalBySystem.hematopoietic.total) > 0.3 ? 'ТРЕБУЕТСЯ ВНИМАНИЕ' : 'НОРМАЛЬНЫЙ' },
-      { id: 'endocrine', title: 'Эндокринная система', status: abnormalBySystem.endocrine.total > 0 && (abnormalBySystem.endocrine.abnormal / abnormalBySystem.endocrine.total) > 0.3 ? 'ТРЕБУЕТСЯ ВНИМАНИЕ' : 'НОРМАЛЬНЫЙ' },
-      { id: 'immune', title: 'Иммунная система', status: abnormalBySystem.immune.total > 0 && (abnormalBySystem.immune.abnormal / abnormalBySystem.immune.total) > 0.3 ? 'ТРЕБУЕТСЯ ВНИМАНИЕ' : 'НОРМАЛЬНЫЙ' },
-      { id: 'nervous', title: 'Нервная система', status: abnormalBySystem.nervous.total > 0 && (abnormalBySystem.nervous.abnormal / abnormalBySystem.nervous.total) > 0.3 ? 'ТРЕБУЕТСЯ ВНИМАНИЕ' : 'НОРМАЛЬНЫЙ' },
-      { id: 'metabolic', title: 'Обмен веществ / Биохимия', status: abnormalBySystem.metabolic.total > 0 && (abnormalBySystem.metabolic.abnormal / abnormalBySystem.metabolic.total) > 0.3 ? 'ТРЕБУЕТСЯ ВНИМАНИЕ' : 'НОРМАЛЬНЫЙ' },
-      { id: 'cardiovascular', title: 'Сердечно-сосудистая система', status: abnormalBySystem.cardiovascular.total > 0 && (abnormalBySystem.cardiovascular.abnormal / abnormalBySystem.cardiovascular.total) > 0.3 ? 'ТРЕБУЕТСЯ ВНИМАНИЕ' : 'НОРМАЛЬНЫЙ' },
-      { id: 'digestive', title: 'Пищеварительная система', status: abnormalBySystem.digestive.total > 0 && (abnormalBySystem.digestive.abnormal / abnormalBySystem.digestive.total) > 0.3 ? 'ТРЕБУЕТСЯ ВНИМАНИЕ' : 'НОРМАЛЬНЫЙ' },
-      { id: 'respiratory', title: 'Дыхательная система', status: abnormalBySystem.respiratory.total > 0 && (abnormalBySystem.respiratory.abnormal / abnormalBySystem.respiratory.total) > 0.3 ? 'ТРЕБУЕТСЯ ВНИМАНИЕ' : 'НОРМАЛЬНЫЙ' },
-      { id: 'musculoskeletal', title: 'Опорно-двигательная система', status: abnormalBySystem.musculoskeletal.total > 0 && (abnormalBySystem.musculoskeletal.abnormal / abnormalBySystem.musculoskeletal.total) > 0.3 ? 'ТРЕБУЕТСЯ ВНИМАНИЕ' : 'НОРМАЛЬНЫЙ' },
-      { id: 'urinary', title: 'Мочевыделительная система', status: abnormalBySystem.urinary.total > 0 && (abnormalBySystem.urinary.abnormal / abnormalBySystem.urinary.total) > 0.3 ? 'ТРЕБУЕТСЯ ВНИМАНИЕ' : 'НОРМАЛЬНЫЙ' },
+      { id: 'hematopoietic', title: 'Кроветворная система', status: abnormalBySystem.hematopoietic.total === 0 ? 'НЕТ ДАННЫХ' : (abnormalBySystem.hematopoietic.abnormal / abnormalBySystem.hematopoietic.total) > 0.3 ? 'ТРЕБУЕТСЯ ВНИМАНИЕ' : 'НОРМАЛЬНЫЙ' },
+      { id: 'endocrine', title: 'Эндокринная система', status: abnormalBySystem.endocrine.total === 0 ? 'НЕТ ДАННЫХ' : (abnormalBySystem.endocrine.abnormal / abnormalBySystem.endocrine.total) > 0.3 ? 'ТРЕБУЕТСЯ ВНИМАНИЕ' : 'НОРМАЛЬНЫЙ' },
+      { id: 'immune', title: 'Иммунная система', status: abnormalBySystem.immune.total === 0 ? 'НЕТ ДАННЫХ' : (abnormalBySystem.immune.abnormal / abnormalBySystem.immune.total) > 0.3 ? 'ТРЕБУЕТСЯ ВНИМАНИЕ' : 'НОРМАЛЬНЫЙ' },
+      { id: 'nervous', title: 'Нервная система', status: abnormalBySystem.nervous.total === 0 ? 'НЕТ ДАННЫХ' : (abnormalBySystem.nervous.abnormal / abnormalBySystem.nervous.total) > 0.3 ? 'ТРЕБУЕТСЯ ВНИМАНИЕ' : 'НОРМАЛЬНЫЙ' },
+      { id: 'metabolic', title: 'Обмен веществ / Биохимия', status: abnormalBySystem.metabolic.total === 0 ? 'НЕТ ДАННЫХ' : (abnormalBySystem.metabolic.abnormal / abnormalBySystem.metabolic.total) > 0.3 ? 'ТРЕБУЕТСЯ ВНИМАНИЕ' : 'НОРМАЛЬНЫЙ' },
+      { id: 'cardiovascular', title: 'Сердечно-сосудистая система', status: abnormalBySystem.cardiovascular.total === 0 ? 'НЕТ ДАННЫХ' : (abnormalBySystem.cardiovascular.abnormal / abnormalBySystem.cardiovascular.total) > 0.3 ? 'ТРЕБУЕТСЯ ВНИМАНИЕ' : 'НОРМАЛЬНЫЙ' },
+      { id: 'digestive', title: 'Пищеварительная система', status: abnormalBySystem.digestive.total === 0 ? 'НЕТ ДАННЫХ' : (abnormalBySystem.digestive.abnormal / abnormalBySystem.digestive.total) > 0.3 ? 'ТРЕБУЕТСЯ ВНИМАНИЕ' : 'НОРМАЛЬНЫЙ' },
+      { id: 'respiratory', title: 'Дыхательная система', status: abnormalBySystem.respiratory.total === 0 ? 'НЕТ ДАННЫХ' : (abnormalBySystem.respiratory.abnormal / abnormalBySystem.respiratory.total) > 0.3 ? 'ТРЕБУЕТСЯ ВНИМАНИЕ' : 'НОРМАЛЬНЫЙ' },
+      { id: 'musculoskeletal', title: 'Опорно-двигательная система', status: abnormalBySystem.musculoskeletal.total === 0 ? 'НЕТ ДАННЫХ' : (abnormalBySystem.musculoskeletal.abnormal / abnormalBySystem.musculoskeletal.total) > 0.3 ? 'ТРЕБУЕТСЯ ВНИМАНИЕ' : 'НОРМАЛЬНЫЙ' },
+      { id: 'urinary', title: 'Мочевыделительная система', status: abnormalBySystem.urinary.total === 0 ? 'НЕТ ДАННЫХ' : (abnormalBySystem.urinary.abnormal / abnormalBySystem.urinary.total) > 0.3 ? 'ТРЕБУЕТСЯ ВНИМАНИЕ' : 'НОРМАЛЬНЫЙ' },
     ];
 
     res.json({ success: true, systems });
@@ -1882,7 +1867,7 @@ ${userSummary}
 // 1. Process document into staging pipeline (Validation, Quarantine, OCR, Classify, Owner match, Extract, Normalize, Confidence, Dedupe)
 app.post('/api/lab/staging/process', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const userId = req.user?.id || 'default_user';
+    const userId = req.user!.id;
     const { fileBase64, mimeType, fileName } = req.body;
 
     if (!fileBase64) {
@@ -1929,7 +1914,7 @@ app.get('/api/lab/staging/:id', requireAuth, async (req: AuthenticatedRequest, r
 // 3. Final User Confirmation & Commit (Save to canonical history OR Explain only)
 app.post('/api/lab/staging/commit', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const userId = req.user?.id || 'default_user';
+    const userId = req.user!.id;
     const {
       stagingId,
       targetProfileId,
@@ -2107,19 +2092,11 @@ app.post('/api/recognize-doc', requireAuth, async (req: AuthenticatedRequest, re
       }
     }
 
-    const fallbackData = {
-      documentType: category || 'Результаты исследований',
-      documentDate: new Date().toISOString().split('T')[0],
-      laboratory: 'Лаборатория',
-      patientName: '',
-      markers: [
-        { name: 'Глюкоза в плазме', value: 4.7, rawValue: '4.7', unit: 'ммоль/л', min: 4.1, max: 5.9, normalRange: '4.1 - 5.9', status: 'normal', confidence: 0.98 },
-        { name: 'Холестерин общий', value: 4.8, rawValue: '4.8', unit: 'ммоль/л', min: 3.2, max: 5.2, normalRange: '3.2 - 5.2', status: 'normal', confidence: 0.95 },
-      ],
-      warnings: ['Бланк успешно распознан и структурирован.'],
-    };
-
-    return res.json({ success: true, data: fallbackData, mode: 'fallback_ocr' });
+    return res.status(503).json({
+      success: false,
+      status: 'unavailable',
+      message: 'Не удалось распознать документ. Никакие показатели не были созданы автоматически.',
+    });
   } catch (error: any) {
     console.error('Doc recognition error:', error?.message || error);
     return res.status(502).json({
@@ -2146,7 +2123,7 @@ app.post('/api/research/recognize', requireAuth, async (req: AuthenticatedReques
     }
 
     // 1. Check if Google Apps Script URL is configured for proxying
-    const appsScriptUrl = process.env.GOOGLE_SHEETS_WEB_APP_URL || 'https://script.google.com/macros/s/AKfycbz2DHIRN60EgYlLwBiUu3sk91V8JgKSXmvLFPJpMTyQafbpZkfOmidDYhg5pJTbkZ-4Kw/exec';
+    const appsScriptUrl = process.env.GOOGLE_SHEETS_WEB_APP_URL;
     if (appsScriptUrl && appsScriptUrl.startsWith('https://script.google.com/')) {
       try {
         const gasRes = await fetch(appsScriptUrl, {
@@ -2289,10 +2266,10 @@ app.post('/api/sheets/proxy', async (req, res) => {
       return res.json(data);
     }
 
-    res.json({
-      success: true,
-      data: { message: 'Запрос обработан защищённым внутренним сервером', action, userId },
-      error: null,
+    return res.status(503).json({
+      success: false,
+      data: null,
+      error: { code: 'SHEETS_BACKEND_NOT_CONFIGURED', message: 'Сервис синхронизации сейчас недоступен.' },
     });
   } catch (err: any) {
     console.error('Sheets proxy error:', err);
@@ -2334,8 +2311,12 @@ app.post('/api/mental-diary/analyze', requireAuth, async (req: AuthenticatedRequ
     const isCrisis = crisisKeywords.some((kw) => allText.includes(kw));
 
     if (!ai) {
-      const fallbackAnalysis = analyzeMentalDiaryFallback(entries || [], newEntry, isCrisis);
-      return res.json({ analysis: fallbackAnalysis, mode: 'simulated' });
+      return res.status(503).json({
+        success: false,
+        status: 'unavailable',
+        message: 'ИИ-анализ дневника сейчас недоступен. Сохранённые записи остаются без автоматических выводов.',
+        crisisKeywordDetected: isCrisis,
+      });
     }
 
     const systemInstruction = `Ты — деликатный ИИ-аналитик дневника ментального здоровья. 
@@ -2361,8 +2342,11 @@ app.post('/api/mental-diary/analyze', requireAuth, async (req: AuthenticatedRequ
     const parsed = JSON.parse(response.text || '{}');
     res.json({ analysis: parsed, mode: 'gemini' });
   } catch (error: any) {
-    const fallback = analyzeMentalDiaryFallback(req.body.entries || [], req.body.newEntry, false);
-    res.json({ analysis: fallback, mode: 'simulated_fallback' });
+    return res.status(503).json({
+      success: false,
+      status: 'unavailable',
+      message: 'Не удалось выполнить ИИ-анализ дневника. Автоматические выводы не сформированы.',
+    });
   }
 });
 
@@ -2373,9 +2357,12 @@ app.post('/api/ai/health-analysis', requireAuth, async (req: AuthenticatedReques
     const result = await analyzeHealthWithGeminiOrFallback(ai, req.body);
     return res.json({ success: true, ...result });
   } catch (error: any) {
-    console.warn('API health-analysis route fallback triggered:', error?.message || error);
-    const { generateFallbackHealthAnalysis } = await import('./server/healthAnalyzer');
-    return res.json({ success: true, analysis: generateFallbackHealthAnalysis(req.body), mode: 'rule_fallback' });
+    console.warn('API health-analysis unavailable:', error?.message || error);
+    return res.status(503).json({
+      success: false,
+      status: 'unavailable',
+      message: 'Персональный анализ сейчас недоступен. Медицинские выводы не сформированы.',
+    });
   }
 });
 
@@ -2667,7 +2654,7 @@ app.post('/api/family/child-profiles/transition-adult', requireAuth, (req: Authe
       childProfileId,
       requesterUserId: userId,
       newAdultUserId,
-      newAdultEmail: newAdultEmail || 'adult@example.com',
+      newAdultEmail,
     });
 
     res.json(result);
@@ -2817,7 +2804,7 @@ app.post('/api/safety/sos/trigger', requireAuth, (req: AuthenticatedRequest, res
     });
     res.json({
       success: true,
-      message: 'Активирован экстренный режим SOS! Оповещения отправлены доверенным контактам и экстренным службам.',
+      message: 'Событие SOS создано. Статус фактической доставки уведомлений необходимо проверять отдельно.',
       sosRecord,
     });
   } catch (err: any) {

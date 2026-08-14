@@ -113,10 +113,10 @@ v1ApiRouter.get('/architecture/readiness', (_req, res) => {
     { id: 'empty_data_state_contract', status: 'IN_PROGRESS', service: 'API/UI safety audit', note: 'No endpoint may substitute missing medical values with defaults.' },
   ];
   return sendSuccess(res, {
-    readyForFrontendDevelopment: true,
+    readyForFrontendDevelopment: false,
     productionReady: false,
-    requiresUIWaiting: false,
-    message: 'Frontend can continue against the typed contract, but production readiness is partial and must not be represented as complete.',
+    requiresUIWaiting: true,
+    message: 'Часть контрактов и legacy stores ещё не готовы для безопасного использования во всех профилях. UI должен уважать not-ready/empty states.',
     subsystems,
   });
 });
