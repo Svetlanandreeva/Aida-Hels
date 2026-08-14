@@ -21,7 +21,6 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
-          import re
 
           path = Path('src/components/Dashboard.tsx')
           text = path.read_text()
@@ -33,28 +32,31 @@ jobs:
                   raise SystemExit('HomeDashboard import anchor not found')
               text = text.replace(anchor, anchor + import_line, 1)
 
-          start = text.find('      {/* SUB-TAB 2: ИССЛЕДОВАНИЯ И АНАЛИЗЫ */}')
-          end = text.find('      {/* SUB-TAB 3: ПРИЁМЫ ВРАЧЕЙ */}')
+          start_marker = '      {/* SUB-TAB 2: ИССЛЕДОВАНИЯ И АНАЛИЗЫ */}'
+          end_marker = '      {/* SUB-TAB 3: ПРИЁМЫ ВРАЧЕЙ */}'
+          start = text.find(start_marker)
+          end = text.find(end_marker)
           if start < 0 or end < 0 or end <= start:
               raise SystemExit('Analyses block markers not found')
 
-          replacement = '''      {/* SUB-TAB 2: ИССЛЕДОВАНИЯ И АНАЛИЗЫ */}
-      {activeTab === 'lab' && (
-        <LabResearchScreen
-          documents={documents}
-          setDocuments={setDocuments}
-          docFilter={docFilter}
-          setDocFilter={setDocFilter}
-          isUploading={isUploading}
-          uploadProgress={uploadProgress}
-          uploadStatusStep={uploadStatusStep}
-          uploadError={uploadError}
-          handleFileUpload={handleFileUpload}
-          handleRetryUpload={handleRetryUpload}
-        />
-      )}
+          replacement = (
+              "      {/* SUB-TAB 2: ИССЛЕДОВАНИЯ И АНАЛИЗЫ */}\n"
+              "      {activeTab === 'lab' && (\n"
+              "        <LabResearchScreen\n"
+              "          documents={documents}\n"
+              "          setDocuments={setDocuments}\n"
+              "          docFilter={docFilter}\n"
+              "          setDocFilter={setDocFilter}\n"
+              "          isUploading={isUploading}\n"
+              "          uploadProgress={uploadProgress}\n"
+              "          uploadStatusStep={uploadStatusStep}\n"
+              "          uploadError={uploadError}\n"
+              "          handleFileUpload={handleFileUpload}\n"
+              "          handleRetryUpload={handleRetryUpload}\n"
+              "        />\n"
+              "      )}\n\n"
+          )
 
-'''
           text = text[:start] + replacement + text[end:]
           path.write_text(text)
           PY
