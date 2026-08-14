@@ -269,7 +269,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     setLastFailedFile(null);
     setIsUploading(true);
     setUploadProgress(10);
-    setUploadStatusStep('Проверка формата, размер (макс 15МБ) и хеширование...');
+    setUploadStatusStep('Подготавливаем документ...');
 
     try {
       if (file.type.startsWith('image/')) {
@@ -279,7 +279,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
       }
 
       const record = await processLabDocumentThroughStaging(file, (step, percent) => {
-        setUploadStatusStep(step);
+        const publicStep = /ocr|распозн|считыв/i.test(step)
+          ? 'Считываем данные...'
+          : /marker|показател|анализ/i.test(step)
+            ? 'Разбираем показатели...'
+            : 'Обрабатываем документ...';
+        setUploadStatusStep(publicStep);
         setUploadProgress(percent);
       });
 
@@ -287,8 +292,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       setIsVerificationModalOpen(true);
     } catch (err: any) {
       console.error('Document staging error:', err);
-      const errMsg = err?.message || 'Не удалось сопоставить документ в пайплайне';
-      setUploadError(errMsg);
+      setUploadError('Не удалось обработать документ. Проверьте файл и попробуйте ещё раз.');
       setLastFailedFile(file);
     } finally {
       setIsUploading(false);
@@ -323,19 +327,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
     }
   };
 
-
-  // Calculate completeness score
-  const completeness = 92;
-
-  // Women Health calculation
-  const getCycleDaysLeft = () => {
-    if (!user.womenHealth) return null;
-    const last = new Date(user.womenHealth.lastPeriodDate);
-    const now = new Date('2026-08-01');
-    const diffDays = Math.floor((now.getTime() - last.getTime()) / (1000 * 3600 * 24));
-    const daysLeft = user.womenHealth.cycleLength - (diffDays % user.womenHealth.cycleLength);
-    return daysLeft > 0 ? daysLeft : 1;
-  };
 
   return (
     <div className="space-y-6 pb-32 sm:pb-36">
