@@ -21,10 +21,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Apply all source hardening
+      - name: Apply source hardening
         run: |
           node scripts/harden-source-security.mjs
-          node scripts/harden-server-auth.mjs
           node scripts/harden-server-access.mjs
           node scripts/harden-integrations.mjs
           node scripts/harden-server-no-fabrication-v2.mjs
