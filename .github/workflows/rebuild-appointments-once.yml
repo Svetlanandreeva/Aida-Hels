@@ -1,0 +1,83 @@
+name: Apply appointments redesign once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/rebuild-appointments-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-appointments:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Replace legacy appointments block
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('src/components/Dashboard.tsx')
+          text = path.read_text()
+
+          import_line = "import AppointmentsScreen from './AppointmentsScreen';\n"
+          anchor = "import LabResearchScreen from './LabResearchScreen';\n"
+          if import_line not in text:
+              if anchor not in text:
+                  raise SystemExit('LabResearchScreen import anchor not found')
+              text = text.replace(anchor, anchor + import_line, 1)
+
+          # Remove the old prefilled appointment form state. New screen owns an empty form.
+          text = re.sub(
+              r"\n  // New Appointment Modal State\n  const \[showAddApptModal[\s\S]*?const \[newPurpose, setNewPurpose\] = useState\([^\n]+\);\n",
+              "\n",
+              text,
+              count=1,
+          )
+
+          # Remove old submit handler owned by Dashboard.
+          text = re.sub(
+              r"\n  // Add Appointment Submit\n  const handleCreateAppointment = \(e: React\.FormEvent\) => \{[\s\S]*?\n  \};\n",
+              "\n",
+              text,
+              count=1,
+          )
+
+          start_marker = '      {/* SUB-TAB 3: ПРИЁМЫ ВРАЧЕЙ */}'
+          end_marker = '      {/* Voluntary Questionnaire Proposal Modal */}'
+          start = text.find(start_marker)
+          end = text.find(end_marker)
+          if start < 0 or end < 0 or end <= start:
+              raise SystemExit('Appointments block markers not found')
+
+          replacement = (
+              "      {/* SUB-TAB 3: ПРИЁМЫ ВРАЧЕЙ */}\n"
+              "      {activeTab === 'appointments' && (\n"
+              "        <AppointmentsScreen\n"
+              "          appointments={appointments}\n"
+              "          setAppointments={setAppointments}\n"
+              "          onOpenDoctorReport={onOpenDoctorReport}\n"
+              "        />\n"
+              "      )}\n\n"
+          )
+          text = text[:start] + replacement + text[end:]
+          path.write_text(text)
+          PY
+
+      - name: Commit redesigned appointments screen
+        run: |
+          git config user.name "Svetlana Andreeva"
+          git config user.email "AnbreevaSveta@yandex.ru"
+          git add src/components/Dashboard.tsx
+          if git diff --cached --quiet; then
+            echo "No changes"
+            exit 0
+          fi
+          git commit -m "refactor(appointments): replace legacy doctor visits block and remove fake defaults"
+          git push
