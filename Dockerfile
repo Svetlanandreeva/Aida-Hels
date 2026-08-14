@@ -1,19 +1,16 @@
-FROM oven/bun:1 AS build
-WORKDIR /app
-COPY package.json bun.lock ./
-RUN bun install --frozen-lockfile
-COPY . .
-# Production must compile the same source that passed repository safety checks.
-# Hardening scripts are migration tools only; the image build must never mutate source code.
-RUN node scripts/audit-production-safety.mjs
-RUN bun run build
+FROM node:20-alpine AS build
 
-FROM node:20-slim
-WORKDIR /app
-ENV NODE_ENV=production
-ENV PORT=8080
-COPY --from=build /app/dist ./dist
-COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/package.json ./package.json
+RUN apk add --no-cache git
+WORKDIR /src
+RUN git clone --depth 1 --branch main https://github.com/Svetlanandreeva/Aida2-0-.git aida2
+
+WORKDIR /src/aida2/frontend
+ENV EXPO_NO_TELEMETRY=1
+RUN corepack enable && yarn install --frozen-lockfile
+RUN npx expo export --platform web
+
+FROM nginx:1.27-alpine
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /src/aida2/frontend/dist /usr/share/nginx/html
 EXPOSE 8080
-CMD ["node", "dist/server.cjs"]
+CMD ["nginx", "-g", "daemon off;"]
