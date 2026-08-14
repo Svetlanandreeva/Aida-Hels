@@ -3,11 +3,9 @@ WORKDIR /app
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
 COPY . .
-# Production build hardening is deterministic and runs before compilation.
-RUN node scripts/harden-server-auth.mjs
-RUN node scripts/harden-server-access.mjs
-RUN node scripts/harden-integrations.mjs
-RUN node scripts/harden-server-no-fabrication-v2.mjs
+# Production must compile the same source that passed repository safety checks.
+# Hardening scripts are migration tools only; the image build must never mutate source code.
+RUN node scripts/audit-production-safety.mjs
 RUN bun run build
 
 FROM node:20-slim
