@@ -11,9 +11,10 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Literal, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from access_control import require_profile_access, require_record_access
 from permissions import write_audit
 
 
@@ -54,23 +55,31 @@ class CandidateCreate(BaseModel):
 
 
 class ReviewRequest(BaseModel):
+    # Backward-compatible field; server derives the reviewer from auth.
     reviewer_account_id: Optional[str] = None
 
 
-def build_candidate_router(db) -> APIRouter:
+def build_candidate_router(db, auth) -> APIRouter:
     router = APIRouter(prefix="/api/candidates", tags=["candidates"])
 
     @router.get("", response_model=List[CandidateRecord])
-    async def list_candidates(profile_id: str, status: Optional[str] = None):
+    async def list_candidates(
+        profile_id: str,
+        status: Optional[str] = None,
+        account: Dict[str, Any] = Depends(auth.require_account),
+    ):
+        await require_profile_access(auth, account, profile_id)
         query: Dict[str, Any] = {"profile_id": profile_id}
         if status:
             query["status"] = status
         return await db.candidates.find(query, {"_id": 0}).sort("created_at", -1).to_list(200)
 
     @router.post("", response_model=CandidateRecord)
-    async def create_candidate(data: CandidateCreate):
-        # Ignore any profile/id/status smuggled inside payload. A candidate is
-        # always scoped by the explicit outer profile and starts pending.
+    async def create_candidate(
+        data: CandidateCreate,
+        account: Dict[str, Any] = Depends(auth.require_account),
+    ):
+        await require_profile_access(auth, account, data.profile_id, write=True)
         payload = dict(data.payload)
         payload.pop("profile_id", None)
         payload.pop("id", None)
@@ -81,6 +90,7 @@ def build_candidate_router(db) -> APIRouter:
             action="candidate.created",
             entity_type="candidate",
             entity_id=candidate.id,
+            account_id=str(account["id"]),
             profile_id=candidate.profile_id,
             source="ai" if candidate.proposed_by == "ai" else "user",
             metadata={"target_entity_type": candidate.entity_type},
@@ -88,10 +98,12 @@ def build_candidate_router(db) -> APIRouter:
         return candidate
 
     @router.post("/{candidate_id}/approve")
-    async def approve_candidate(candidate_id: str, review: ReviewRequest):
-        candidate = await db.candidates.find_one({"id": candidate_id}, {"_id": 0})
-        if not candidate:
-            raise HTTPException(404, "Candidate not found")
+    async def approve_candidate(
+        candidate_id: str,
+        review: ReviewRequest,
+        account: Dict[str, Any] = Depends(auth.require_account),
+    ):
+        candidate = await require_record_access(db, auth, account, "candidates", candidate_id, write=True)
         if candidate.get("status") != "pending":
             raise HTTPException(409, "Candidate has already been reviewed")
 
@@ -106,17 +118,16 @@ def build_candidate_router(db) -> APIRouter:
         payload.setdefault("source", "ai_confirmed")
         payload.setdefault("created_at", _now())
         payload["updated_at"] = _now()
-
-        target = getattr(db, target_name)
-        await target.insert_one(payload)
+        await getattr(db, target_name).insert_one(payload)
 
         reviewed_at = _now()
+        reviewer_account_id = str(account["id"])
         await db.candidates.update_one(
             {"id": candidate_id},
             {"$set": {
                 "status": "approved",
                 "reviewed_at": reviewed_at,
-                "reviewer_account_id": review.reviewer_account_id,
+                "reviewer_account_id": reviewer_account_id,
                 "approved_entity_id": entity_id,
                 "updated_at": reviewed_at,
             }},
@@ -126,7 +137,7 @@ def build_candidate_router(db) -> APIRouter:
             action="candidate.approved",
             entity_type=target_name,
             entity_id=entity_id,
-            account_id=review.reviewer_account_id,
+            account_id=reviewer_account_id,
             profile_id=candidate["profile_id"],
             source="user",
             metadata={"candidate_id": candidate_id},
@@ -134,20 +145,23 @@ def build_candidate_router(db) -> APIRouter:
         return {"ok": True, "candidate_id": candidate_id, "entity_id": entity_id}
 
     @router.post("/{candidate_id}/reject")
-    async def reject_candidate(candidate_id: str, review: ReviewRequest):
-        candidate = await db.candidates.find_one({"id": candidate_id}, {"_id": 0})
-        if not candidate:
-            raise HTTPException(404, "Candidate not found")
+    async def reject_candidate(
+        candidate_id: str,
+        review: ReviewRequest,
+        account: Dict[str, Any] = Depends(auth.require_account),
+    ):
+        candidate = await require_record_access(db, auth, account, "candidates", candidate_id, write=True)
         if candidate.get("status") != "pending":
             raise HTTPException(409, "Candidate has already been reviewed")
 
         reviewed_at = _now()
+        reviewer_account_id = str(account["id"])
         await db.candidates.update_one(
             {"id": candidate_id},
             {"$set": {
                 "status": "rejected",
                 "reviewed_at": reviewed_at,
-                "reviewer_account_id": review.reviewer_account_id,
+                "reviewer_account_id": reviewer_account_id,
                 "updated_at": reviewed_at,
             }},
         )
@@ -156,7 +170,7 @@ def build_candidate_router(db) -> APIRouter:
             action="candidate.rejected",
             entity_type="candidate",
             entity_id=candidate_id,
-            account_id=review.reviewer_account_id,
+            account_id=reviewer_account_id,
             profile_id=candidate["profile_id"],
             source="user",
         )

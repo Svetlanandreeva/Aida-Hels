@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import List
+from typing import Any, Dict, List
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
+
+from access_control import require_profile_access
 
 
 def _now():
@@ -53,11 +55,12 @@ def _merge_defaults(stored):
     return sorted(result, key=lambda w: w["order"])
 
 
-def build_puzzle_router(db) -> APIRouter:
+def build_puzzle_router(db, auth) -> APIRouter:
     router = APIRouter(prefix="/api/puzzle", tags=["puzzle"])
 
     @router.get("/{profile_id}")
-    async def get_puzzle(profile_id: str):
+    async def get_puzzle(profile_id: str, account: Dict[str, Any] = Depends(auth.require_account)):
+        await require_profile_access(auth, account, profile_id)
         doc = await db.puzzle.find_one({"profile_id": profile_id}, {"_id": 0})
         return {
             "profile_id": profile_id,
@@ -66,13 +69,14 @@ def build_puzzle_router(db) -> APIRouter:
         }
 
     @router.post("/{profile_id}")
-    async def save_puzzle(profile_id: str, config: PuzzleConfig):
+    async def save_puzzle(
+        profile_id: str,
+        config: PuzzleConfig,
+        account: Dict[str, Any] = Depends(auth.require_account),
+    ):
+        await require_profile_access(auth, account, profile_id, write=True)
         widgets = [w.model_dump() for w in sorted(config.widgets, key=lambda x: x.order)]
-        data = {
-            "profile_id": profile_id,
-            "widgets": widgets,
-            "updated_at": _now(),
-        }
+        data = {"profile_id": profile_id, "widgets": widgets, "updated_at": _now()}
         await db.puzzle.update_one({"profile_id": profile_id}, {"$set": data}, upsert=True)
         return data
 

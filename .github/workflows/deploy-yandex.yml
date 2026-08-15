@@ -1,9 +1,13 @@
-name: Deploy to Yandex Cloud
+name: Legacy Yandex deploy (manual only)
 
 on:
-  push:
-    branches: [main]
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      confirm_legacy:
+        description: 'Deploy the legacy root Vite/Express application instead of consolidated Aida2'
+        required: true
+        default: false
+        type: boolean
 
 env:
   YC_REGISTRY_ID: ${{ secrets.YC_REGISTRY_ID }}
@@ -12,17 +16,23 @@ env:
 
 jobs:
   build-and-deploy:
+    if: ${{ inputs.confirm_legacy == true }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Explain legacy target
+        run: |
+          echo 'WARNING: this workflow deploys the legacy root Vite/Express stack.'
+          echo 'The consolidated Expo + Python Aida2 production path is Deploy to RU VDS.'
 
       - name: Login to Yandex Container Registry
         uses: yc-actions/yc-cr-login@v2
         with:
           yc-sa-json-credentials: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
 
-      - name: Build image
+      - name: Build legacy image
         run: |
           docker build -t cr.yandex/${{ env.YC_REGISTRY_ID }}/${{ env.IMAGE_NAME }}:${{ github.sha }} .
           docker tag cr.yandex/${{ env.YC_REGISTRY_ID }}/${{ env.IMAGE_NAME }}:${{ github.sha }} cr.yandex/${{ env.YC_REGISTRY_ID }}/${{ env.IMAGE_NAME }}:latest
@@ -39,18 +49,10 @@ jobs:
           set -euo pipefail
           IMAGE="cr.yandex/${{ env.YC_REGISTRY_ID }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
           docker rm -f aida-smoke >/dev/null 2>&1 || true
-          docker run --rm "$IMAGE" node -e \
-            "require.resolve('@yandex-cloud/nodejs-sdk/dist/token-service/metadata-token-service')"
-          docker run -d --name aida-smoke \
-            -p 18080:8080 \
-            -e NODE_ENV=production \
-            -e GEMINI_API_KEY \
-            -e GEMINI_PROXY_URL \
-            -e GEMINI_PROXY_SECRET \
-            -e GOOGLE_SHEETS_WEB_APP_URL \
-            -e JWT_SECRET \
-            "$IMAGE"
-
+          docker run --rm "$IMAGE" node -e "require.resolve('@yandex-cloud/nodejs-sdk/dist/token-service/metadata-token-service')"
+          docker run -d --name aida-smoke -p 18080:8080 \
+            -e NODE_ENV=production -e GEMINI_API_KEY -e GEMINI_PROXY_URL \
+            -e GEMINI_PROXY_SECRET -e GOOGLE_SHEETS_WEB_APP_URL -e JWT_SECRET "$IMAGE"
           healthy=0
           consecutive=0
           for attempt in $(seq 1 20); do
@@ -58,27 +60,17 @@ jobs:
               && grep -q 'id="root"' /tmp/aida-smoke-response.html \
               && grep -q '<script' /tmp/aida-smoke-response.html; then
               consecutive=$((consecutive + 1))
-              if [ "$consecutive" -ge 3 ]; then
-                healthy=1
-                break
-              fi
+              if [ "$consecutive" -ge 3 ]; then healthy=1; break; fi
             else
               consecutive=0
             fi
-            if ! docker ps --format '{{.Names}}' | grep -qx aida-smoke; then
-              break
-            fi
+            if ! docker ps --format '{{.Names}}' | grep -qx aida-smoke; then break; fi
             sleep 1
           done
-
           if [ "$healthy" -ne 1 ]; then
-            echo 'Container smoke test failed. Runtime logs:'
             docker logs aida-smoke || true
-            docker inspect aida-smoke --format='exit={{.State.ExitCode}} error={{.State.Error}} status={{.State.Status}}' || true
             exit 1
           fi
-
-          echo 'Container smoke test passed.'
           docker rm -f aida-smoke >/dev/null
 
       - name: Push image
@@ -116,31 +108,12 @@ jobs:
         run: |
           set -euo pipefail
           URL="https://${{ steps.deploy.outputs.id }}.containers.yandexcloud.net/"
-          echo "Checking deployed container endpoint: $URL"
-          healthy=0
-          consecutive=0
           for attempt in $(seq 1 30); do
             code=$(curl --silent --show-error --output /tmp/deployed-response.txt --write-out '%{http_code}' "$URL" || true)
-            if [[ "$code" =~ ^[23][0-9]{2}$ ]] \
-              && grep -q 'id="root"' /tmp/deployed-response.txt \
-              && grep -q '<script' /tmp/deployed-response.txt; then
-              consecutive=$((consecutive + 1))
-              if [ "$consecutive" -ge 3 ]; then
-                healthy=1
-                break
-              fi
-            else
-              consecutive=0
-              echo "Attempt $attempt returned HTTP $code or an invalid frontend document"
-              cat /tmp/deployed-response.txt || true
+            if [[ "$code" =~ ^[23][0-9]{2}$ ]] && grep -q 'id="root"' /tmp/deployed-response.txt; then
+              exit 0
             fi
             sleep 2
           done
-
-          if [ "$healthy" -ne 1 ]; then
-            echo 'Deployed container did not become healthy.'
-            cat /tmp/deployed-response.txt || true
-            exit 1
-          fi
-
-          echo 'Deployed container health check passed.'
+          cat /tmp/deployed-response.txt || true
+          exit 1

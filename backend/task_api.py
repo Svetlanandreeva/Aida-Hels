@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
+
+from access_control import require_profile_access, require_record_access
 
 
 def _now():
@@ -68,16 +70,18 @@ def _normalize_task(doc):
     return result
 
 
-def build_task_router(db) -> APIRouter:
+def build_task_router(db, auth) -> APIRouter:
     router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 
     @router.get("")
-    async def list_tasks(profile_id: str):
+    async def list_tasks(profile_id: str, account: Dict[str, Any] = Depends(auth.require_account)):
+        await require_profile_access(auth, account, profile_id)
         docs = await db.tasks.find({"profile_id": profile_id}, {"_id": 0}).sort("created_at", -1).to_list(500)
         return [_normalize_task(doc) for doc in docs]
 
     @router.post("")
-    async def create_task(data: TaskCreate):
+    async def create_task(data: TaskCreate, account: Dict[str, Any] = Depends(auth.require_account)):
+        await require_profile_access(auth, account, data.profile_id, write=True)
         payload = data.model_dump()
         payload.update({
             "id": str(uuid.uuid4()),
@@ -92,10 +96,8 @@ def build_task_router(db) -> APIRouter:
         return _normalize_task(payload)
 
     @router.put("/{task_id}")
-    async def update_task(task_id: str, data: TaskUpdate):
-        existing = await db.tasks.find_one({"id": task_id}, {"_id": 0})
-        if not existing:
-            raise HTTPException(404, "Task not found")
+    async def update_task(task_id: str, data: TaskUpdate, account: Dict[str, Any] = Depends(auth.require_account)):
+        existing = await require_record_access(db, auth, account, "tasks", task_id, write=True)
         patch = {k: v for k, v in data.model_dump().items() if v is not None}
         if "kind" in patch and "action_route" not in patch:
             patch["action_route"] = ACTION_ROUTES.get(patch["kind"])
@@ -108,10 +110,8 @@ def build_task_router(db) -> APIRouter:
         return _normalize_task({**existing, **patch})
 
     @router.put("/{task_id}/toggle")
-    async def toggle_task(task_id: str):
-        existing = await db.tasks.find_one({"id": task_id}, {"_id": 0})
-        if not existing:
-            raise HTTPException(404, "Task not found")
+    async def toggle_task(task_id: str, account: Dict[str, Any] = Depends(auth.require_account)):
+        existing = await require_record_access(db, auth, account, "tasks", task_id, write=True)
         normalized = _normalize_task(existing)
         next_status = "pending" if normalized["done"] else "done"
         patch = {"status": next_status, "done": next_status == "done", "updated_at": _now()}
@@ -119,7 +119,8 @@ def build_task_router(db) -> APIRouter:
         return _normalize_task({**existing, **patch})
 
     @router.delete("/{task_id}")
-    async def delete_task(task_id: str):
+    async def delete_task(task_id: str, account: Dict[str, Any] = Depends(auth.require_account)):
+        await require_record_access(db, auth, account, "tasks", task_id, write=True)
         await db.tasks.delete_one({"id": task_id})
         return {"ok": True}
 
