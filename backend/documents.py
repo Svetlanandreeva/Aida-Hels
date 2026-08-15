@@ -10,10 +10,11 @@ from __future__ import annotations
 import asyncio
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
+from access_control import require_profile_access
 from google_drive_storage import build_drive_storage_from_env
 
 
@@ -21,12 +22,13 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def build_documents_router(db) -> APIRouter:
+def build_documents_router(db, auth) -> APIRouter:
     router = APIRouter(prefix="/api/documents", tags=["documents"])
     drive = build_drive_storage_from_env()
 
     @router.get("")
-    async def list_documents(profile_id: str):
+    async def list_documents(profile_id: str, account: Dict[str, Any] = Depends(auth.require_account)):
+        await require_profile_access(auth, account, profile_id)
         return await db.files.find(
             {"profile_id": profile_id, "purpose": "medical_document"}, {"_id": 0}
         ).sort("created_at", -1).to_list(500)
@@ -37,7 +39,9 @@ def build_documents_router(db) -> APIRouter:
         document_type: str = Form("other"),
         note: Optional[str] = Form(None),
         file: UploadFile = File(...),
+        account: Dict[str, Any] = Depends(auth.require_account),
     ):
+        await require_profile_access(auth, account, profile_id, write=True)
         if not drive:
             raise HTTPException(503, "Google Drive storage is not configured")
 
