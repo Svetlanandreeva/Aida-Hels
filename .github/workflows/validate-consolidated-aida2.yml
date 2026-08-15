@@ -19,6 +19,9 @@ on:
       - '.github/workflows/validate-consolidated-aida2.yml'
   workflow_dispatch: {}
 
+permissions:
+  contents: read
+
 jobs:
   validate:
     runs-on: ubuntu-24.04
