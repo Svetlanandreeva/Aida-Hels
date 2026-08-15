@@ -1,0 +1,50 @@
+name: Regenerate Expo yarn lock once
+
+on:
+  push:
+    branches: [hardening/aida2-post-migration]
+    paths:
+      - '.github/workflows/regenerate-frontend-lock-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout hardening branch
+        uses: actions/checkout@v4
+        with:
+          ref: hardening/aida2-post-migration
+          fetch-depth: 0
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.19.5'
+
+      - name: Regenerate yarn.lock from package.json
+        working-directory: frontend
+        run: |
+          corepack enable
+          corepack prepare yarn@1.22.22 --activate
+          yarn install --ignore-scripts
+
+      - name: Verify frozen install now succeeds
+        working-directory: frontend
+        run: yarn install --frozen-lockfile --ignore-scripts
+
+      - name: Commit lockfile and remove one-shot workflow
+        run: |
+          set -euo pipefail
+          rm .github/workflows/regenerate-frontend-lock-once.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- frontend/yarn.lock .github/workflows/regenerate-frontend-lock-once.yml
+          if git diff --cached --quiet; then
+            echo 'No lockfile changes were required.'
+            exit 0
+          fi
+          git commit -m 'chore: sync Expo yarn lockfile'
+          git push origin HEAD:hardening/aida2-post-migration
