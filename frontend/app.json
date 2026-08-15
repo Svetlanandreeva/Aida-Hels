@@ -39,14 +39,7 @@
       "expo-image-picker",
       "expo-document-picker",
       "expo-notifications",
-      [
-        "expo-build-properties",
-        {
-          "android": {
-            "minSdkVersion": 26
-          }
-        }
-      ],
+      "./plugins/with-health-connect-min-sdk",
       [
         "expo-splash-screen",
         {
