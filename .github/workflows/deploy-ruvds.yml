@@ -90,18 +90,27 @@ jobs:
 
       - name: Upload application sources
         run: |
-          rsync -az --delete \
-            --exclude '.env' \
-            --exclude '.venv' \
-            --exclude 'node_modules' \
-            --exclude '.git' \
-            -e 'ssh -i ~/.ssh/ruvds -o IdentitiesOnly=yes' \
-            backend/ "$RUVDS_USER@$RUVDS_HOST:/opt/aida/backend/"
+          ssh -i ~/.ssh/ruvds -o IdentitiesOnly=yes "$RUVDS_USER@$RUVDS_HOST" <<'EOF'
+          set -euo pipefail
+          find /opt/aida/backend -mindepth 1 -maxdepth 1 ! -name '.env' ! -name '.venv' -exec rm -rf -- {} +
+          find /opt/aida/frontend -mindepth 1 -maxdepth 1 ! -name 'node_modules' -exec rm -rf -- {} +
+          EOF
 
-          rsync -az --delete \
-            --exclude 'node_modules' \
-            -e 'ssh -i ~/.ssh/ruvds -o IdentitiesOnly=yes' \
-            frontend/ "$RUVDS_USER@$RUVDS_HOST:/opt/aida/frontend/"
+          tar -C backend \
+            --exclude='.env' \
+            --exclude='.venv' \
+            --exclude='node_modules' \
+            --exclude='.git' \
+            -czf - . | \
+            ssh -i ~/.ssh/ruvds -o IdentitiesOnly=yes "$RUVDS_USER@$RUVDS_HOST" \
+              'tar -xzf - -C /opt/aida/backend'
+
+          tar -C frontend \
+            --exclude='node_modules' \
+            --exclude='.git' \
+            -czf - . | \
+            ssh -i ~/.ssh/ruvds -o IdentitiesOnly=yes "$RUVDS_USER@$RUVDS_HOST" \
+              'tar -xzf - -C /opt/aida/frontend'
 
       - name: Restart backend and verify production
         run: |
