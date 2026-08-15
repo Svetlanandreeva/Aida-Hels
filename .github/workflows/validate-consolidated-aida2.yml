@@ -75,6 +75,12 @@ jobs:
       - name: Compile backend Python sources
         run: python -m compileall -q backend
 
+      - name: Import production backend entrypoint
+        working-directory: backend
+        env:
+          PYTHONPATH: .
+        run: python -c "import main; assert main.app is not None"
+
       - name: Run authorization unit tests
         working-directory: backend
         env:
