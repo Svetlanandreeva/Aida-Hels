@@ -1,5 +1,6 @@
 import { Platform, useWindowDimensions } from "react-native";
 
+// Shared breakpoints keep navigation and primary screens responsive to the same viewport rules.
 export const layoutBreakpoints = {
   tinyPhone: 340,
   compactPhone: 380,
