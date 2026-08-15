@@ -1,16 +1,29 @@
 name: Validate consolidated Aida2
 
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'frontend/**'
+      - 'backend/**'
+      - 'ios/**'
+      - '.github/workflows/validate-consolidated-aida2.yml'
   push:
     branches:
-      - migration/consolidate-aida2
+      - main
+      - 'hardening/**'
+    paths:
+      - 'frontend/**'
+      - 'backend/**'
+      - 'ios/**'
+      - '.github/workflows/validate-consolidated-aida2.yml'
   workflow_dispatch: {}
 
 jobs:
   validate:
     runs-on: ubuntu-24.04
     steps:
-      - name: Checkout consolidated branch
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Set up Node 20
@@ -24,13 +37,17 @@ jobs:
           corepack prepare yarn@1.22.22 --activate
           yarn --version
 
-      - name: Install frontend dependencies
+      - name: Install frontend dependencies from lockfile
         working-directory: frontend
-        run: yarn install
+        run: yarn install --frozen-lockfile
 
       - name: Lint frontend
         working-directory: frontend
         run: yarn lint
+
+      - name: Type-check Expo frontend
+        working-directory: frontend
+        run: npx tsc --noEmit
 
       - name: Build web frontend
         working-directory: frontend
@@ -40,15 +57,29 @@ jobs:
         run: |
           test -f frontend/dist/index.html
           test -d frontend/dist/_expo
-          echo "Frontend export is present"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: python -m pip install -r requirements.txt
 
       - name: Compile backend Python sources
-        run: python3 -m compileall -q backend
+        run: python -m compileall -q backend
+
+      - name: Run authorization unit tests
+        working-directory: backend
+        run: pytest -q tests/test_access_control.py
 
       - name: Verify iOS source exists
         run: |
-          test -d ios
-          find ios -maxdepth 2 -type f | head -20
+          test -f ios/AppleHealthSyncClient.swift
+          test -f ios/HealthKitManager.swift
 
-      - name: Consolidation validation passed
-        run: echo "Aida2 consolidation branch is buildable"
+      - name: Consolidated application validation passed
+        run: echo 'Aida2 frontend, backend authorization layer, and iOS source validated'
