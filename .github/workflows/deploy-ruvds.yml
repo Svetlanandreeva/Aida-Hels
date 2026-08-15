@@ -1,0 +1,82 @@
+name: Deploy to RU VDS
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'frontend/**'
+      - 'backend/**'
+      - '.github/workflows/deploy-ruvds.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-ruvds-production
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.19.5
+
+      - name: Build approved Expo web frontend
+        working-directory: frontend
+        run: |
+          corepack enable
+          corepack prepare yarn@1.22.22 --activate
+          yarn install --frozen-lockfile || yarn install
+          yarn lint
+          npx expo export -p web
+          test -f dist/index.html
+
+      - name: Prepare SSH
+        env:
+          RUVDS_SSH_KEY: ${{ secrets.RUVDS_SSH_KEY }}
+        run: |
+          test -n "$RUVDS_SSH_KEY" || (echo 'RUVDS_SSH_KEY secret is missing' && exit 1)
+          mkdir -p ~/.ssh
+          printf '%s\n' "$RUVDS_SSH_KEY" > ~/.ssh/ruvds
+          chmod 600 ~/.ssh/ruvds
+          ssh-keyscan -H 170.168.1.118 >> ~/.ssh/known_hosts
+
+      - name: Upload application sources
+        run: |
+          rsync -az --delete \
+            --exclude '.env' \
+            --exclude '.venv' \
+            --exclude 'node_modules' \
+            --exclude '.git' \
+            -e 'ssh -i ~/.ssh/ruvds -o IdentitiesOnly=yes' \
+            backend/ root@170.168.1.118:/opt/aida/backend/
+
+          rsync -az --delete \
+            --exclude 'node_modules' \
+            -e 'ssh -i ~/.ssh/ruvds -o IdentitiesOnly=yes' \
+            frontend/ root@170.168.1.118:/opt/aida/frontend/
+
+      - name: Restart backend and verify production
+        run: |
+          ssh -i ~/.ssh/ruvds -o IdentitiesOnly=yes root@170.168.1.118 <<'EOF'
+          set -euo pipefail
+          chown -R aida:aida /opt/aida/backend /opt/aida/frontend
+          cd /opt/aida/backend
+          if [ ! -x .venv/bin/python ]; then
+            python3 -m venv .venv
+          fi
+          .venv/bin/python -m pip install -q -r requirements.txt
+          systemctl restart aida-backend
+          systemctl reload nginx
+          sleep 2
+          systemctl is-active --quiet aida-backend
+          curl --fail --silent http://127.0.0.1:8000/api/ | grep -q '"status":"ok"'
+          curl --fail --silent --head http://127.0.0.1/ >/dev/null
+          EOF
+
+      - name: Deployment summary
+        run: echo 'RU VDS deployment and smoke checks passed.'
