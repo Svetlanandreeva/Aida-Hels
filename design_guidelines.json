@@ -1,0 +1,158 @@
+{
+  "app_name": "Aida",
+  "personality": "8 Hand-Drawn / Journal LIGHT",
+  "personality_one_liner": "A warm, humanizing, and medically trustworthy health companion that feels like a personal care journal.",
+  "color": {
+    "surface": "#FAFAEB",
+    "onSurface": "#3B3D36",
+    "surfaceSecondary": "#F2F0DF",
+    "onSurfaceSecondary": "#56594C",
+    "surfaceTertiary": "#E8E5D1",
+    "onSurfaceTertiary": "#56594C",
+    "surfaceInverse": "#3B3D36",
+    "onSurfaceInverse": "#FAFAEB",
+    "brand": "#7D937A",
+    "brandPrimary": "#7D937A",
+    "onBrandPrimary": "#FAFAEB",
+    "brandSecondary": "#B1A78B",
+    "onBrandSecondary": "#3B3D36",
+    "brandTertiary": "#D9E0D2",
+    "onBrandTertiary": "#3B3D36",
+    "success": "#7D937A",
+    "onSuccess": "#FAFAEB",
+    "warning": "#D19E61",
+    "onWarning": "#FAFAEB",
+    "error": "#B86F63",
+    "onError": "#FAFAEB",
+    "info": "#A1ADB8",
+    "onInfo": "#FAFAEB",
+    "border": "#E8E5D1",
+    "borderStrong": "#B1A78B",
+    "divider": "#E8E5D1"
+  },
+  "typography": {
+    "displayFontFamily": "Fraunces",
+    "textFontFamily": "DM Sans",
+    "scale": {
+      "sm": 12,
+      "base": 14,
+      "lg": 16,
+      "xl": 20,
+      "2xl": 24
+    }
+  },
+  "spacing": {
+    "rule": "Generous rhythm with irregular rounded shapes to feel human and tactile. Cards never flush to screen edges.",
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "2xl": 32,
+    "3xl": 48
+  },
+  "radius_tokens": {
+    "sm": 6,
+    "md": 12,
+    "lg": 20,
+    "pill": 999
+  },
+  "shadow_tier": "0",
+  "navigation": "bottom_tabs",
+  "icon_set": "Phosphor",
+  "glassmorphism": {
+    "enabled": "false",
+    "do's": [
+      "Use solid surfaceSecondary with slight tinting for elevation instead of blur, matching the organic journal aesthetic."
+    ],
+    "dont's": [
+      "No harsh glass or frosted blurs that feel too digital or futuristic."
+    ]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "expo-glass-effect",
+      "android": "expo-blur",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "expo-blur",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler"
+  },
+  "screens": [
+    {
+      "name": "Home (Puzzle)",
+      "purpose": "A modular dashboard showcasing the Aida companion, analytics readiness, and customizable health widgets.",
+      "states": {
+        "loading": "Centered soft pulsing tamagotchi silhouette.",
+        "empty": "Warm watercolor landscape with a prompt to add the first health widget.",
+        "error": "Muted terracotta banner indicating data sync issue."
+      },
+      "layout": "Top edge: Language toggle (RU/EN) and Profile Switcher (My Profile / Child / Relative) with avatar photo. Below: Analytics readiness progress bar (soft pill). Core area: Grid of customizable 'Puzzle' widgets (Next Medication, Recent Symptom, Aida companion). Each widget is a soft card (surfaceSecondary). Sticky primary action: 'Log new data' at the bottom."
+    },
+    {
+      "name": "Health Timeline",
+      "purpose": "Chronological view of lab results, symptoms, and medical events.",
+      "states": {
+        "loading": "Skeleton lines with rounded edges simulating paper logs.",
+        "empty": "Illustration of a warm desk with papers, prompting to upload the first lab test.",
+        "error": "Soft error message with 'Retry' button."
+      },
+      "layout": "Vertical timeline. Each entry is a modular card. Lab results use an accordion pattern: high-level summary visible, tapping reveals detailed biomarkers. Use signal colors (warning/error) only for out-of-range biomarkers. Floating Action Button (FAB) at bottom right to add/upload new lab results."
+    },
+    {
+      "name": "Aida Chat",
+      "purpose": "Conversational AI assistant for health explanations and symptom logging.",
+      "states": {
+        "loading": "Aida avatar bouncing softly.",
+        "empty": "Greeting from Aida in a large soft chat bubble, suggesting conversation starters.",
+        "error": "Failed to send message, tap to retry."
+      },
+      "layout": "Journal-like chat interface. User messages on the right (surfaceSecondary), Aida's messages on the left (brandTertiary). Input field at the bottom is a soft pill shape without a heavy border. No robotic/futuristic elements; feels like a medical journal entry."
+    },
+    {
+      "name": "Profile",
+      "purpose": "Personal health card, family management, and doctor report generation.",
+      "states": {
+        "loading": "Spinner centered.",
+        "empty": "No medical history added.",
+        "error": "Failed to load profile details."
+      },
+      "layout": "Cover image with a soft gradient-to-dark scrim. Avatar overlapping the bottom edge of the cover. List of sections (Allergies, Chronic Conditions, Settings). Sticky primary CTA at bottom: 'Generate Doctor Report' in brandPrimary."
+    }
+  ],
+  "images": {
+    "companion_abstract": {
+      "url": "https://images.unsplash.com/photo-1622547748225-3fc4abd2cca0?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODF8MHwxfHNlYXJjaHwxfHxhYnN0cmFjdCUyMHNvZnQlMjAzZCUyMHNoYXBlcyUyMHdhcm18ZW58MHx8fHwxNzg0ODMwMjc2fDA&ixlib=rb-4.1.0&q=85",
+      "alt": "Soft abstract companion 3D shape representing Aida"
+    },
+    "family_avatar_child": {
+      "url": "https://images.unsplash.com/photo-1740252117044-2af197eea287?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1MDZ8MHwxfHNlYXJjaHwxfHxzbWlsaW5nJTIwcGFyZW50JTIwYXZhdGFyJTIwcG9ydHJhaXR8ZW58MHx8fHwxNzgyMzE4MjM5fDA&ixlib=rb-4.1.0&q=85",
+      "alt": "Avatar of child profile"
+    },
+    "family_avatar_parent": {
+      "url": "https://images.unsplash.com/photo-1740252117070-7aa2955b25f8?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1MDZ8MHwxfHNlYXJjaHwyfHxzbWlsaW5nJTIwcGFyZW50JTIwYXZhdGFyJTIwcG9ydHJhaXR8ZW58MHx8fHwxNzgyMzE4MjM5fDA&ixlib=rb-4.1.0&q=85",
+      "alt": "Avatar of parent profile"
+    },
+    "empty_state_landscape": {
+      "url": "https://images.unsplash.com/photo-1737040455054-f83c122176ef",
+      "alt": "Abstract warm watercolor landscape for empty states"
+    },
+    "empty_state_lab_desk": {
+      "url": "https://images.unsplash.com/photo-1706366490101-a7a078c4c98a?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA0MTJ8MHwxfHNlYXJjaHwxfHxtZWRpY2FsJTIwbGFib3JhdG9yeSUyMHRlc3RzJTIwcGFwZXJzJTIwd2FybSUyMGRlc2t8ZW58MHx8fHwxNzg2NzEyMDYxfDA&ixlib=rb-4.1.0&q=85",
+      "alt": "Warm medical desk for lab tests empty state"
+    }
+  },
+  "instructions_to_main_agent": [
+    "Strictly follow the 8 Hand-Drawn / Journal LIGHT personality. Avoid any blue, purple, or indigo colors as they invoke generic AI vibes.",
+    "Use DM Sans for readable medical data, paired with Fraunces for editorial, warm, trusting headings.",
+    "The Home 'Puzzle' dashboard must be modular. Implement customizable widgets for different health aspects.",
+    "Lab Timeline must treat data cleanly: use accordion lists to hide complex technical biomarkers, revealing them only on tap.",
+    "Out-of-range biomarkers should use the warning (Ochre) or error (Terracotta) colors gently, while normal metrics stay neutral.",
+    "Implement a sticky 'Generate Doctor Report' CTA on the Profile screen, respecting safe areas.",
+    "Ensure Language Toggle (RU/EN) and Profile Switcher are prominently placed at the top of the Home layout.",
+    "Use Phosphor icons consistently, keeping them soft and cohesive."
+  ]
+}
