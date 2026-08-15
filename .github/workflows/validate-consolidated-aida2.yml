@@ -77,6 +77,8 @@ jobs:
 
       - name: Run authorization unit tests
         working-directory: backend
+        env:
+          PYTHONPATH: .
         run: pytest -q security_tests/test_access_control.py
 
       - name: Verify iOS source exists
