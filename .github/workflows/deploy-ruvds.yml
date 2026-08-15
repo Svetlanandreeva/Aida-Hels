@@ -10,6 +10,10 @@ concurrency:
   group: deploy-ruvds-production
   cancel-in-progress: false
 
+env:
+  RUVDS_HOST: 170.168.1.118
+  RUVDS_USER: aida
+
 jobs:
   build-and-deploy:
     if: >-
@@ -54,7 +58,6 @@ jobs:
           raw = os.environ['RUVDS_SSH_KEY'].strip()
           key = raw.replace('\\n', '\n').replace('\r\n', '\n').replace('\r', '\n').strip()
 
-          # Accept a base64-encoded complete private key as a safe single-line secret.
           if '-----BEGIN ' not in key:
               try:
                   decoded = base64.b64decode(key, validate=True).decode('utf-8').strip()
@@ -63,8 +66,6 @@ jobs:
               except Exception:
                   pass
 
-          # Recover keys pasted into GitHub as one line with whitespace in the
-          # base64 body while preserving the BEGIN/END markers.
           match = re.search(
               r'(-----BEGIN [^-]+-----)(.*?)(-----END [^-]+-----)',
               key,
@@ -80,7 +81,12 @@ jobs:
           PY
           chmod 600 ~/.ssh/ruvds
           ssh-keygen -y -f ~/.ssh/ruvds >/dev/null || (echo 'RUVDS_SSH_KEY is not a valid private key after normalization' && exit 1)
-          ssh-keyscan -H 170.168.1.118 >> ~/.ssh/known_hosts
+          ssh-keyscan -H "$RUVDS_HOST" >> ~/.ssh/known_hosts
+
+      - name: Verify deploy user access
+        run: |
+          ssh -i ~/.ssh/ruvds -o IdentitiesOnly=yes "$RUVDS_USER@$RUVDS_HOST" \
+            'test -w /opt/aida/backend && test -w /opt/aida/frontend'
 
       - name: Upload application sources
         run: |
@@ -90,30 +96,48 @@ jobs:
             --exclude 'node_modules' \
             --exclude '.git' \
             -e 'ssh -i ~/.ssh/ruvds -o IdentitiesOnly=yes' \
-            backend/ root@170.168.1.118:/opt/aida/backend/
+            backend/ "$RUVDS_USER@$RUVDS_HOST:/opt/aida/backend/"
 
           rsync -az --delete \
             --exclude 'node_modules' \
             -e 'ssh -i ~/.ssh/ruvds -o IdentitiesOnly=yes' \
-            frontend/ root@170.168.1.118:/opt/aida/frontend/
+            frontend/ "$RUVDS_USER@$RUVDS_HOST:/opt/aida/frontend/"
 
       - name: Restart backend and verify production
         run: |
-          ssh -i ~/.ssh/ruvds -o IdentitiesOnly=yes root@170.168.1.118 <<'EOF'
+          ssh -i ~/.ssh/ruvds -o IdentitiesOnly=yes "$RUVDS_USER@$RUVDS_HOST" <<'EOF'
           set -euo pipefail
-          chown -R aida:aida /opt/aida/backend /opt/aida/frontend
           cd /opt/aida/backend
           if [ ! -x .venv/bin/python ]; then
             python3 -m venv .venv
           fi
           .venv/bin/python -m pip install -q -r requirements.txt
-          systemctl restart aida-backend
-          systemctl reload nginx
-          sleep 2
-          systemctl is-active --quiet aida-backend
-          curl --fail --silent http://127.0.0.1:8000/api/ | grep -q '"status":"ok"'
+
+          if sudo -n /usr/bin/systemctl restart aida-backend 2>/dev/null; then
+            echo 'Restarted aida-backend via restricted sudo.'
+          else
+            pid="$(pgrep -u "$(id -u)" -f 'uvicorn main:app' | head -n 1 || true)"
+            if [ -z "$pid" ]; then
+              echo 'Cannot restart aida-backend: no passwordless systemctl permission and no running aida-owned uvicorn process.'
+              exit 1
+            fi
+            kill -TERM "$pid"
+            echo 'Stopped the aida-owned backend process; systemd Restart=always should bring it back.'
+          fi
+
+          for attempt in 1 2 3 4 5 6; do
+            sleep 2
+            if curl --fail --silent http://127.0.0.1:8000/api/ | grep -q '"status":"ok"'; then
+              break
+            fi
+            if [ "$attempt" -eq 6 ]; then
+              echo 'Backend health check failed after restart.'
+              exit 1
+            fi
+          done
+
           curl --fail --silent --head http://127.0.0.1/ >/dev/null
           EOF
 
       - name: Deployment summary
-        run: echo 'Validated RU VDS deployment and smoke checks passed.'
+        run: echo 'Validated RU VDS deployment and smoke checks passed as non-root deploy user.'
