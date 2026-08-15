@@ -4,6 +4,7 @@ import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { useApp } from "@/src/store";
 import { useI18n } from "@/src/i18n";
+import { useResponsiveLayout } from "@/src/hooks/use-responsive-layout";
 import { colors, spacing, radius, fontSize, fonts } from "@/src/theme";
 import { Sheet } from "./Sheet";
 import { PrimaryButton, Chip } from "./ui";
@@ -22,6 +23,7 @@ export const avatarFor = (kind: string) => AVATARS[kind as keyof typeof AVATARS]
 export const TopBar: React.FC<{ subtitle?: string }> = ({ subtitle }) => {
   const { profiles, activeProfile, setActive, reload } = useApp();
   const { t, lang, toggleLang } = useI18n();
+  const responsive = useResponsiveLayout();
   const [open, setOpen] = useState(false);
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
@@ -47,7 +49,7 @@ export const TopBar: React.FC<{ subtitle?: string }> = ({ subtitle }) => {
 
   return (
     <>
-      <View style={styles.bar}>
+      <View style={[styles.bar, responsive.isTinyPhone && styles.barTiny]}>
         <Pressable
           testID="profile-switcher-button"
           style={styles.switcher}
@@ -55,25 +57,46 @@ export const TopBar: React.FC<{ subtitle?: string }> = ({ subtitle }) => {
         >
           <Image
             source={{ uri: avatarFor(activeProfile?.kind || "me") }}
-            style={styles.avatar}
+            style={[styles.avatar, responsive.isCompactPhone && styles.topAvatarCompact]}
             contentFit="cover"
           />
-          <View style={{ flex: 1 }}>
-            <Text style={styles.name} numberOfLines={1}>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text
+              style={[styles.name, responsive.isCompactPhone && styles.nameCompact]}
+              numberOfLines={1}
+            >
               {activeProfile?.name || t("switch_profile")}
             </Text>
             <View style={styles.kindRow}>
-              <Text style={styles.kind}>{kindLabel(activeProfile?.kind || "me")}</Text>
+              <Text
+                style={[styles.kind, responsive.isTinyPhone && styles.kindTiny]}
+                numberOfLines={1}
+              >
+                {kindLabel(activeProfile?.kind || "me")}
+              </Text>
               <Ionicons name="chevron-down" size={13} color={colors.onSurfaceSecondary} />
             </View>
           </View>
         </Pressable>
 
-        <Pressable testID="lang-toggle" style={styles.langBtn} onPress={toggleLang}>
-          <Text style={styles.langText}>{lang === "ru" ? "RU" : "EN"}</Text>
+        <Pressable
+          testID="lang-toggle"
+          style={[styles.langBtn, responsive.isCompactPhone && styles.langBtnCompact]}
+          onPress={toggleLang}
+        >
+          <Text style={[styles.langText, responsive.isCompactPhone && styles.langTextCompact]}>
+            {lang === "ru" ? "RU" : "EN"}
+          </Text>
         </Pressable>
       </View>
-      {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
+      {subtitle ? (
+        <Text
+          style={[styles.subtitle, responsive.isCompactPhone && styles.subtitleCompact]}
+          numberOfLines={2}
+        >
+          {subtitle}
+        </Text>
+      ) : null}
 
       <Sheet visible={open} onClose={() => setOpen(false)} testID="profile-sheet" scroll>
         <Text style={styles.sheetTitle}>{t("switch_profile")}</Text>
@@ -90,9 +113,9 @@ export const TopBar: React.FC<{ subtitle?: string }> = ({ subtitle }) => {
               }}
             >
               <Image source={{ uri: avatarFor(p.kind) }} style={styles.avatar} contentFit="cover" />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.rowName}>{p.name}</Text>
-                <Text style={styles.kind}>{kindLabel(p.kind)}</Text>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.rowName} numberOfLines={1}>{p.name}</Text>
+                <Text style={styles.kind} numberOfLines={1}>{kindLabel(p.kind)}</Text>
               </View>
               {isActive && <Ionicons name="checkmark-circle" size={22} color={colors.brand} />}
             </Pressable>
@@ -133,16 +156,21 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: spacing.md,
   },
+  barTiny: { gap: spacing.sm },
   switcher: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.md,
     flex: 1,
+    minWidth: 0,
   },
   avatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.surfaceTertiary },
+  topAvatarCompact: { width: 38, height: 38, borderRadius: 19 },
   name: { fontSize: fontSize.lg, fontWeight: "700", color: colors.onSurface, fontFamily: fonts.text },
-  kindRow: { flexDirection: "row", alignItems: "center", gap: 3 },
+  nameCompact: { fontSize: fontSize.base },
+  kindRow: { flexDirection: "row", alignItems: "center", gap: 3, minWidth: 0 },
   kind: { fontSize: fontSize.sm, color: colors.onSurfaceSecondary, fontFamily: fonts.text },
+  kindTiny: { fontSize: 11 },
   langBtn: {
     width: 44,
     height: 44,
@@ -152,14 +180,18 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     alignItems: "center",
     justifyContent: "center",
+    flexShrink: 0,
   },
+  langBtnCompact: { width: 38, height: 38, borderRadius: 19 },
   langText: { fontSize: fontSize.base, fontWeight: "800", color: colors.brand, fontFamily: fonts.text },
+  langTextCompact: { fontSize: fontSize.sm },
   subtitle: {
     fontSize: fontSize.base,
     color: colors.onSurfaceSecondary,
     marginTop: spacing.md,
     fontFamily: fonts.text,
   },
+  subtitleCompact: { fontSize: fontSize.sm, lineHeight: 18, marginTop: spacing.sm },
   sheetTitle: {
     fontSize: fontSize.xl,
     fontWeight: "700",
@@ -197,5 +229,5 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     fontFamily: fonts.text,
   },
-  kindChips: { flexDirection: "row", gap: spacing.sm },
+  kindChips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
 });
