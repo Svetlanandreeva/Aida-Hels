@@ -1,9 +1,12 @@
 import asyncio
+from datetime import datetime, timezone
 
 import pytest
 from fastapi import HTTPException
+from pydantic import ValidationError
 
 from access_control import require_profile_access, require_record_access
+from wearables_api import SUPPORTED_PROVIDERS, WearableSample, WearableSyncRequest
 
 
 class FakeAuth:
@@ -60,3 +63,40 @@ def test_record_access_rejects_foreign_record():
             require_record_access(db, auth, {"id": "acct-1"}, "tasks", "task-2", write=True)
         )
     assert exc.value.status_code == 404
+
+
+def test_wearable_provider_contract_includes_supported_health_sources():
+    assert {
+        "apple_health",
+        "health_connect",
+        "garmin",
+        "oura",
+        "google_health",
+        "samsung_health",
+    }.issubset(SUPPORTED_PROVIDERS)
+
+
+def test_wearable_sync_request_accepts_normalized_apple_sample():
+    sample = WearableSample(
+        external_id="sample-1",
+        metric="heart_rate",
+        value=72,
+        unit="count/min",
+        start_at=datetime.now(timezone.utc),
+    )
+    request = WearableSyncRequest(
+        profile_id="profile-1",
+        provider="apple_health",
+        samples=[sample],
+    )
+    assert request.provider == "apple_health"
+    assert request.samples[0].metric == "heart_rate"
+
+
+def test_wearable_sync_request_rejects_unknown_provider():
+    with pytest.raises(ValidationError):
+        WearableSyncRequest(
+            profile_id="profile-1",
+            provider="mystery_watch",
+            samples=[],
+        )
