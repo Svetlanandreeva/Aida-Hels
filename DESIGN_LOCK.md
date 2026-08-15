@@ -22,3 +22,17 @@ The approved Home/Puzzle layout is the compact dashboard version with:
 6. existing bottom navigation (“Пазл / Здоровье / Аида / Задачи / Профиль”).
 
 Do not replace this with a large editorial hero, oversized health ring, alternate navigation, or a different visual system unless the user explicitly requests it.
+
+## Approved responsive-navigation exception — 16.08.2026
+
+The user explicitly approved refinement of the navigation shell and responsive behavior across device sizes.
+
+Allowed without further redesign approval:
+- polish the desktop left sidebar while preserving the same five destinations and icon language;
+- adapt sidebar width, item sizing and spacing to desktop viewport width;
+- adapt the existing mobile bottom navigation to narrow phones, regular phones and tablets;
+- hide mobile tab labels only on extremely narrow screens when required to prevent clipping;
+- respect device safe areas, orientation changes and small-screen text constraints;
+- make profile/header controls compact when necessary for narrow devices.
+
+This exception does **not** authorize rebuilding screen cards, gradients, content hierarchy, typography system or product flows. Those remain locked unless separately approved.
