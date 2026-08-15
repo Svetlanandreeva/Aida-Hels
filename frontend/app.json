@@ -11,9 +11,13 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.emergent.lifehealthhub.b7m5uj",
+      "entitlements": {
+        "com.apple.developer.healthkit": true
+      },
       "infoPlist": {
         "NSCameraUsageDescription": "Scan lab reports to track your results",
-        "NSPhotoLibraryUsageDescription": "Upload lab report photos to your timeline"
+        "NSPhotoLibraryUsageDescription": "Upload lab report photos to your timeline",
+        "NSHealthShareUsageDescription": "Aida reads the health data you choose to share so it can show trends, recovery signals, and daily health summaries."
       }
     },
     "android": {
