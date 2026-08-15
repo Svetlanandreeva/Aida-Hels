@@ -11,9 +11,14 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.emergent.lifehealthhub.b7m5uj",
+      "entitlements": {
+        "com.apple.developer.healthkit": true
+      },
       "infoPlist": {
         "NSCameraUsageDescription": "Scan lab reports to track your results",
-        "NSPhotoLibraryUsageDescription": "Upload lab report photos to your timeline"
+        "NSPhotoLibraryUsageDescription": "Upload lab report photos to your timeline",
+        "NSHealthShareUsageDescription": "Aida reads health and activity data from Apple Health to build your health timeline and personalized insights.",
+        "NSHealthUpdateUsageDescription": "Aida may write user-approved health data to Apple Health when you enable that feature."
       }
     },
     "android": {
