@@ -96,6 +96,14 @@ def build_profile_router(db, auth) -> APIRouter:
             # Do not distinguish missing from inaccessible profiles.
             raise HTTPException(404, "Profile not found")
 
+    async def require_owner(account_id: str, profile_id: str):
+        grant = await db.access_grants.find_one(
+            {"account_id": account_id, "profile_id": profile_id}, {"_id": 0}
+        )
+        if not grant or grant.get("revoked_at") or str(grant.get("role") or "") != "owner":
+            # Keep the same response as inaccessible profiles.
+            raise HTTPException(404, "Profile not found")
+
     @router.get("", response_model=List[ProfileFull])
     async def list_profiles(account: Dict[str, Any] = Depends(auth.require_account)):
         grants = await db.access_grants.find({"account_id": account["id"]}, {"_id": 0}).to_list(500)
@@ -153,7 +161,7 @@ def build_profile_router(db, auth) -> APIRouter:
 
     @router.delete("/{profile_id}")
     async def delete_profile(profile_id: str, account: Dict[str, Any] = Depends(auth.require_account)):
-        await require_access(str(account["id"]), profile_id, write=True)
+        await require_owner(str(account["id"]), profile_id)
         await db.profiles.delete_one({"id": profile_id})
         for collection in (
             db.labs,
