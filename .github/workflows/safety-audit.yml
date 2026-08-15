@@ -6,28 +6,94 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   safety-audit:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node
+      - name: Ensure only canonical production app remains at repository root
+        run: |
+          set -euo pipefail
+          test -d frontend
+          test -d backend
+          test -d ios
+          for legacy_path in \
+            src \
+            public \
+            server \
+            scripts \
+            tests \
+            index.html \
+            package.json \
+            server.ts \
+            tsconfig.json \
+            vite.config.ts \
+            Dockerfile \
+            bun.lock; do
+            if [ -e "$legacy_path" ]; then
+              echo "Legacy root application path must stay archived: $legacy_path"
+              exit 1
+            fi
+          done
+
+      - name: Set up Node 20
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: '20.19.5'
 
-      - name: Install dependencies
-        run: npm install --no-audit --no-fund
+      - name: Enable Yarn
+        run: |
+          corepack enable
+          corepack prepare yarn@1.22.22 --activate
 
-      - name: Production safety audit on repository source
-        run: npm run audit:safety
+      - name: Install canonical frontend dependencies
+        working-directory: frontend
+        run: yarn install --frozen-lockfile
 
-      - name: TypeScript check
-        run: npm run lint
+      - name: Lint canonical frontend
+        working-directory: frontend
+        run: yarn lint
 
-      - name: Production build check
+      - name: Type-check canonical frontend
+        working-directory: frontend
+        run: npx tsc --noEmit
+
+      - name: Build canonical web frontend
+        working-directory: frontend
+        run: npx expo export -p web
+
+      - name: Verify canonical web output
+        run: |
+          test -f frontend/dist/index.html
+          test -d frontend/dist/_expo
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: python -m pip install -r requirements.txt
+
+      - name: Compile backend
+        run: python -m compileall -q backend
+
+      - name: Import production backend
+        working-directory: backend
         env:
-          JWT_SECRET: ci-safety-audit-only-secret-not-for-production
-        run: npm run build
+          PYTHONPATH: .
+        run: python -c "import main; assert main.app is not None"
+
+      - name: Run authorization safety tests
+        working-directory: backend
+        env:
+          PYTHONPATH: .
+        run: pytest -q security_tests/test_access_control.py
