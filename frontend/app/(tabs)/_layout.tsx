@@ -16,7 +16,7 @@ export default function TabsLayout() {
   const compact = width < 390;
   const safeBottom = isWeb ? 0 : Math.max(insets.bottom, 8);
   const baseHeight = compact ? 62 : 66;
-  const iconSize = isDesktop ? 22 : compact ? 21 : 23;
+  const iconSize = isDesktop ? 20 : compact ? 21 : 23;
 
   return (
     <Tabs
@@ -24,7 +24,7 @@ export default function TabsLayout() {
         headerShown: false,
         tabBarPosition: isDesktop ? "left" : "bottom",
         tabBarLabelPosition: isDesktop ? "beside-icon" : "below-icon",
-        tabBarActiveTintColor: isDesktop ? colors.brand : colors.onSurface,
+        tabBarActiveTintColor: isDesktop ? colors.onSurface : colors.onSurface,
         tabBarInactiveTintColor: colors.onSurfaceSecondary,
         tabBarActiveBackgroundColor: isDesktop ? colors.brandTertiary : undefined,
         tabBarHideOnKeyboard: true,
@@ -32,20 +32,20 @@ export default function TabsLayout() {
           ? {
               backgroundColor: colors.surface,
               width: "100%",
-              maxWidth: 1440,
+              maxWidth: 1360,
               alignSelf: "center",
             }
           : { backgroundColor: colors.surface },
         tabBarStyle: isDesktop
           ? {
-              width: 236,
+              width: 196,
               backgroundColor: colors.surfaceSecondary,
               borderRightColor: colors.border,
               borderRightWidth: 1,
               borderTopWidth: 0,
-              paddingTop: 28,
-              paddingBottom: 28,
-              paddingHorizontal: 12,
+              paddingTop: 18,
+              paddingBottom: 18,
+              paddingHorizontal: 8,
             }
           : {
               backgroundColor: colors.surfaceSecondary,
@@ -57,10 +57,12 @@ export default function TabsLayout() {
             },
         tabBarItemStyle: isDesktop
           ? {
-              minHeight: 52,
-              borderRadius: 14,
-              marginVertical: 4,
-              paddingHorizontal: 14,
+              flex: 0,
+              height: 44,
+              minHeight: 44,
+              borderRadius: 12,
+              marginVertical: 2,
+              paddingHorizontal: 10,
             }
           : {
               minWidth: 0,
@@ -70,7 +72,7 @@ export default function TabsLayout() {
             },
         tabBarIconStyle: isDesktop
           ? {
-              width: 30,
+              width: 24,
               marginHorizontal: 0,
             }
           : {
@@ -78,11 +80,11 @@ export default function TabsLayout() {
             },
         tabBarLabelStyle: isDesktop
           ? {
-              fontSize: 14,
-              lineHeight: 18,
-              fontWeight: "700",
+              fontSize: 13,
+              lineHeight: 17,
+              fontWeight: "600",
               fontFamily: fonts.text,
-              marginLeft: 8,
+              marginLeft: 6,
               textAlign: "left",
             }
           : {

@@ -1,35 +1,18 @@
 // Icon font loader for Expo apps.
 //
-// Expo Go on Android still uses CDN-hosted fonts because Metro can return
-// zero-byte vector-icon assets in StoreClient. Web, however, must explicitly
-// load the bundled icon font files before the app renders; otherwise glyphs
-// fall back to empty squares. Native dev/prod builds keep using autolinking.
+// Expo Go on Android and the static web build both load the vector-icon fonts
+// from the pinned CDN. This avoids a production-web issue where the bundled
+// .ttf files are exported but the browser still renders missing-glyph squares.
+// Native dev/prod builds keep using autolinking.
 // ICON_VECTOR_VERSION must match @expo/vector-icons in package.json.
 
 import Constants, { ExecutionEnvironment } from "expo-constants";
 import { useFonts } from "expo-font";
 import { Platform } from "react-native";
-import {
-  AntDesign,
-  Entypo,
-  EvilIcons,
-  Feather,
-  FontAwesome,
-  FontAwesome5,
-  FontAwesome6,
-  Fontisto,
-  Foundation,
-  Ionicons,
-  MaterialCommunityIcons,
-  MaterialIcons,
-  Octicons,
-  SimpleLineIcons,
-  Zocial,
-} from "@expo/vector-icons";
 
 const ICON_VECTOR_VERSION = "15.1.1";
 
-// short internal fontName (what the library queries) -> CDN .ttf file name
+// Internal font-family name -> CDN .ttf file name.
 const ICON_FAMILIES: Record<string, string> = {
   anticon: "AntDesign",
   entypo: "Entypo",
@@ -57,36 +40,13 @@ const cdnUrl = (file: string): string =>
 
 const cdnIconFontMap = (): Record<string, string> =>
   Object.fromEntries(
-    Object.entries(ICON_FAMILIES).map(([key, file]) => [key, cdnUrl(file)]),
+    Object.entries(ICON_FAMILIES).map(([family, file]) => [family, cdnUrl(file)]),
   );
 
-// On web use the package-bundled assets. This keeps icons available even when
-// a CDN is blocked and, crucially, makes expo-font wait for them before render.
-const bundledWebFonts = {
-  ...AntDesign.font,
-  ...Entypo.font,
-  ...EvilIcons.font,
-  ...Feather.font,
-  ...FontAwesome.font,
-  ...FontAwesome5.font,
-  ...FontAwesome6.font,
-  ...Fontisto.font,
-  ...Foundation.font,
-  ...Ionicons.font,
-  ...MaterialCommunityIcons.font,
-  ...MaterialIcons.font,
-  ...Octicons.font,
-  ...SimpleLineIcons.font,
-  ...Zocial.font,
-};
-
 export const useIconFonts = (): readonly [boolean, Error | null] => {
-  const sources =
-    Platform.OS === "web"
-      ? bundledWebFonts
-      : Constants.executionEnvironment === ExecutionEnvironment.StoreClient
-        ? cdnIconFontMap()
-        : {};
+  const shouldLoadFromCdn =
+    Platform.OS === "web" ||
+    Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
 
-  return useFonts(sources);
+  return useFonts(shouldLoadFromCdn ? cdnIconFontMap() : {});
 };
