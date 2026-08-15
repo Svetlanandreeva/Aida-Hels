@@ -1,13 +1,4 @@
-"""Medical-document upload pipeline.
-
-Flow:
-1. Persist the original PDF/photo in Google Drive.
-2. Register file metadata in the Google Sheets `files` tab.
-3. Run OCR/LLM extraction.
-4. Persist only valid extracted lab data as an unverified record.
-
-The pipeline never fabricates an empty lab record when OCR fails.
-"""
+"""Authorized medical-document upload and OCR pipeline for Aida 2.0."""
 
 from __future__ import annotations
 
@@ -19,10 +10,12 @@ import tempfile
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any, Dict
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from emergentintegrations.llm.chat import FileContentWithMimeType, LlmChat, UserMessage
 
+from access_control import require_profile_access
 from google_drive_storage import build_drive_storage_from_env
 from server import Biomarker, EMERGENT_LLM_KEY, GEMINI_MODEL, LabTest
 
@@ -50,7 +43,7 @@ def _extract_json(raw: str):
     return None
 
 
-def build_lab_router(db) -> APIRouter:
+def build_lab_router(db, auth) -> APIRouter:
     router = APIRouter(prefix="/api", tags=["labs"])
     drive = build_drive_storage_from_env()
 
@@ -59,7 +52,10 @@ def build_lab_router(db) -> APIRouter:
         profile_id: str = Form(...),
         language: str = Form("ru"),
         file: UploadFile = File(...),
+        account: Dict[str, Any] = Depends(auth.require_account),
     ):
+        await require_profile_access(auth, account, profile_id, write=True)
+
         if not drive:
             raise HTTPException(503, "Google Drive storage is not configured")
         if not EMERGENT_LLM_KEY:
@@ -84,7 +80,7 @@ def build_lab_router(db) -> APIRouter:
             )
         except Exception as exc:
             logging.exception("Google Drive upload failed")
-            raise HTTPException(502, f"Could not store document: {exc}")
+            raise HTTPException(502, "Could not store document") from exc
 
         file_record_id = str(uuid.uuid4())
         file_record = {
@@ -114,24 +110,20 @@ def build_lab_router(db) -> APIRouter:
                 '"lab_name":null,"biomarkers":[{"name":"...","value":"...",'
                 '"unit":"...","reference":"...","status":"normal|high|low|unknown"}],'
                 '"ai_summary":"..."}. '
-                'Не придумывай отсутствующие значения. Если показатель не читается — не добавляй его. '
+                "Не придумывай отсутствующие значения. Если показатель не читается — не добавляй его. "
                 f'Язык summary: {"русский" if language.startswith("ru") else "английский"}.'
-            )
-            system_msg = (
-                "Ты медицинский OCR-парсер. Извлекай только явно видимые данные из документа. "
-                "Не угадывай значения, нормы, даты и названия. Возвращай только валидный JSON."
             )
             chat = LlmChat(
                 api_key=EMERGENT_LLM_KEY,
                 session_id=f"lab-ocr-{uuid.uuid4()}",
-                system_message=system_msg,
+                system_message=(
+                    "Ты медицинский OCR-парсер. Извлекай только явно видимые данные из документа. "
+                    "Не угадывай значения, нормы, даты и названия. Возвращай только валидный JSON."
+                ),
             ).with_model("gemini", GEMINI_MODEL)
             attachment = FileContentWithMimeType(file_path=tmp_path, mime_type=mime)
-            response = await chat.send_message(
-                UserMessage(text=schema_hint, file_contents=[attachment])
-            )
-            raw = response if isinstance(response, str) else str(response)
-            parsed = _extract_json(raw)
+            response = await chat.send_message(UserMessage(text=schema_hint, file_contents=[attachment]))
+            parsed = _extract_json(response if isinstance(response, str) else str(response))
         except Exception:
             logging.exception("Lab OCR failed")
             parsed = None
@@ -183,11 +175,7 @@ def build_lab_router(db) -> APIRouter:
                 },
             )
 
-        date = str(parsed.get("date") or "").strip()
-        if not date:
-            # Unknown date stays unknown; do not silently substitute today's date.
-            date = "unknown"
-
+        date = str(parsed.get("date") or "").strip() or "unknown"
         lab = LabTest(
             profile_id=profile_id,
             title=str(parsed.get("title") or "Лабораторный анализ"),
@@ -207,11 +195,7 @@ def build_lab_router(db) -> APIRouter:
         await db.labs.insert_one(lab_doc)
         await db.files.update_one(
             {"id": file_record_id},
-            {"$set": {
-                "status": "recognized",
-                "lab_id": lab.id,
-                "updated_at": _now(),
-            }},
+            {"$set": {"status": "recognized", "lab_id": lab.id, "updated_at": _now()}},
         )
 
         return {
