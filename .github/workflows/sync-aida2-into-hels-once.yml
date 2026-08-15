@@ -1,0 +1,50 @@
+name: Sync Aida2 into Hels once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/sync-aida2-into-hels-once.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Aida-Hels
+        uses: actions/checkout@v4
+        with:
+          ref: migration/consolidate-aida2
+          fetch-depth: 0
+
+      - name: Clone Aida2 source
+        run: git clone --depth 1 https://github.com/Svetlanandreeva/Aida2-0-.git /tmp/aida2
+
+      - name: Copy production source folders
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf backend frontend ios
+          cp -a /tmp/aida2/backend ./backend
+          cp -a /tmp/aida2/frontend ./frontend
+          cp -a /tmp/aida2/ios ./ios
+          cp -a /tmp/aida2/design_guidelines.json ./design_guidelines.json
+          if [ -d /tmp/aida2/tests ]; then rm -rf tests && cp -a /tmp/aida2/tests ./tests; fi
+          if [ -f /tmp/aida2/test_result.md ]; then cp -a /tmp/aida2/test_result.md ./test_result.md; fi
+
+      - name: Commit synced source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add backend frontend ios design_guidelines.json tests test_result.md || true
+          if git diff --cached --quiet; then
+            echo 'No source changes to sync.'
+            exit 0
+          fi
+          git commit -m 'chore: consolidate Aida2 source into Aida-Hels'
+          git push origin HEAD:migration/consolidate-aida2
