@@ -41,8 +41,18 @@ jobs:
         run: |
           test -n "$RUVDS_SSH_KEY" || (echo 'RUVDS_SSH_KEY secret is missing' && exit 1)
           mkdir -p ~/.ssh
-          printf '%s\n' "$RUVDS_SSH_KEY" > ~/.ssh/ruvds
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          key = os.environ['RUVDS_SSH_KEY'].strip()
+          if '\\n' in key and '\n' not in key:
+              key = key.replace('\\n', '\n')
+          key = key.replace('\r\n', '\n').replace('\r', '\n')
+          Path.home().joinpath('.ssh/ruvds').write_text(key + '\n')
+          PY
           chmod 600 ~/.ssh/ruvds
+          ssh-keygen -y -f ~/.ssh/ruvds >/dev/null || (echo 'RUVDS_SSH_KEY is not a valid private key' && exit 1)
           ssh-keyscan -H 170.168.1.118 >> ~/.ssh/known_hosts
 
       - name: Upload application sources
