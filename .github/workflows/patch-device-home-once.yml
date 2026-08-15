@@ -1,0 +1,52 @@
+name: Patch Home device routing once
+
+on:
+  push:
+    branches:
+      - feature/device-health-integrations-v1
+    paths:
+      - .github/workflows/patch-device-home-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/device-health-integrations-v1
+          fetch-depth: 0
+
+      - name: Route device card to devices screen
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('frontend/app/(tabs)/index.tsx')
+          text = path.read_text()
+
+          old_destructure = 'const { openMenu, openLab, toast } = useLog();'
+          new_destructure = 'const { openMenu, openLab } = useLog();'
+          if old_destructure not in text:
+              raise SystemExit('Expected useLog destructuring not found')
+          text = text.replace(old_destructure, new_destructure, 1)
+
+          old_press = 'onPress={() => toast(lang === "ru" ? "Подключение устройств — скоро" : "Device sync — coming soon")} testID="connect-device-card"'
+          new_press = 'onPress={() => router.push("/devices" as any)} testID="connect-device-card"'
+          if old_press not in text:
+              raise SystemExit('Expected connect-device card handler not found')
+          text = text.replace(old_press, new_press, 1)
+
+          path.write_text(text)
+          PY
+
+      - name: Commit patch and remove one-shot workflow
+        run: |
+          rm .github/workflows/patch-device-home-once.yml
+          git config user.name "Svetlana Andreeva"
+          git config user.email "AnbreevaSveta@yandex.ru"
+          git add 'frontend/app/(tabs)/index.tsx' .github/workflows/patch-device-home-once.yml
+          git commit -m "Open health devices screen from Home"
+          git push origin HEAD:feature/device-health-integrations-v1
