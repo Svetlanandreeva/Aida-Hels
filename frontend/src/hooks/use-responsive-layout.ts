@@ -21,7 +21,9 @@ export const useResponsiveLayout = () => {
   const isWideDesktop = isDesktop && width >= layoutBreakpoints.wideDesktop;
 
   const contentPadding = isTinyPhone ? 10 : isCompactPhone ? 12 : isPhone ? 16 : isTablet ? 20 : 24;
-  const sidebarWidth = isWideDesktop ? 216 : 196;
+  const sidebarRailWidth = isWideDesktop ? 68 : 64;
+  const sidebarPanelWidth = isWideDesktop ? 176 : 164;
+  const sidebarWidth = sidebarRailWidth + sidebarPanelWidth;
   const showMobileLabels = width >= 360;
   const mobileTabHeight = isTinyPhone ? 58 : isCompactPhone ? 60 : 64;
 
@@ -36,6 +38,8 @@ export const useResponsiveLayout = () => {
     isDesktop,
     isWideDesktop,
     contentPadding,
+    sidebarRailWidth,
+    sidebarPanelWidth,
     sidebarWidth,
     showMobileLabels,
     mobileTabHeight,
