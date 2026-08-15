@@ -83,6 +83,9 @@ export type Medication = {
   meal_relation?: "any" | "before" | "with" | "after" | string;
   active: boolean;
   start_date?: string | null;
+  // Compatibility with older imported medication rows used by History.
+  date?: string | null;
+  created_at?: string | null;
   notes?: string | null;
 };
 
