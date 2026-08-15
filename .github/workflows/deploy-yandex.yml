@@ -2,6 +2,9 @@ name: Deploy Aida 2 to Yandex Cloud
 
 on:
   workflow_dispatch: {}
+  push:
+    branches:
+      - migration/aida2
 
 env:
   YC_REGISTRY_ID: ${{ secrets.YC_REGISTRY_ID }}
@@ -23,9 +26,43 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          encoded=$(printf '%s' "$GOOGLE_SERVICE_ACCOUNT_JSON" | base64 -w0)
-          echo "::add-mask::$encoded"
-          echo "GOOGLE_SERVICE_ACCOUNT_B64=$encoded" >> "$GITHUB_ENV"
+          python - <<'PY'
+          import base64
+          import json
+          import os
+
+          raw = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON", "").strip()
+          if not raw:
+              raise SystemExit("GOOGLE_SERVICE_ACCOUNT_JSON is empty")
+
+          def parse_json(value: str):
+              try:
+                  return json.loads(value)
+              except json.JSONDecodeError:
+                  return None
+
+          info = parse_json(raw)
+          if info is None:
+              try:
+                  decoded = base64.b64decode(raw).decode("utf-8")
+              except Exception as exc:
+                  raise SystemExit(f"Google credential is neither JSON nor base64 JSON: {exc}")
+              info = parse_json(decoded)
+
+          if not isinstance(info, dict):
+              raise SystemExit("Google credential did not decode to a JSON object")
+
+          required = ("type", "client_email", "private_key")
+          missing = [key for key in required if not info.get(key)]
+          if missing:
+              raise SystemExit("Google credential is missing required fields: " + ", ".join(missing))
+
+          normalized = json.dumps(info, separators=(",", ":"), ensure_ascii=False)
+          encoded = base64.b64encode(normalized.encode("utf-8")).decode("ascii")
+          print(f"::add-mask::{encoded}")
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as fh:
+              fh.write(f"GOOGLE_SERVICE_ACCOUNT_B64={encoded}\n")
+          PY
 
       - name: Login to Yandex Container Registry
         uses: yc-actions/yc-cr-login@v2
