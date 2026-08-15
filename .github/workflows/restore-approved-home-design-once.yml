@@ -1,0 +1,40 @@
+name: Restore approved Home design once
+
+on:
+  push:
+    branches:
+      - migration/consolidate-aida2
+    paths:
+      - '.github/workflows/restore-approved-home-design-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: migration/consolidate-aida2
+          fetch-depth: 0
+
+      - name: Restore approved Home presentation and add design lock
+        run: python3 scripts/restore_approved_home_design.py
+
+      - name: Validate frontend
+        run: |
+          cd frontend
+          corepack enable
+          corepack prepare yarn@1.22.22 --activate
+          yarn install --frozen-lockfile || yarn install
+          yarn lint
+          npx expo export -p web
+
+      - name: Commit restoration
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add 'frontend/app/(tabs)/index.tsx' DESIGN_LOCK.md
+          git commit -m 'fix: restore approved dashboard design and lock design system'
+          git push origin HEAD:migration/consolidate-aida2
