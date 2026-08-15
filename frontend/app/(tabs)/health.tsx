@@ -9,6 +9,7 @@ import { Sheet } from "@/src/components/Sheet";
 import { useLog } from "@/src/components/LogProvider";
 import { useApp } from "@/src/store";
 import { useI18n } from "@/src/i18n";
+import { useResponsiveLayout } from "@/src/hooks/use-responsive-layout";
 import { api } from "@/src/api";
 import { colors, spacing, radius, fontSize, fonts, gradients } from "@/src/theme";
 
@@ -39,6 +40,7 @@ export default function HealthHub() {
   const { activeId, activeProfile, refreshTick } = useApp();
   const { t, lang } = useI18n();
   const { openSymptom, openMed, openLab } = useLog();
+  const responsive = useResponsiveLayout();
   const [refreshing, setRefreshing] = useState(false);
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [addOpen, setAddOpen] = useState(false);
@@ -176,11 +178,11 @@ export default function HealthHub() {
 
   return (
     <View style={styles.container}>
-      <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
+      <View style={[styles.header, { paddingTop: insets.top + spacing.sm, paddingHorizontal: responsive.contentPadding }]}>
         <TopBar subtitle={t("health_modules")} />
       </View>
       <ScrollView
-        contentContainerStyle={{ padding: spacing.lg, paddingBottom: 40 + insets.bottom }}
+        contentContainerStyle={{ paddingHorizontal: responsive.contentPadding, paddingTop: spacing.lg, paddingBottom: (responsive.isDesktop ? 40 : 92) + insets.bottom }}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.onSurface} />}
       >
@@ -202,10 +204,10 @@ export default function HealthHub() {
             <Pressable
               key={m.key}
               testID={`module-${m.key}`}
-              style={styles.cell}
+              style={[styles.cell, { width: responsive.isTinyPhone ? "100%" : (responsive.isTablet || responsive.isDesktop) ? "31.6%" : "47.8%" }]}
               onPress={() => router.push(m.route as any)}
             >
-              <GradientCard gradient={m.grad} style={styles.modCard}>
+              <GradientCard gradient={m.grad} style={[styles.modCard, responsive.isCompactPhone && styles.modCardCompact]}>
                 <View style={styles.modIcon}>
                   <Ionicons name={m.icon} size={22} color={colors.onSurface} />
                 </View>
@@ -280,6 +282,7 @@ const styles = StyleSheet.create({
   grid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.md },
   cell: { width: "47.8%" },
   modCard: { minHeight: 130, justifyContent: "space-between", padding: spacing.lg },
+  modCardCompact: { minHeight: 118, padding: spacing.md },
   modIcon: {
     width: 46,
     height: 46,

@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { TopBar } from "@/src/components/TopBar";
 import { useApp } from "@/src/store";
 import { useI18n } from "@/src/i18n";
+import { useResponsiveLayout } from "@/src/hooks/use-responsive-layout";
 import { api, ChatMsg } from "@/src/api";
 import { colors, spacing, radius, fontSize, fonts } from "@/src/theme";
 
@@ -26,6 +27,7 @@ export default function ChatScreen() {
   const insets = useSafeAreaInsets();
   const { activeId, activeProfile, refreshTick } = useApp();
   const { t, lang } = useI18n();
+  const responsive = useResponsiveLayout();
 
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
@@ -97,7 +99,7 @@ export default function ChatScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
+      <View style={[styles.header, { paddingTop: insets.top + spacing.sm, paddingHorizontal: responsive.contentPadding }]}>
         <TopBar />
         <View style={styles.headerRow}>
           <Text style={styles.pageTitle}>{t("tab_chat")}</Text>
@@ -118,7 +120,7 @@ export default function ChatScreen() {
         <ScrollView
           ref={scrollRef}
           style={styles.flex}
-          contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.lg, gap: spacing.md }}
+          contentContainerStyle={{ paddingHorizontal: responsive.contentPadding, paddingTop: spacing.lg, paddingBottom: spacing.lg, gap: spacing.md }}
           onContentSizeChange={scrollDown}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
@@ -141,7 +143,7 @@ export default function ChatScreen() {
             <>
               <View style={styles.greetRow}>
                 <Image source={{ uri: AIDA_IMG }} style={styles.aidaAvatar} contentFit="cover" />
-                <View style={[styles.bubble, styles.bubbleAida, { flex: 1 }]}>
+                <View style={[styles.bubble, { maxWidth: responsive.isCompactPhone ? "86%" : responsive.isTablet ? "72%" : "78%" }, styles.bubbleAida, { flex: 1 }]}>
                   <Text style={styles.bubbleTextAida}>{t("aida_greeting")}</Text>
                 </View>
               </View>
@@ -154,7 +156,7 @@ export default function ChatScreen() {
                   {m.role === "assistant" && (
                     <Image source={{ uri: AIDA_IMG }} style={styles.aidaAvatarSm} contentFit="cover" />
                   )}
-                  <View style={[styles.bubble, m.role === "user" ? styles.bubbleUser : styles.bubbleAida]}>
+                  <View style={[styles.bubble, { maxWidth: responsive.isCompactPhone ? "86%" : responsive.isTablet ? "72%" : "78%" }, m.role === "user" ? styles.bubbleUser : styles.bubbleAida]}>
                     <Text style={m.role === "user" ? styles.bubbleTextUser : styles.bubbleTextAida}>{m.text}</Text>
                   </View>
                 </View>
@@ -163,7 +165,7 @@ export default function ChatScreen() {
               {sending && (
                 <View style={[styles.msgRow, styles.rowLeft]}>
                   <Image source={{ uri: AIDA_IMG }} style={styles.aidaAvatarSm} contentFit="cover" />
-                  <View style={[styles.bubble, styles.bubbleAida]}>
+                  <View style={[styles.bubble, { maxWidth: responsive.isCompactPhone ? "86%" : responsive.isTablet ? "72%" : "78%" }, styles.bubbleAida]}>
                     <Text style={styles.typingText}>{t("aida_thinking")}</Text>
                   </View>
                 </View>
@@ -183,7 +185,7 @@ export default function ChatScreen() {
           )}
         </ScrollView>
 
-        <View style={[styles.inputBar, { paddingBottom: insets.bottom + spacing.sm }]}>
+        <View style={[styles.inputBar, { paddingHorizontal: responsive.contentPadding, paddingBottom: insets.bottom + spacing.sm }]}>
           <Text style={styles.disclaimer}>{t("chat_disclaimer")}</Text>
           <View style={styles.inputRow}>
             <TextInput

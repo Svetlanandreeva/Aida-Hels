@@ -17,6 +17,7 @@ import { Muted, PrimaryButton, Chip } from "@/src/components/ui";
 import { Sheet } from "@/src/components/Sheet";
 import { useApp } from "@/src/store";
 import { useI18n } from "@/src/i18n";
+import { useResponsiveLayout } from "@/src/hooks/use-responsive-layout";
 import { useLog } from "@/src/components/LogProvider";
 import { api, Task } from "@/src/api";
 import { scheduleTaskReminder, cancelTaskReminder } from "@/src/notifications";
@@ -53,6 +54,7 @@ export default function TasksScreen() {
   const { activeId, refreshTick, bumpRefresh } = useApp();
   const { t, lang } = useI18n();
   const { toast } = useLog();
+  const responsive = useResponsiveLayout();
 
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
@@ -183,11 +185,11 @@ export default function TasksScreen() {
   const renderTask = (task: Task) => {
     const actionable = Boolean(task.action_route || ACTION_ROUTES[task.kind]);
     return (
-      <View key={task.id} style={styles.taskRow} testID={`task-${task.id}`}>
+      <View key={task.id} style={[styles.taskRow, responsive.isCompactPhone && styles.taskRowCompact]} testID={`task-${task.id}`}>
         <Pressable onPress={() => toggle(task.id)} hitSlop={8} testID={`toggle-task-${task.id}`}>
           <Ionicons name={task.done ? "checkmark-circle" : "ellipse-outline"} size={26} color={task.done ? colors.success : colors.onSurfaceSecondary} />
         </Pressable>
-        <View style={styles.taskIcon}>
+        <View style={[styles.taskIcon, responsive.isTinyPhone && styles.taskIconTiny]}>
           <Ionicons name={TYPE_ICON[task.kind] || TYPE_ICON.custom} size={16} color={colors.onSurface} />
         </View>
         <Pressable style={styles.taskCopy} disabled={!actionable || task.done} onPress={() => openAction(task)} testID={`open-task-${task.id}`}>
@@ -220,7 +222,7 @@ export default function TasksScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
+      <View style={[styles.header, { paddingTop: insets.top + spacing.sm, paddingHorizontal: responsive.contentPadding }]}>
         <TopBar subtitle={t("tab_tasks")} />
       </View>
 
@@ -228,11 +230,11 @@ export default function TasksScreen() {
         <View style={styles.center}><ActivityIndicator size="large" color={colors.onSurface} /></View>
       ) : (
         <ScrollView
-          contentContainerStyle={{ padding: spacing.lg, paddingBottom: 40 + insets.bottom }}
+          contentContainerStyle={{ paddingHorizontal: responsive.contentPadding, paddingTop: spacing.lg, paddingBottom: (responsive.isDesktop ? 40 : 92) + insets.bottom }}
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.onSurface} />}
         >
-          <Pressable style={styles.addCard} onPress={() => setOpen(true)} testID="add-task-button">
+          <Pressable style={[styles.addCard, responsive.isCompactPhone && styles.addCardCompact]} onPress={() => setOpen(true)} testID="add-task-button">
             <View style={styles.addIcon}><Ionicons name="add" size={24} color={colors.surfaceSecondary} /></View>
             <View style={styles.addCopy}>
               <Text style={styles.addTitle}>{t("add_task")}</Text>
@@ -306,6 +308,7 @@ const styles = StyleSheet.create({
   header: { paddingHorizontal: spacing.lg, paddingBottom: spacing.md, backgroundColor: colors.surface },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   addCard: { minHeight: 82, borderRadius: radius.xl, backgroundColor: colors.onSurface, paddingHorizontal: spacing.lg, paddingVertical: spacing.md, marginBottom: spacing.xl, flexDirection: "row", alignItems: "center", gap: spacing.md },
+  addCardCompact: { paddingHorizontal: spacing.md, gap: spacing.sm },
   addIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: "rgba(255,255,255,0.12)", alignItems: "center", justifyContent: "center" },
   addCopy: { flex: 1 },
   addTitle: { fontSize: fontSize.lg, fontWeight: "700", color: colors.surfaceSecondary, fontFamily: fonts.text },
@@ -315,7 +318,9 @@ const styles = StyleSheet.create({
   sectionLabel: { fontSize: fontSize.sm, fontWeight: "700", color: colors.onSurfaceSecondary, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: spacing.sm, fontFamily: fonts.text },
   sectionCard: { backgroundColor: colors.surfaceSecondary, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.glassBorder, paddingHorizontal: spacing.lg },
   taskRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.divider },
+  taskRowCompact: { gap: spacing.sm },
   taskIcon: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center" },
+  taskIconTiny: { width: 28, height: 28, borderRadius: 14 },
   taskCopy: { flex: 1 },
   taskTitleRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   taskTitle: { flex: 1, fontSize: fontSize.base, color: colors.onSurface, fontWeight: "500", fontFamily: fonts.text },
