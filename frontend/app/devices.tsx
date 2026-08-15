@@ -13,7 +13,11 @@ import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AidaHealthModule } from "@/modules/aida-health";
-import { deviceApi, AppleHealthStatus } from "@/src/device-api";
+import {
+  deviceApi,
+  AppleHealthStatus,
+  WearableStatusResponse,
+} from "@/src/device-api";
 import { useResponsiveLayout } from "@/src/hooks/use-responsive-layout";
 import { useApp } from "@/src/store";
 import { colors, fonts, radius, spacing } from "@/src/theme";
@@ -24,7 +28,7 @@ type Provider = {
   subtitle: string;
   icon: keyof typeof Ionicons.glyphMap;
   metrics: string[];
-  status: "ready" | "next" | "partner";
+  status: "ready" | "partner";
 };
 
 const PROVIDERS: Provider[] = [
@@ -39,10 +43,10 @@ const PROVIDERS: Provider[] = [
   {
     id: "health-connect",
     name: "Health Connect",
-    subtitle: "Android · совместимые часы и приложения",
+    subtitle: "Android · Wear OS · совместимые приложения",
     icon: "fitness-outline",
-    metrics: ["Пульс", "Сон", "Шаги", "Активность", "SpO₂"],
-    status: "next",
+    metrics: ["Пульс", "HRV", "Сон", "Шаги", "SpO₂", "VO₂ max"],
+    status: "ready",
   },
   {
     id: "samsung",
@@ -96,46 +100,54 @@ export default function DevicesScreen() {
   const responsive = useResponsiveLayout();
   const { activeId } = useApp();
   const [appleStatus, setAppleStatus] = useState<AppleHealthStatus | null>(null);
+  const [wearableStatus, setWearableStatus] = useState<WearableStatusResponse["providers"]>({});
   const [loadingStatus, setLoadingStatus] = useState(false);
-  const [connecting, setConnecting] = useState(false);
+  const [busyProvider, setBusyProvider] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   const appleNativeAvailable = useMemo(
     () => Platform.OS === "ios" && AidaHealthModule.isAvailable(),
     []
   );
+  const healthConnectNativeAvailable = useMemo(
+    () => Platform.OS === "android" && AidaHealthModule.isAvailable(),
+    []
+  );
 
-  const refreshAppleStatus = useCallback(async () => {
+  const refreshStatuses = useCallback(async () => {
     if (!activeId) return;
     setLoadingStatus(true);
-    try {
-      setAppleStatus(await deviceApi.appleHealthStatus(activeId));
-    } catch {
-      setAppleStatus(null);
-    } finally {
-      setLoadingStatus(false);
-    }
+    const [apple, wearables] = await Promise.allSettled([
+      deviceApi.appleHealthStatus(activeId),
+      deviceApi.wearableStatus(activeId),
+    ]);
+    setAppleStatus(apple.status === "fulfilled" ? apple.value : null);
+    setWearableStatus(wearables.status === "fulfilled" ? wearables.value.providers : {});
+    setLoadingStatus(false);
   }, [activeId]);
 
   useEffect(() => {
-    refreshAppleStatus();
-  }, [refreshAppleStatus]);
+    refreshStatuses();
+  }, [refreshStatuses]);
+
+  const requireProfile = () => {
+    if (activeId) return true;
+    setMessage("Сначала выберите профиль здоровья.");
+    return false;
+  };
 
   const connectAppleHealth = async () => {
-    if (!activeId) {
-      setMessage("Сначала выберите профиль здоровья.");
-      return;
-    }
+    if (!requireProfile() || !activeId) return;
     if (!appleNativeAvailable) {
       setMessage(
         Platform.OS === "web"
           ? "Apple Health подключается из установленного приложения Aida на iPhone. В браузере HealthKit недоступен."
-          : "Apple Health недоступен на этом устройстве."
+          : "Apple Health доступен только в приложении Aida на iPhone."
       );
       return;
     }
 
-    setConnecting(true);
+    setBusyProvider("apple");
     setMessage(null);
     try {
       const authorized = await AidaHealthModule.requestAuthorization();
@@ -147,30 +159,80 @@ export default function DevicesScreen() {
       const result = await deviceApi.syncAppleHealth(activeId, samples);
       setMessage(
         samples.length
-          ? `Синхронизация завершена: добавлено ${result.inserted}, уже было ${result.skipped}.`
-          : "Разрешение получено. Новых доступных данных за 7 дней пока нет."
+          ? `Apple Health: добавлено ${result.inserted}, уже было ${result.skipped}.`
+          : "Разрешение Apple Health получено. Новых данных за 7 дней пока нет."
       );
-      await refreshAppleStatus();
+      await refreshStatuses();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Не удалось синхронизировать Apple Health.");
     } finally {
-      setConnecting(false);
+      setBusyProvider(null);
     }
   };
 
   const syncAppleHealth = async () => {
-    if (!activeId || !appleNativeAvailable) return connectAppleHealth();
-    setConnecting(true);
+    if (!requireProfile() || !activeId || !appleNativeAvailable) return connectAppleHealth();
+    setBusyProvider("apple");
     setMessage(null);
     try {
       const samples = await AidaHealthModule.readRecentSamples(7);
       const result = await deviceApi.syncAppleHealth(activeId, samples);
-      setMessage(`Синхронизировано: +${result.inserted}, без дублей: ${result.skipped}.`);
-      await refreshAppleStatus();
+      setMessage(`Apple Health: +${result.inserted}, без дублей: ${result.skipped}.`);
+      await refreshStatuses();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Не удалось обновить данные.");
+      setMessage(error instanceof Error ? error.message : "Не удалось обновить Apple Health.");
     } finally {
-      setConnecting(false);
+      setBusyProvider(null);
+    }
+  };
+
+  const connectHealthConnect = async () => {
+    if (!requireProfile() || !activeId) return;
+    if (!healthConnectNativeAvailable) {
+      setMessage(
+        Platform.OS === "web"
+          ? "Health Connect подключается из установленного приложения Aida на Android."
+          : "Health Connect недоступен на этом устройстве или требует установки/обновления."
+      );
+      return;
+    }
+
+    setBusyProvider("health-connect");
+    setMessage(null);
+    try {
+      const authorized = await AidaHealthModule.requestAuthorization();
+      if (!authorized) {
+        setMessage("Доступ к Health Connect не был предоставлен полностью.");
+        return;
+      }
+      const samples = await AidaHealthModule.readRecentSamples(7);
+      const result = await deviceApi.syncWearable(activeId, "health_connect", samples);
+      setMessage(
+        samples.length
+          ? `Health Connect: добавлено ${result.inserted}, уже было ${result.skipped}.`
+          : "Разрешение Health Connect получено. Новых данных за 7 дней пока нет."
+      );
+      await refreshStatuses();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Не удалось синхронизировать Health Connect.");
+    } finally {
+      setBusyProvider(null);
+    }
+  };
+
+  const syncHealthConnect = async () => {
+    if (!requireProfile() || !activeId || !healthConnectNativeAvailable) return connectHealthConnect();
+    setBusyProvider("health-connect");
+    setMessage(null);
+    try {
+      const samples = await AidaHealthModule.readRecentSamples(7);
+      const result = await deviceApi.syncWearable(activeId, "health_connect", samples);
+      setMessage(`Health Connect: +${result.inserted}, без дублей: ${result.skipped}.`);
+      await refreshStatuses();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Не удалось обновить Health Connect.");
+    } finally {
+      setBusyProvider(null);
     }
   };
 
@@ -226,9 +288,24 @@ export default function DevicesScreen() {
         <View style={[styles.grid, responsive.width < 720 && styles.gridStack]}>
           {PROVIDERS.map((provider) => {
             const isApple = provider.id === "apple";
-            const connected = isApple && appleStatus?.connected;
-            const lastSync = isApple ? formatSyncDate(appleStatus?.last_sync_at) : null;
+            const isHealthConnect = provider.id === "health-connect";
+            const isDirectProvider = isApple || isHealthConnect;
+            const providerStatus = isHealthConnect ? wearableStatus.health_connect : null;
+            const connected = isApple ? Boolean(appleStatus?.connected) : isHealthConnect ? Boolean(providerStatus?.connected) : false;
+            const lastSync = isApple
+              ? formatSyncDate(appleStatus?.last_sync_at)
+              : isHealthConnect
+                ? formatSyncDate(providerStatus?.last_sync_at)
+                : null;
             const actionText = connected ? "Синхронизировать" : "Подключить";
+            const busy = busyProvider === provider.id;
+            const onDirectPress = isApple
+              ? connected
+                ? syncAppleHealth
+                : connectAppleHealth
+              : connected
+                ? syncHealthConnect
+                : connectHealthConnect;
 
             return (
               <View key={provider.id} style={[styles.providerCard, responsive.width >= 720 && styles.providerHalf]}>
@@ -256,23 +333,33 @@ export default function DevicesScreen() {
                   ))}
                 </View>
 
-                {isApple ? (
+                {isDirectProvider ? (
                   <>
                     {lastSync ? <Text style={styles.lastSync}>Последняя синхронизация: {lastSync}</Text> : null}
                     {Platform.OS === "web" ? (
-                      <Text style={styles.note}>Подключение выполняется в приложении Aida на iPhone.</Text>
+                      <Text style={styles.note}>
+                        {isApple
+                          ? "Apple Health подключается в приложении Aida на iPhone."
+                          : "Health Connect подключается в приложении Aida на Android."}
+                      </Text>
+                    ) : null}
+                    {isApple && Platform.OS === "android" ? (
+                      <Text style={styles.note}>Для Android используйте Health Connect.</Text>
+                    ) : null}
+                    {isHealthConnect && Platform.OS === "ios" ? (
+                      <Text style={styles.note}>Для iPhone используйте Apple Health.</Text>
                     ) : null}
                     <Pressable
                       accessibilityRole="button"
-                      disabled={connecting || loadingStatus}
-                      onPress={connected ? syncAppleHealth : connectAppleHealth}
+                      disabled={busy || loadingStatus}
+                      onPress={onDirectPress}
                       style={({ pressed }) => [
                         styles.primaryButton,
-                        (connecting || loadingStatus) && styles.disabledButton,
+                        (busy || loadingStatus) && styles.disabledButton,
                         pressed && styles.pressed,
                       ]}
                     >
-                      {connecting || loadingStatus ? (
+                      {busy || loadingStatus ? (
                         <ActivityIndicator size="small" color={colors.onSurfaceInverse} />
                       ) : (
                         <Ionicons name={connected ? "sync" : "link-outline"} size={17} color={colors.onSurfaceInverse} />
@@ -282,16 +369,8 @@ export default function DevicesScreen() {
                   </>
                 ) : (
                   <View style={styles.pendingRow}>
-                    <Ionicons
-                      name={provider.status === "next" ? "construct-outline" : "key-outline"}
-                      size={16}
-                      color={colors.onSurfaceSecondary}
-                    />
-                    <Text style={styles.pendingText}>
-                      {provider.status === "next"
-                        ? "Следующий нативный коннектор"
-                        : "Нужны OAuth / партнёрские доступы провайдера"}
-                    </Text>
+                    <Ionicons name="key-outline" size={16} color={colors.onSurfaceSecondary} />
+                    <Text style={styles.pendingText}>Нужны OAuth / партнёрские доступы провайдера</Text>
                   </View>
                 )}
               </View>
