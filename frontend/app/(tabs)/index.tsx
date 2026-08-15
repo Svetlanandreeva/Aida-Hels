@@ -136,22 +136,18 @@ export default function HomeScreen() {
     await persistWidgets(sorted.map((w, i) => ({ ...w, order: i })));
   };
 
-  const { inRange, outRange, biomarkerCount } = useMemo(() => {
+  const { inRange, outRange } = useMemo(() => {
     let inR = 0;
     let outR = 0;
-    let total = 0;
     labs.forEach((l) =>
       l.biomarkers.forEach((b) => {
-        total += 1;
         if (b.status === "high" || b.status === "low") outR += 1;
         else if (b.status === "normal") inR += 1;
       })
     );
-    return { inRange: inR, outRange: outR, biomarkerCount: total };
+    return { inRange: inR, outRange: outR };
   }, [labs]);
 
-  const hasLabData = biomarkerCount > 0;
-  const hasClinicalData = hasLabData || meds.length > 0 || symptoms.length > 0;
   const activeMed = meds.find((m) => m.active) || meds[0];
   const lastSymptom = symptoms[0];
   const lastLab = labs[0];
@@ -235,22 +231,10 @@ export default function HomeScreen() {
       <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}><TopBar subtitle={`${t("hello")}, ${activeProfile?.name || ""} · ${t("home_subtitle")}`} /></View>
       {loading ? <View style={styles.center}><ActivityIndicator size="large" color={colors.onSurface} /></View> : (
         <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 130 + insets.bottom }} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.onSurface} />}>
-          {!hasClinicalData && (
-            <GradientCard gradient={gradients.warm} style={styles.emptyHero} testID="home-empty-state">
-              <View style={styles.emptyIcon}><Ionicons name="sparkles-outline" size={22} color={colors.onSurface} /></View>
-              <Text style={styles.emptyTitle}>{lang === "ru" ? "Начнём собирать картину здоровья" : "Let’s build your health picture"}</Text>
-              <Text style={styles.emptyText}>{lang === "ru" ? "Добавьте первый анализ, измерение или запись. До этого Аида не будет показывать оценки и выводы." : "Add your first lab, measurement or health entry. Until then Aida will not show scores or conclusions."}</Text>
-              <Pressable style={styles.emptyAction} onPress={() => openLab()} testID="empty-upload-lab"><Ionicons name="cloud-upload-outline" size={18} color={colors.onSurfaceInverse} /><Text style={styles.emptyActionText}>{lang === "ru" ? "Загрузить первый анализ" : "Upload first lab"}</Text></Pressable>
-            </GradientCard>
-          )}
-
-          {hasLabData && <View style={styles.statStrip}><View style={styles.statPill}><Text style={styles.statNum}>{inRange}</Text><View style={[styles.statTag, { backgroundColor: colors.accent }]}><Text style={styles.statTagText}>{lang === "ru" ? "В норме" : "In range"}</Text></View></View><View style={styles.statPill}><Text style={styles.statNum}>{outRange}</Text><View style={[styles.statTag, { backgroundColor: "#F6D8CE" }]}><Text style={[styles.statTagText, { color: colors.error }]}>{lang === "ru" ? "Вне нормы" : "Out of range"}</Text></View></View></View>}
-
-          {readinessOn && hasClinicalData && readiness && <GradientCard gradient={gradients.warm} style={styles.hero} testID="hero-readiness"><Text style={styles.heroLabel}>{t("readiness")}</Text><Text style={styles.heroNum}>{readiness.overall}%</Text><Text style={styles.heroSub}>{t("readiness_hint")}</Text><View style={styles.heroBar}><View style={{ width: `${readiness.overall}%`, height: "100%", backgroundColor: colors.onSurface, borderRadius: 3 }} /></View></GradientCard>}
-          {aiAnalyticsOn && hasClinicalData && overview?.ai_summary ? <GradientCard gradient={gradients.lime} style={{ marginBottom: spacing.md }} testID="ai-day-card"><View style={styles.aiHead}><Ionicons name="sparkles" size={16} color={colors.onSurface} /><Text style={styles.aiHeadText}>{t("ai_day")}</Text></View><Text style={styles.aiText}>{overview.ai_summary}</Text></GradientCard> : null}
-
-          {hasClinicalData && <Card style={{ marginBottom: spacing.md }} testID="attention-card"><WidgetHeader icon="alert-circle-outline" label={t("needs_attention")} />{overview && overview.attention.length > 0 ? overview.attention.map((a, i) => <Pressable key={i} style={styles.attnRow} testID={`attention-${i}`} onPress={() => router.push((a.type === "bp" ? "/pressure" : a.type === "symptom" ? "/history" : "/labs") as any)}><View style={[styles.attnDot, { backgroundColor: a.severity === "error" ? colors.error : colors.warning }]} /><View style={{ flex: 1 }}><Text style={styles.attnTitle}>{a.title}</Text>{a.subtitle ? <Muted>{a.subtitle}</Muted> : null}</View><Ionicons name="chevron-forward" size={16} color={colors.onSurfaceSecondary} /></Pressable>) : overview ? <View style={styles.allGood}><Ionicons name="checkmark-circle" size={20} color={colors.success} /><Muted style={{ flex: 1 }}>{t("all_good")}</Muted></View> : <View style={styles.neutralState}><Ionicons name="information-circle-outline" size={20} color={colors.onSurfaceSecondary} /><Muted style={{ flex: 1 }}>{lang === "ru" ? "Вывод появится, когда Аида получит достаточно данных" : "Insights will appear when Aida has enough data"}</Muted></View>}</Card>}
-
+          <View style={styles.statStrip}><View style={styles.statPill}><Text style={styles.statNum}>{inRange}</Text><View style={[styles.statTag, { backgroundColor: colors.accent }]}><Text style={styles.statTagText}>{lang === "ru" ? "В норме" : "In range"}</Text></View></View><View style={styles.statPill}><Text style={styles.statNum}>{outRange}</Text><View style={[styles.statTag, { backgroundColor: "#F6D8CE" }]}><Text style={[styles.statTagText, { color: colors.error }]}>{lang === "ru" ? "Вне нормы" : "Out of range"}</Text></View></View></View>
+          {readinessOn && <GradientCard gradient={gradients.warm} style={styles.hero} testID="hero-readiness"><Text style={styles.heroLabel}>{t("readiness")}</Text><Text style={styles.heroNum}>{readiness?.overall ?? 0}%</Text><Text style={styles.heroSub}>{t("readiness_hint")}</Text><View style={styles.heroBar}><View style={{ width: `${readiness?.overall ?? 0}%`, height: "100%", backgroundColor: colors.onSurface, borderRadius: 3 }} /></View></GradientCard>}
+          {aiAnalyticsOn && overview?.ai_summary ? <GradientCard gradient={gradients.lime} style={{ marginBottom: spacing.md }} testID="ai-day-card"><View style={styles.aiHead}><Ionicons name="sparkles" size={16} color={colors.onSurface} /><Text style={styles.aiHeadText}>{t("ai_day")}</Text></View><Text style={styles.aiText}>{overview.ai_summary}</Text></GradientCard> : null}
+          <Card style={{ marginBottom: spacing.md }} testID="attention-card"><WidgetHeader icon="alert-circle-outline" label={t("needs_attention")} />{overview && overview.attention.length > 0 ? overview.attention.map((a, i) => <Pressable key={i} style={styles.attnRow} testID={`attention-${i}`} onPress={() => router.push((a.type === "bp" ? "/pressure" : a.type === "symptom" ? "/history" : "/labs") as any)}><View style={[styles.attnDot, { backgroundColor: a.severity === "error" ? colors.error : colors.warning }]} /><View style={{ flex: 1 }}><Text style={styles.attnTitle}>{a.title}</Text>{a.subtitle ? <Muted>{a.subtitle}</Muted> : null}</View><Ionicons name="chevron-forward" size={16} color={colors.onSurfaceSecondary} /></Pressable>) : <View style={styles.allGood}><Ionicons name="checkmark-circle" size={20} color={colors.success} /><Muted style={{ flex: 1 }}>{t("all_good")}</Muted></View>}</Card>
           <View style={styles.dualRow}><Card style={styles.dualCard} onPress={() => openLab()} testID="upload-records-card"><View style={styles.plusRow}><Ionicons name="cloud-upload-outline" size={22} color={colors.onSurface} /><View style={styles.plusBtn}><Ionicons name="add" size={18} color={colors.onSurface} /></View></View><Text style={styles.dualTitle}>{t("upload_lab")}</Text><Muted numberOfLines={1}>{labs.length > 0 ? `${labs.length} ${t("labs").toLowerCase()}` : (lang === "ru" ? "Анализов пока нет" : "No labs yet")}</Muted></Card><GradientCard gradient={gradients.pink} style={styles.dualCard} onPress={() => toast(lang === "ru" ? "Подключение устройств — скоро" : "Device sync — coming soon")} testID="connect-device-card"><View style={styles.plusRow}><Ionicons name="watch-outline" size={22} color={colors.onSurface} /><View style={styles.plusBtn}><Ionicons name="add" size={18} color={colors.onSurface} /></View></View><Text style={styles.dualTitle}>{lang === "ru" ? "Подключить устройство" : "Connect tracker"}</Text><Muted numberOfLines={1} style={{ color: "rgba(27,27,29,0.55)" }}>Apple Watch · Xiaomi</Muted></GradientCard></View>
           <View style={{ gap: spacing.md, marginTop: spacing.md }}>{rows}</View>
           <Pressable style={styles.customizeBtn} onPress={() => setCustomize(true)} testID="customize-button"><Ionicons name="options-outline" size={18} color={colors.onSurface} /><Text style={styles.customizeText}>{t("customize")}</Text></Pressable>
