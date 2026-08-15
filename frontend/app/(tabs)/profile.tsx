@@ -18,6 +18,7 @@ import { Card, Muted, PrimaryButton, Tag } from "@/src/components/ui";
 import { Sheet } from "@/src/components/Sheet";
 import { useApp } from "@/src/store";
 import { useI18n } from "@/src/i18n";
+import { useResponsiveLayout } from "@/src/hooks/use-responsive-layout";
 import { api } from "@/src/api";
 import { colors, spacing, radius, fontSize, fonts } from "@/src/theme";
 
@@ -36,6 +37,7 @@ export default function ProfileScreen() {
   const router = useRouter();
   const { activeProfile, reload, refreshTick, bumpRefresh } = useApp();
   const { t, lang, setLang } = useI18n();
+  const responsive = useResponsiveLayout();
 
   const [refreshing, setRefreshing] = useState(false);
   const [edit, setEdit] = useState(false);
@@ -115,7 +117,7 @@ export default function ProfileScreen() {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.onSurface} />}
       >
-        <View style={styles.coverWrap}>
+        <View style={[styles.coverWrap, responsive.isCompactPhone && styles.coverWrapCompact]}>
           <Image source={{ uri: COVER }} style={styles.cover} contentFit="cover" />
           <LinearGradient colors={["transparent", "rgba(27,27,29,0.35)"]} style={StyleSheet.absoluteFill as any} />
           <Pressable style={[styles.langChip, { top: insets.top + spacing.md }]} onPress={() => setLang(lang === "ru" ? "en" : "ru")} testID="profile-lang-toggle">
@@ -127,7 +129,7 @@ export default function ProfileScreen() {
           <Image source={{ uri: avatarFor(activeProfile.kind) }} style={styles.avatar} contentFit="cover" />
         </View>
 
-        <View style={styles.body}>
+        <View style={[styles.body, { paddingHorizontal: responsive.contentPadding }]}>
           <Text style={styles.name}>{activeProfile.name}</Text>
           <View style={styles.metaRow}>
             {age !== null && <Tag label={`${age} ${t("years")}`} bg={colors.surfaceSecondary} color={colors.onSurface} />}
@@ -137,10 +139,10 @@ export default function ProfileScreen() {
             )}
           </View>
 
-          <View style={styles.metricRow}>
-            <Metric label={t("height")} value={activeProfile.height_cm ? `${activeProfile.height_cm} см` : "—"} />
-            <Metric label={t("weight")} value={activeProfile.weight_kg ? `${activeProfile.weight_kg} кг` : "—"} />
-            <Metric label={t("blood_type")} value={activeProfile.blood_type || "—"} />
+          <View style={[styles.metricRow, responsive.isCompactPhone && styles.metricRowCompact]}>
+            <Metric compact={responsive.isCompactPhone} label={t("height")} value={activeProfile.height_cm ? `${activeProfile.height_cm} см` : "—"} />
+            <Metric compact={responsive.isCompactPhone} label={t("weight")} value={activeProfile.weight_kg ? `${activeProfile.weight_kg} кг` : "—"} />
+            <Metric compact={responsive.isCompactPhone} label={t("blood_type")} value={activeProfile.blood_type || "—"} />
           </View>
 
           <Pressable style={styles.medicalCardLink} onPress={() => router.push("/medical-card" as any)} testID="medical-card-link">
@@ -248,8 +250,8 @@ export default function ProfileScreen() {
   );
 }
 
-const Metric: React.FC<{ label: string; value: string }> = ({ label, value }) => (
-  <View style={styles.metric}>
+const Metric: React.FC<{ label: string; value: string; compact?: boolean }> = ({ label, value, compact }) => (
+  <View style={[styles.metric, compact && styles.metricCompact]}>
     <Text style={styles.metricValue}>{value}</Text>
     <Text style={styles.metricLabel}>{label}</Text>
   </View>
@@ -269,6 +271,7 @@ const styles = StyleSheet.create({
   emptyTitle: { marginTop: spacing.lg, fontSize: fontSize.xl, fontWeight: "800", color: colors.onSurface, fontFamily: fonts.display, textAlign: "center" },
   emptyText: { marginTop: spacing.sm, textAlign: "center", lineHeight: 20 },
   coverWrap: { height: 180 },
+  coverWrapCompact: { height: 150 },
   cover: { width: "100%", height: "100%", backgroundColor: colors.surfaceTertiary },
   langChip: {
     position: "absolute",
@@ -294,6 +297,7 @@ const styles = StyleSheet.create({
   name: { fontSize: fontSize["2xl"], fontWeight: "800", color: colors.onSurface, textAlign: "center", letterSpacing: -0.5, fontFamily: fonts.display },
   metaRow: { flexDirection: "row", gap: spacing.sm, justifyContent: "center", marginTop: spacing.sm, flexWrap: "wrap" },
   metricRow: { flexDirection: "row", gap: spacing.md, marginTop: spacing.lg },
+  metricRowCompact: { flexDirection: "column" },
   metric: {
     flex: 1,
     backgroundColor: colors.surfaceSecondary,
@@ -303,6 +307,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.glassBorder,
   },
+  metricCompact: { flex: 0, width: "100%" },
   metricValue: { fontSize: fontSize.lg, fontWeight: "800", color: colors.onSurface, fontFamily: fonts.text },
   metricLabel: { fontSize: fontSize.sm, color: colors.onSurfaceSecondary, marginTop: 2, fontFamily: fonts.text },
   medicalCardLink: { minHeight: 78, marginTop: spacing.lg, borderRadius: radius.lg, backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.glassBorder, paddingHorizontal: spacing.lg, paddingVertical: spacing.md, flexDirection: "row", alignItems: "center", gap: spacing.md },
