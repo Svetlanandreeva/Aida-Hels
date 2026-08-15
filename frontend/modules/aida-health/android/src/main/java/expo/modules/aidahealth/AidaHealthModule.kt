@@ -1,6 +1,5 @@
 package expo.modules.aidahealth
 
-import androidx.activity.result.ActivityResultLauncher
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.PermissionController
 import androidx.health.connect.client.permission.HealthPermission
@@ -17,13 +16,15 @@ import androidx.health.connect.client.records.metadata.Metadata
 import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
 import expo.modules.kotlin.Promise
+import expo.modules.kotlin.functions.Coroutine
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 
 class AidaHealthModule : Module() {
-  private lateinit var permissionLauncher: ActivityResultLauncher<Set<String>>
+  private val permissionRequestCode = 8421
+  private val permissionContract = PermissionController.createRequestPermissionResultContract()
   private var pendingPermissionPromise: Promise? = null
 
   private val readPermissions: Set<String> = setOf(
@@ -40,16 +41,6 @@ class AidaHealthModule : Module() {
 
   override fun definition() = ModuleDefinition {
     Name("AidaHealth")
-
-    RegisterActivityContracts {
-      permissionLauncher = registerForActivityResult(
-        PermissionController.createRequestPermissionResultContract()
-      ) { _, grantedPermissions ->
-        val promise = pendingPermissionPromise
-        pendingPermissionPromise = null
-        promise?.resolve(grantedPermissions.containsAll(readPermissions))
-      }
-    }
 
     Function("isAvailable") {
       val context = requireNotNull(appContext.reactContext)
@@ -74,7 +65,31 @@ class AidaHealthModule : Module() {
 
       pendingPermissionPromise = promise
       activity.runOnUiThread {
-        permissionLauncher.launch(readPermissions)
+        try {
+          val intent = permissionContract.createIntent(context, readPermissions)
+          activity.startActivityForResult(intent, permissionRequestCode)
+        } catch (error: Throwable) {
+          val pending = pendingPermissionPromise
+          pendingPermissionPromise = null
+          pending?.reject("ERR_HEALTH_CONNECT_PERMISSION", error.message ?: "Unable to request Health Connect permissions", error)
+        }
+      }
+    }
+
+    OnActivityResult { _, payload ->
+      if (payload.requestCode != permissionRequestCode) {
+        return@OnActivityResult
+      }
+
+      val pending = pendingPermissionPromise
+      pendingPermissionPromise = null
+      if (pending != null) {
+        try {
+          val grantedPermissions = permissionContract.parseResult(payload.resultCode, payload.data)
+          pending.resolve(grantedPermissions.containsAll(readPermissions))
+        } catch (error: Throwable) {
+          pending.reject("ERR_HEALTH_CONNECT_PERMISSION_RESULT", error.message ?: "Unable to read Health Connect permission result", error)
+        }
       }
     }
 
