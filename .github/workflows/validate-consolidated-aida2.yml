@@ -1,0 +1,54 @@
+name: Validate consolidated Aida2
+
+on:
+  push:
+    branches:
+      - migration/consolidate-aida2
+  workflow_dispatch: {}
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout consolidated branch
+        uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.19.5'
+
+      - name: Enable Yarn
+        run: |
+          corepack enable
+          corepack prepare yarn@1.22.22 --activate
+          yarn --version
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: yarn install
+
+      - name: Lint frontend
+        working-directory: frontend
+        run: yarn lint
+
+      - name: Build web frontend
+        working-directory: frontend
+        run: npx expo export -p web
+
+      - name: Verify web build output
+        run: |
+          test -f frontend/dist/index.html
+          test -d frontend/dist/_expo
+          echo "Frontend export is present"
+
+      - name: Compile backend Python sources
+        run: python3 -m compileall -q backend
+
+      - name: Verify iOS source exists
+        run: |
+          test -d ios
+          find ios -maxdepth 2 -type f | head -20
+
+      - name: Consolidation validation passed
+        run: echo "Aida2 consolidation branch is buildable"
