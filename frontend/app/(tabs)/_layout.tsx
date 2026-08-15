@@ -11,46 +11,88 @@ export default function TabsLayout() {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
 
-  // A normal mobile browser already shrinks its visual viewport around browser chrome.
-  // Adding an extra synthetic safe-area on web lifts the tab bar too high, so only
-  // native builds use the device safe-area inset.
   const isWeb = Platform.OS === "web";
+  const isDesktop = isWeb && width >= 1024;
   const compact = width < 390;
   const safeBottom = isWeb ? 0 : Math.max(insets.bottom, 8);
   const baseHeight = compact ? 62 : 66;
+  const iconSize = isDesktop ? 22 : compact ? 21 : 23;
 
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: colors.onSurface,
+        tabBarPosition: isDesktop ? "left" : "bottom",
+        tabBarLabelPosition: isDesktop ? "beside-icon" : "below-icon",
+        tabBarActiveTintColor: isDesktop ? colors.brand : colors.onSurface,
         tabBarInactiveTintColor: colors.onSurfaceSecondary,
+        tabBarActiveBackgroundColor: isDesktop ? colors.brandTertiary : undefined,
         tabBarHideOnKeyboard: true,
-        tabBarStyle: {
-          backgroundColor: colors.surfaceSecondary,
-          borderTopColor: colors.border,
-          borderTopWidth: 1,
-          height: baseHeight + safeBottom,
-          paddingBottom: safeBottom,
-          paddingTop: compact ? 5 : 7,
-        },
-        tabBarItemStyle: {
-          minWidth: 0,
-          paddingHorizontal: 0,
-          paddingTop: 1,
-          paddingBottom: 1,
-        },
-        tabBarIconStyle: {
-          marginTop: 0,
-        },
-        tabBarLabelStyle: {
-          fontSize: compact ? 10 : 11,
-          lineHeight: compact ? 13 : 15,
-          fontWeight: "600",
-          fontFamily: fonts.text,
-          marginTop: 1,
-          marginBottom: 0,
-        },
+        sceneStyle: isDesktop
+          ? {
+              backgroundColor: colors.surface,
+              width: "100%",
+              maxWidth: 1440,
+              alignSelf: "center",
+            }
+          : { backgroundColor: colors.surface },
+        tabBarStyle: isDesktop
+          ? {
+              width: 236,
+              backgroundColor: colors.surfaceSecondary,
+              borderRightColor: colors.border,
+              borderRightWidth: 1,
+              borderTopWidth: 0,
+              paddingTop: 28,
+              paddingBottom: 28,
+              paddingHorizontal: 12,
+            }
+          : {
+              backgroundColor: colors.surfaceSecondary,
+              borderTopColor: colors.border,
+              borderTopWidth: 1,
+              height: baseHeight + safeBottom,
+              paddingBottom: safeBottom,
+              paddingTop: compact ? 5 : 7,
+            },
+        tabBarItemStyle: isDesktop
+          ? {
+              minHeight: 52,
+              borderRadius: 14,
+              marginVertical: 4,
+              paddingHorizontal: 14,
+            }
+          : {
+              minWidth: 0,
+              paddingHorizontal: 0,
+              paddingTop: 1,
+              paddingBottom: 1,
+            },
+        tabBarIconStyle: isDesktop
+          ? {
+              width: 30,
+              marginHorizontal: 0,
+            }
+          : {
+              marginTop: 0,
+            },
+        tabBarLabelStyle: isDesktop
+          ? {
+              fontSize: 14,
+              lineHeight: 18,
+              fontWeight: "700",
+              fontFamily: fonts.text,
+              marginLeft: 8,
+              textAlign: "left",
+            }
+          : {
+              fontSize: compact ? 10 : 11,
+              lineHeight: compact ? 13 : 15,
+              fontWeight: "600",
+              fontFamily: fonts.text,
+              marginTop: 1,
+              marginBottom: 0,
+            },
       }}
     >
       <Tabs.Screen
@@ -58,7 +100,7 @@ export default function TabsLayout() {
         options={{
           title: t("tab_home"),
           tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? "grid" : "grid-outline"} size={compact ? 21 : 23} color={color} />
+            <Ionicons name={focused ? "grid" : "grid-outline"} size={iconSize} color={color} />
           ),
         }}
       />
@@ -67,7 +109,7 @@ export default function TabsLayout() {
         options={{
           title: t("tab_health"),
           tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? "heart" : "heart-outline"} size={compact ? 21 : 23} color={color} />
+            <Ionicons name={focused ? "heart" : "heart-outline"} size={iconSize} color={color} />
           ),
         }}
       />
@@ -76,7 +118,7 @@ export default function TabsLayout() {
         options={{
           title: t("tab_chat"),
           tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? "sparkles" : "sparkles-outline"} size={compact ? 21 : 23} color={color} />
+            <Ionicons name={focused ? "sparkles" : "sparkles-outline"} size={iconSize} color={color} />
           ),
         }}
       />
@@ -85,7 +127,7 @@ export default function TabsLayout() {
         options={{
           title: t("tab_tasks"),
           tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? "checkbox" : "checkbox-outline"} size={compact ? 21 : 23} color={color} />
+            <Ionicons name={focused ? "checkbox" : "checkbox-outline"} size={iconSize} color={color} />
           ),
         }}
       />
@@ -94,7 +136,7 @@ export default function TabsLayout() {
         options={{
           title: t("tab_profile"),
           tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? "person" : "person-outline"} size={compact ? 21 : 23} color={color} />
+            <Ionicons name={focused ? "person" : "person-outline"} size={iconSize} color={color} />
           ),
         }}
       />
