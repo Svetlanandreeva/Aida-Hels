@@ -84,6 +84,28 @@ def _serial(value: Any) -> Any:
     return value
 
 
+def _load_service_account(value: str) -> Dict[str, Any]:
+    raw = (value or "").strip()
+    if not raw:
+        raise RuntimeError("Google Sheets storage is not configured")
+
+    candidates = [raw]
+    try:
+        candidates.append(base64.b64decode(raw).decode("utf-8"))
+    except Exception:
+        pass
+
+    for candidate in candidates:
+        try:
+            info = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(info, dict) and info.get("client_email") and info.get("private_key"):
+            return info
+
+    raise RuntimeError("Google service account credential is invalid; expected JSON or base64-encoded JSON")
+
+
 class StandCursor:
     def __init__(self, docs: Iterable[Dict[str, Any]], projection: Optional[Dict[str, Any]] = None):
         self._docs = [_project(d, projection) for d in docs]
@@ -219,7 +241,7 @@ class StandDB:
     def __init__(self):
         if not SPREADSHEET_ID or not SERVICE_ACCOUNT_B64:
             raise RuntimeError("Google Sheets storage is not configured")
-        info = json.loads(base64.b64decode(SERVICE_ACCOUNT_B64).decode("utf-8"))
+        info = _load_service_account(SERVICE_ACCOUNT_B64)
         credentials = service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
         self.sheets = build("sheets", "v4", credentials=credentials, cache_discovery=False)
         self._collections: Dict[str, GoogleCollection] = {}
