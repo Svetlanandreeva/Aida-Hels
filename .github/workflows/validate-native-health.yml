@@ -1,0 +1,76 @@
+name: Validate native health bridges
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "frontend/app.json"
+      - "frontend/app/devices.tsx"
+      - "frontend/modules/aida-health/**"
+      - ".github/workflows/validate-native-health.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android-native:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.19.5
+          cache: yarn
+          cache-dependency-path: frontend/yarn.lock
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: yarn install --frozen-lockfile
+      - name: Generate Android project
+        working-directory: frontend
+        run: npx expo prebuild --clean --platform android --no-install
+      - name: Compile Android app with Health Connect bridge
+        working-directory: frontend/android
+        run: ./gradlew :app:assembleDebug --no-daemon
+
+  ios-native:
+    runs-on: macos-15
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.19.5
+          cache: yarn
+          cache-dependency-path: frontend/yarn.lock
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: yarn install --frozen-lockfile
+      - name: Generate iOS project
+        working-directory: frontend
+        run: npx expo prebuild --clean --platform ios --no-install
+      - name: Install CocoaPods dependencies
+        working-directory: frontend/ios
+        run: pod install
+      - name: Compile iOS app with HealthKit bridge
+        working-directory: frontend
+        shell: bash
+        run: |
+          set -euo pipefail
+          WORKSPACE="$(find ios -maxdepth 1 -name '*.xcworkspace' | head -n 1)"
+          test -n "$WORKSPACE"
+          SCHEME="$(xcodebuild -workspace "$WORKSPACE" -list -json | python3 -c 'import json,sys; data=json.load(sys.stdin); print(data["workspace"]["schemes"][0])')"
+          test -n "$SCHEME"
+          xcodebuild \
+            -workspace "$WORKSPACE" \
+            -scheme "$SCHEME" \
+            -sdk iphonesimulator \
+            -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            build
