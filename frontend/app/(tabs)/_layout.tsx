@@ -1,147 +1,43 @@
 import React from "react";
-import { Platform, useWindowDimensions } from "react-native";
 import { Tabs } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { colors, fonts } from "@/src/theme";
+import { colors } from "@/src/theme";
 import { useI18n } from "@/src/i18n";
+import { ResponsiveTabBar } from "@/src/components/ResponsiveTabBar";
+import { useResponsiveLayout } from "@/src/hooks/use-responsive-layout";
 
 export default function TabsLayout() {
   const { t } = useI18n();
-  const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
-
-  const isWeb = Platform.OS === "web";
-  const isDesktop = isWeb && width >= 1024;
-  const compact = width < 390;
-  const safeBottom = isWeb ? 0 : Math.max(insets.bottom, 8);
-  const baseHeight = compact ? 62 : 66;
-  const iconSize = isDesktop ? 20 : compact ? 21 : 23;
+  const responsive = useResponsiveLayout();
 
   return (
     <Tabs
+      tabBar={(props) => <ResponsiveTabBar {...props} />}
       screenOptions={{
         headerShown: false,
-        tabBarPosition: isDesktop ? "left" : "bottom",
-        tabBarLabelPosition: isDesktop ? "beside-icon" : "below-icon",
-        tabBarActiveTintColor: isDesktop ? colors.onSurface : colors.onSurface,
-        tabBarInactiveTintColor: colors.onSurfaceSecondary,
-        tabBarActiveBackgroundColor: isDesktop ? colors.brandTertiary : undefined,
+        tabBarPosition: responsive.isDesktop ? "left" : "bottom",
         tabBarHideOnKeyboard: true,
-        sceneStyle: isDesktop
+        sceneStyle: responsive.isDesktop
           ? {
-              backgroundColor: colors.surface,
+              flex: 1,
+              minWidth: 0,
               width: "100%",
               maxWidth: 1360,
               alignSelf: "center",
-            }
-          : { backgroundColor: colors.surface },
-        tabBarStyle: isDesktop
-          ? {
-              width: 196,
-              backgroundColor: colors.surfaceSecondary,
-              borderRightColor: colors.border,
-              borderRightWidth: 1,
-              borderTopWidth: 0,
-              paddingTop: 18,
-              paddingBottom: 18,
-              paddingHorizontal: 8,
+              backgroundColor: colors.surface,
             }
           : {
-              backgroundColor: colors.surfaceSecondary,
-              borderTopColor: colors.border,
-              borderTopWidth: 1,
-              height: baseHeight + safeBottom,
-              paddingBottom: safeBottom,
-              paddingTop: compact ? 5 : 7,
-            },
-        tabBarItemStyle: isDesktop
-          ? {
-              flex: 0,
-              height: 44,
-              minHeight: 44,
-              borderRadius: 12,
-              marginVertical: 2,
-              paddingHorizontal: 10,
-            }
-          : {
+              flex: 1,
               minWidth: 0,
-              paddingHorizontal: 0,
-              paddingTop: 1,
-              paddingBottom: 1,
-            },
-        tabBarIconStyle: isDesktop
-          ? {
-              width: 24,
-              marginHorizontal: 0,
-            }
-          : {
-              marginTop: 0,
-            },
-        tabBarLabelStyle: isDesktop
-          ? {
-              fontSize: 13,
-              lineHeight: 17,
-              fontWeight: "600",
-              fontFamily: fonts.text,
-              marginLeft: 6,
-              textAlign: "left",
-            }
-          : {
-              fontSize: compact ? 10 : 11,
-              lineHeight: compact ? 13 : 15,
-              fontWeight: "600",
-              fontFamily: fonts.text,
-              marginTop: 1,
-              marginBottom: 0,
+              width: "100%",
+              backgroundColor: colors.surface,
             },
       }}
     >
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: t("tab_home"),
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? "grid" : "grid-outline"} size={iconSize} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="health"
-        options={{
-          title: t("tab_health"),
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? "heart" : "heart-outline"} size={iconSize} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="chat"
-        options={{
-          title: t("tab_chat"),
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? "sparkles" : "sparkles-outline"} size={iconSize} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="tasks"
-        options={{
-          title: t("tab_tasks"),
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? "checkbox" : "checkbox-outline"} size={iconSize} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="profile"
-        options={{
-          title: t("tab_profile"),
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? "person" : "person-outline"} size={iconSize} color={color} />
-          ),
-        }}
-      />
+      <Tabs.Screen name="index" options={{ title: t("tab_home") }} />
+      <Tabs.Screen name="health" options={{ title: t("tab_health") }} />
+      <Tabs.Screen name="chat" options={{ title: t("tab_chat") }} />
+      <Tabs.Screen name="tasks" options={{ title: t("tab_tasks") }} />
+      <Tabs.Screen name="profile" options={{ title: t("tab_profile") }} />
     </Tabs>
   );
 }
