@@ -20,7 +20,8 @@ import { useLog } from "@/src/components/LogProvider";
 import { useApp } from "@/src/store";
 import { useI18n } from "@/src/i18n";
 import { useResponsiveLayout } from "@/src/hooks/use-responsive-layout";
-import { api, Medication, Symptom, LabTest } from "@/src/api";
+import { api, Medication, Symptom, LabTest, Task } from "@/src/api";
+import { getMedicationDay, markMedicationIntake, MedicationSlot } from "@/src/medicationScheduleApi";
 import { colors, spacing, radius, fontSize, fonts, gradients, statusColor } from "@/src/theme";
 
 const COMPANION_IMG =
@@ -45,10 +46,27 @@ const WIDGET_LABELS: Record<string, { ru: string; en: string; icon: any }> = {
   quick_note: { ru: "Быстрая заметка", en: "Quick note", icon: "create-outline" },
 };
 
+const TASK_ROUTES: Record<string, string | undefined> = {
+  medication: "/medications",
+  pressure: "/pressure",
+  diary: "/mind",
+  lab: "/labs",
+  upload: "/documents",
+  visit: "/medical-card",
+  measurement: "/measurements",
+};
+
+function localDateString(date = new Date()) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { activeId, activeProfile, refreshTick } = useApp();
+  const { activeId, activeProfile, refreshTick, bumpRefresh } = useApp();
   const { t, lang } = useI18n();
   const { openMenu, openLab } = useLog();
   const responsive = useResponsiveLayout();
@@ -60,6 +78,11 @@ export default function HomeScreen() {
   const [meds, setMeds] = useState<Medication[]>([]);
   const [symptoms, setSymptoms] = useState<Symptom[]>([]);
   const [labs, setLabs] = useState<LabTest[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [medicationSlots, setMedicationSlots] = useState<MedicationSlot[]>([]);
+  const [tasksAvailable, setTasksAvailable] = useState(false);
+  const [medScheduleAvailable, setMedScheduleAvailable] = useState(false);
+  const [actionBusy, setActionBusy] = useState<string | null>(null);
   const [widgets, setWidgets] = useState<PuzzleWidget[]>([]);
   const [overview, setOverview] = useState<{ attention: any[]; ai_summary: string | null } | null>(null);
   const [customize, setCustomize] = useState(false);
@@ -83,13 +106,18 @@ export default function HomeScreen() {
       setMeds([]);
       setSymptoms([]);
       setLabs([]);
+      setTasks([]);
+      setMedicationSlots([]);
+      setTasksAvailable(false);
+      setMedScheduleAvailable(false);
       setWidgets([]);
       setOverview(null);
       setLoading(false);
       return;
     }
 
-    const [r, g, m, s, l, p, o] = await Promise.allSettled([
+    const today = localDateString();
+    const [r, g, m, s, l, p, o, taskResult, medDayResult] = await Promise.allSettled([
       api.readiness(activeId),
       api.gamification(activeId),
       api.listMeds(activeId),
@@ -97,6 +125,8 @@ export default function HomeScreen() {
       api.listLabs(activeId),
       api.getPuzzle(activeId),
       api.overview(activeId, lang),
+      api.listTasks(activeId),
+      getMedicationDay(activeId, today),
     ]);
 
     setReadiness(r.status === "fulfilled" ? r.value : null);
@@ -106,6 +136,10 @@ export default function HomeScreen() {
     setLabs(l.status === "fulfilled" ? l.value : []);
     setWidgets(p.status === "fulfilled" ? normalizeWidgets(p.value.widgets || []) : []);
     setOverview(o.status === "fulfilled" ? o.value : null);
+    setTasks(taskResult.status === "fulfilled" ? taskResult.value : []);
+    setTasksAvailable(taskResult.status === "fulfilled");
+    setMedicationSlots(medDayResult.status === "fulfilled" ? medDayResult.value.slots || [] : []);
+    setMedScheduleAvailable(medDayResult.status === "fulfilled");
     setLoading(false);
   }, [activeId, lang]);
 
@@ -155,6 +189,16 @@ export default function HomeScreen() {
     return { inRange: inR, outRange: outR };
   }, [labs]);
 
+  const todayKey = localDateString();
+  const todayTasks = useMemo(
+    () => tasks
+      .filter((task) => !task.done && task.status !== "cancelled")
+      .filter((task) => (task.due || todayKey).slice(0, 10) <= todayKey)
+      .slice(0, 4),
+    [tasks, todayKey]
+  );
+  const todayMedicationSlots = medicationSlots.slice(0, 4);
+
   const activeMed = meds.find((m) => m.active) || null;
   const lastSymptom = symptoms[0];
   const lastLab = labs[0];
@@ -166,6 +210,41 @@ export default function HomeScreen() {
   const readinessConfig = widgets.find((w) => w.id === "readiness");
   const readinessOn = (readinessConfig?.enabled ?? true) && (readinessConfig?.show_on_home ?? true);
   const aiAnalyticsOn = widgets.some((w) => w.enabled && w.allow_ai_analytics);
+
+  const toggleTodayTask = async (task: Task) => {
+    if (actionBusy) return;
+    setActionBusy(`task-${task.id}`);
+    setTasks((prev) => prev.map((item) => item.id === task.id ? { ...item, done: true, status: "done" } : item));
+    try {
+      const updated = await api.toggleTask(task.id);
+      setTasks((prev) => prev.map((item) => item.id === task.id ? updated : item));
+      bumpRefresh();
+    } catch (_) {
+      await load();
+    } finally {
+      setActionBusy(null);
+    }
+  };
+
+  const markMedication = async (slot: MedicationSlot) => {
+    if (!activeId || slot.status !== "pending" || actionBusy) return;
+    setActionBusy(`med-${slot.id}`);
+    try {
+      await markMedicationIntake(slot.medication_id, slot.scheduled_at, "taken");
+      const day = await getMedicationDay(activeId, todayKey);
+      setMedicationSlots(day.slots || []);
+      bumpRefresh();
+    } catch (_) {
+      await load();
+    } finally {
+      setActionBusy(null);
+    }
+  };
+
+  const openTaskAction = (task: Task) => {
+    const route = task.action_route || TASK_ROUTES[task.kind];
+    if (route) router.push(route as any);
+  };
 
   const renderWidget = (id: string) => {
     switch (id) {
@@ -237,6 +316,9 @@ export default function HomeScreen() {
     } else rows.push(renderWidget(w.id));
   }
 
+  const todayHasItems = todayMedicationSlots.length > 0 || todayTasks.length > 0;
+  const todaySourcesAvailable = tasksAvailable || medScheduleAvailable;
+
   return (
     <View style={styles.container}>
       <View style={[styles.header, { paddingTop: insets.top + spacing.sm, paddingHorizontal: responsive.contentPadding }]}><TopBar subtitle={`${t("hello")}, ${activeProfile?.name || ""} · ${t("home_subtitle")}`} /></View>
@@ -246,6 +328,59 @@ export default function HomeScreen() {
           {readinessOn && <GradientCard gradient={gradients.warm} style={styles.hero} testID="hero-readiness"><Text style={styles.heroLabel}>{t("readiness")}</Text>{hasReadinessData ? <><Text style={styles.heroNum}>{readiness!.overall}%</Text><Text style={styles.heroSub}>{t("readiness_hint")}</Text><View style={styles.heroBar}><View style={{ width: `${Math.max(0, Math.min(100, readiness!.overall))}%`, height: "100%", backgroundColor: colors.onSurface, borderRadius: 3 }} /></View></> : <><Text style={styles.heroNum}>—</Text><Text style={styles.heroSub}>{t("not_enough_data")}</Text></>}</GradientCard>}
           {aiAnalyticsOn && overview?.ai_summary ? <GradientCard gradient={gradients.lime} style={{ marginBottom: spacing.md }} testID="ai-day-card"><View style={styles.aiHead}><Ionicons name="sparkles" size={16} color={colors.onSurface} /><Text style={styles.aiHeadText}>{t("ai_day")}</Text></View><Text style={styles.aiText}>{overview.ai_summary}</Text></GradientCard> : null}
           <Card style={{ marginBottom: spacing.md }} testID="attention-card"><WidgetHeader icon="alert-circle-outline" label={t("needs_attention")} />{overview?.attention?.length ? overview.attention.map((a, i) => <Pressable key={i} style={styles.attnRow} testID={`attention-${i}`} onPress={() => router.push((a.type === "bp" ? "/pressure" : a.type === "symptom" ? "/history" : "/labs") as any)}><View style={[styles.attnDot, { backgroundColor: a.severity === "error" ? colors.error : colors.warning }]} /><View style={{ flex: 1 }}><Text style={styles.attnTitle}>{a.title}</Text>{a.subtitle ? <Muted>{a.subtitle}</Muted> : null}</View><Ionicons name="chevron-forward" size={16} color={colors.onSurfaceSecondary} /></Pressable>) : hasHealthEvidence && overview ? <View style={styles.allGood}><Ionicons name="checkmark-circle" size={20} color={colors.success} /><Muted style={{ flex: 1 }}>{t("all_good")}</Muted></View> : <View style={styles.neutralState}><Ionicons name="information-circle-outline" size={20} color={colors.onSurfaceSecondary} /><Muted style={{ flex: 1 }}>{t("not_enough_data")}</Muted></View>}</Card>
+
+          <Card style={{ marginBottom: spacing.md }} testID="today-card">
+            <View style={styles.todayHeader}>
+              <WidgetHeader icon="calendar-outline" label={t("today")} />
+              <Pressable onPress={() => router.push("/(tabs)/tasks" as any)} hitSlop={8} testID="today-all-tasks">
+                <Text style={styles.todayLinkText}>{lang === "ru" ? "Все задачи" : "All tasks"}</Text>
+              </Pressable>
+            </View>
+            {!todaySourcesAvailable ? (
+              <View style={styles.neutralState}><Ionicons name="cloud-offline-outline" size={20} color={colors.onSurfaceSecondary} /><Muted style={{ flex: 1 }}>{lang === "ru" ? "Не удалось загрузить действия на сегодня" : "Today's actions could not be loaded"}</Muted></View>
+            ) : !todayHasItems ? (
+              <View style={styles.neutralState}><Ionicons name="checkmark-circle-outline" size={20} color={colors.onSurfaceSecondary} /><Muted style={{ flex: 1 }}>{lang === "ru" ? "На сегодня действий нет" : "No actions for today"}</Muted></View>
+            ) : (
+              <View>
+                {todayMedicationSlots.map((slot, index) => {
+                  const taken = slot.status === "taken";
+                  const skipped = slot.status === "skipped";
+                  const busy = actionBusy === `med-${slot.id}`;
+                  return (
+                    <View key={`med-${slot.id}`} style={[styles.todayRow, index > 0 && styles.todayDivider]} testID={`today-med-${slot.id}`}>
+                      <View style={styles.todayIcon}><Ionicons name={taken ? "checkmark" : "medkit-outline"} size={17} color={colors.onSurface} /></View>
+                      <Pressable style={styles.todayCopy} onPress={() => router.push("/medications" as any)}>
+                        <Text style={styles.todayTitle} numberOfLines={1}>{slot.name}</Text>
+                        <Text style={styles.todayMeta}>{[slot.time, slot.dose, slot.meal_relation && slot.meal_relation !== "any" ? slot.meal_relation : null].filter(Boolean).join(" · ")}</Text>
+                      </Pressable>
+                      {slot.status === "pending" ? (
+                        <Pressable style={styles.todayAction} onPress={() => markMedication(slot)} disabled={busy} testID={`today-take-${slot.id}`}>
+                          {busy ? <ActivityIndicator size="small" color={colors.onSurfaceInverse} /> : <Text style={styles.todayActionText}>{lang === "ru" ? "Принять" : "Take"}</Text>}
+                        </Pressable>
+                      ) : <Text style={styles.todayStatusText}>{taken ? (lang === "ru" ? "Принято" : "Taken") : skipped ? (lang === "ru" ? "Пропущено" : "Skipped") : slot.status}</Text>}
+                    </View>
+                  );
+                })}
+                {todayTasks.map((task, index) => {
+                  const route = task.action_route || TASK_ROUTES[task.kind];
+                  const busy = actionBusy === `task-${task.id}`;
+                  return (
+                    <View key={`task-${task.id}`} style={[styles.todayRow, (todayMedicationSlots.length > 0 || index > 0) && styles.todayDivider]} testID={`today-task-${task.id}`}>
+                      <Pressable style={styles.todayIcon} onPress={() => toggleTodayTask(task)} disabled={busy} testID={`today-toggle-${task.id}`}>
+                        {busy ? <ActivityIndicator size="small" color={colors.onSurfaceSecondary} /> : <Ionicons name="ellipse-outline" size={19} color={colors.onSurfaceSecondary} />}
+                      </Pressable>
+                      <Pressable style={styles.todayCopy} disabled={!route} onPress={() => openTaskAction(task)}>
+                        <Text style={styles.todayTitle} numberOfLines={2}>{task.title}</Text>
+                        <Text style={styles.todayMeta}>{[task.due?.slice(0, 10), task.reminder_at?.slice(11, 16)].filter(Boolean).join(" · ") || (lang === "ru" ? "Задача здоровья" : "Health task")}</Text>
+                      </Pressable>
+                      {route ? <Ionicons name="chevron-forward" size={16} color={colors.onSurfaceSecondary} /> : null}
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+          </Card>
+
           <View style={[styles.dualRow, responsive.width < 480 && styles.stackRow]}><Card style={[styles.dualCard, responsive.width < 480 && styles.fullWidthCard]} onPress={() => openLab()} testID="upload-records-card"><View style={styles.plusRow}><Ionicons name="cloud-upload-outline" size={22} color={colors.onSurface} /><View style={styles.plusBtn}><Ionicons name="add" size={18} color={colors.onSurface} /></View></View><Text style={styles.dualTitle}>{t("upload_lab")}</Text><Muted numberOfLines={1}>{labs.length > 0 ? `${labs.length} ${t("labs").toLowerCase()}` : (lang === "ru" ? "Анализов пока нет" : "No labs yet")}</Muted></Card><GradientCard gradient={gradients.pink} style={[styles.dualCard, responsive.width < 480 && styles.fullWidthCard]} onPress={() => router.push("/devices")} testID="connect-device-card"><View style={styles.plusRow}><Ionicons name="watch-outline" size={22} color={colors.onSurface} /><View style={styles.plusBtn}><Ionicons name="add" size={18} color={colors.onSurface} /></View></View><Text style={styles.dualTitle}>{lang === "ru" ? "Подключить устройство" : "Connect tracker"}</Text><Muted numberOfLines={1} style={{ color: "rgba(27,27,29,0.55)" }}>Apple Watch · Xiaomi</Muted></GradientCard></View>
           <View style={{ gap: spacing.md, marginTop: spacing.md }}>{rows}</View>
           <Pressable style={styles.customizeBtn} onPress={() => setCustomize(true)} testID="customize-button"><Ionicons name="options-outline" size={18} color={colors.onSurface} /><Text style={styles.customizeText}>{t("customize")}</Text></Pressable>
@@ -337,6 +472,17 @@ const styles = StyleSheet.create({
   attnTitle: { fontSize: fontSize.base, fontWeight: "700", color: colors.onSurface, fontFamily: fonts.text },
   allGood: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   neutralState: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  todayHeader: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: spacing.md },
+  todayLinkText: { fontSize: fontSize.sm, fontWeight: "700", color: colors.onSurface, fontFamily: fonts.text },
+  todayRow: { minHeight: 58, flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.sm },
+  todayDivider: { borderTopWidth: 1, borderTopColor: colors.divider },
+  todayIcon: { width: 34, height: 34, borderRadius: 17, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center", flexShrink: 0 },
+  todayCopy: { flex: 1, minWidth: 0 },
+  todayTitle: { fontSize: fontSize.base, fontWeight: "700", color: colors.onSurface, fontFamily: fonts.text },
+  todayMeta: { marginTop: 2, fontSize: fontSize.sm, color: colors.onSurfaceSecondary, fontFamily: fonts.text },
+  todayAction: { minWidth: 76, height: 34, borderRadius: radius.pill, backgroundColor: colors.onSurface, alignItems: "center", justifyContent: "center", paddingHorizontal: spacing.md },
+  todayActionText: { fontSize: fontSize.sm, fontWeight: "700", color: colors.onSurfaceInverse, fontFamily: fonts.text },
+  todayStatusText: { fontSize: fontSize.sm, fontWeight: "600", color: colors.onSurfaceSecondary, fontFamily: fonts.text },
   widgetHeaderText: { fontSize: fontSize.sm, color: colors.onSurfaceSecondary, fontWeight: "600", fontFamily: fonts.text },
   halfRow: { flexDirection: "row", gap: spacing.md },
   halfCard: { flex: 1, minHeight: 110 },
