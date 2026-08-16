@@ -10,6 +10,7 @@ import * as SystemUI from "expo-system-ui";
 
 import { AuthProvider, useAuth } from "@/src/auth";
 import { useIconFonts } from "@/src/hooks/use-icon-fonts";
+import { useMedicationReminderSync } from "@/src/hooks/use-medication-reminder-sync";
 import { I18nProvider } from "@/src/i18n";
 import { AppProvider, useApp } from "@/src/store";
 import { LogProvider } from "@/src/components/LogProvider";
@@ -53,6 +54,7 @@ function useDeferredNotificationSetup() {
 function ProfileGate({ children }: { children: React.ReactNode }) {
   const { activeProfile, loading } = useApp();
   const segments = useSegments();
+  useMedicationReminderSync();
   useEffect(() => {
     if (loading || !activeProfile) return;
     const route = String(segments[0] || "");
