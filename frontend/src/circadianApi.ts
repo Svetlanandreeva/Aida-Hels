@@ -15,7 +15,12 @@ export type CircadianDay = {
   date: string;
   wake?: CircadianEvent | null;
   bedtime?: CircadianEvent | null;
-  plan?: { planned_time?: string | null; notification_id?: string | null } | null;
+  plan?: {
+    planned_time?: string | null;
+    notification_id?: string | null;
+    recommendation_window_end?: string | null;
+    recommendation_notification_id?: string | null;
+  } | null;
 };
 
 export type SleepInsight = {
@@ -53,4 +58,11 @@ export function recordRhythmEvent(profileId: string, kind: "wake" | "bedtime", d
 
 export function saveBedtimePlan(profileId: string, date: string, plannedTime: string, notificationId?: string | null) {
   return req("/circadian/bedtime-plan", { method: "POST", body: JSON.stringify({ profile_id: profileId, local_date: date, planned_time: plannedTime, notification_id: notificationId || null }) });
+}
+
+export function saveRecommendationReminder(profileId: string, date: string, windowEnd: string, notificationId?: string | null) {
+  return req("/circadian/recommendation-reminder", {
+    method: "POST",
+    body: JSON.stringify({ profile_id: profileId, local_date: date, window_end: windowEnd, notification_id: notificationId || null }),
+  });
 }
