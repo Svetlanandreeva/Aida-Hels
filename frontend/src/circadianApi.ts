@@ -18,6 +18,19 @@ export type CircadianDay = {
   plan?: { planned_time?: string | null; notification_id?: string | null } | null;
 };
 
+export type SleepInsight = {
+  status: "learning" | "personalized" | "stable_no_preference" | string;
+  days_observed: number;
+  paired_nights: number;
+  outcome_linked_nights: number;
+  minimum_days: number;
+  confidence: "low" | "medium" | "high" | string;
+  suggested_window?: { start: string; end: string; samples: number } | null;
+  message_ru: string;
+  message_en: string;
+  clinical_prompt?: { level: string; message_ru: string; message_en: string } | null;
+};
+
 async function req(path: string, options?: RequestInit) {
   const headers = new Headers(options?.headers || {});
   if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
@@ -28,6 +41,10 @@ async function req(path: string, options?: RequestInit) {
 
 export function getCircadianDay(profileId: string, date: string): Promise<CircadianDay> {
   return req(`/circadian/day?profile_id=${encodeURIComponent(profileId)}&date=${encodeURIComponent(date)}`);
+}
+
+export function getSleepInsight(profileId: string): Promise<SleepInsight> {
+  return req(`/circadian/insight?profile_id=${encodeURIComponent(profileId)}`);
 }
 
 export function recordRhythmEvent(profileId: string, kind: "wake" | "bedtime", date: string, time: string) {
