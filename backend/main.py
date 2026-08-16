@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 import types
@@ -33,6 +34,8 @@ _motor_pkg.motor_asyncio = _motor_asyncio
 sys.modules["motor"] = _motor_pkg
 sys.modules["motor.motor_asyncio"] = _motor_asyncio
 
+# server.py is retained as a compatibility module, but its Motor client is replaced
+# before import. No Mongo connection is made by this production entrypoint.
 os.environ.setdefault("MONGO_URL", "google-sheets://aida")
 os.environ.setdefault("DB_NAME", "aida")
 
@@ -49,11 +52,14 @@ from profile_api import build_profile_router  # noqa: E402
 from puzzle_api import build_puzzle_router  # noqa: E402
 from secure_legacy_api import build_secure_legacy_router  # noqa: E402
 from task_api import build_task_router  # noqa: E402
+from test_account_seed import seed_test_account  # noqa: E402
 from timeline_api import build_timeline_router  # noqa: E402
 from user_testing_api import build_user_testing_router  # noqa: E402
 from wearable_cloud_oauth import build_wearable_cloud_oauth_router  # noqa: E402
 from wearables_api import build_wearables_router  # noqa: E402
 
+# Never run the legacy global demo seeder. New/real users must start with their
+# own empty profile and explicit no-data states.
 legacy_server.app.router.on_startup = [
     handler
     for handler in legacy_server.app.router.on_startup
@@ -170,3 +176,18 @@ app.include_router(build_healthkit_router(_google_db, auth_service))
 app.include_router(build_wearables_router(_google_db, auth_service))
 app.include_router(build_wearable_cloud_oauth_router(_google_db, auth_service))
 app.include_router(build_user_testing_router(_google_db, auth_service))
+
+
+@app.on_event("startup")
+async def _seed_opt_in_test_account() -> None:
+    """Create/reset only the explicitly enabled test profile.
+
+    This never seeds ordinary accounts and never provides a fallback data source.
+    """
+    result = await seed_test_account(_google_db)
+    if result.get("enabled"):
+        logging.info(
+            "Aida test account seeded in Google storage: email=%s profile_id=%s",
+            result.get("email"),
+            result.get("profile_id"),
+        )
