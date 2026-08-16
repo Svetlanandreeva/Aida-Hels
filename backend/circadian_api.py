@@ -35,6 +35,13 @@ class BedtimePlan(BaseModel):
     notification_id: Optional[str] = None
 
 
+class RecommendationReminder(BaseModel):
+    profile_id: str
+    local_date: str
+    window_end: str
+    notification_id: Optional[str] = None
+
+
 def build_circadian_router(db, auth) -> APIRouter:
     router = APIRouter(prefix="/api/circadian", tags=["circadian"])
 
@@ -89,5 +96,20 @@ def build_circadian_router(db, auth) -> APIRouter:
         }
         await db.circadian_plans.update_one({"profile_id": data.profile_id, "local_date": data.local_date}, {"$set": payload}, upsert=True)
         return payload
+
+    @router.post("/recommendation-reminder")
+    async def save_recommendation_reminder(data: RecommendationReminder, account: Dict[str, Any] = Depends(auth.require_account)):
+        await require_profile_access(auth, account, data.profile_id, write=True)
+        if not _TIME_RE.match(data.window_end):
+            raise HTTPException(400, "window_end must be HH:MM")
+        patch = {
+            "profile_id": data.profile_id,
+            "local_date": data.local_date,
+            "recommendation_window_end": data.window_end,
+            "recommendation_notification_id": (data.notification_id or "").strip() or None,
+            "updated_at": _now(),
+        }
+        await db.circadian_plans.update_one({"profile_id": data.profile_id, "local_date": data.local_date}, {"$set": patch}, upsert=True)
+        return patch
 
     return router
