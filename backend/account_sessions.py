@@ -39,7 +39,7 @@ def _current_session_id(credentials: HTTPAuthorizationCredentials, auth_service)
 
 
 async def _audit(db, *, account_id: str, session_id: Optional[str], action: str, metadata: Optional[Dict[str, Any]] = None) -> None:
-    await db.audit_events.insert_one({
+    await db.audit_log.insert_one({
         "id": str(uuid.uuid4()),
         "account_id": account_id,
         "subject_profile_id": None,
@@ -65,6 +65,7 @@ def build_account_session_router(db, auth_service) -> APIRouter:
         current_session_id = _current_session_id(credentials, auth_service)
         rows = await db.sessions.find({"account_id": account_id}, {"_id": 0}).to_list(5000)
         rows.sort(key=lambda item: str(item.get("created_at") or ""), reverse=True)
+        now = _now_iso()
         sessions = []
         for row in rows:
             sessions.append({
@@ -72,7 +73,7 @@ def build_account_session_router(db, auth_service) -> APIRouter:
                 "created_at": row.get("created_at"),
                 "expires_at": row.get("expires_at"),
                 "revoked_at": row.get("revoked_at"),
-                "active": not bool(row.get("revoked_at")) and str(row.get("expires_at") or "") > _now_iso(),
+                "active": not bool(row.get("revoked_at")) and str(row.get("expires_at") or "") > now,
                 "is_current": str(row.get("id") or "") == current_session_id,
             })
         return {"sessions": sessions}
