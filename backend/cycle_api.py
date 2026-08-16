@@ -1,0 +1,138 @@
+"""Cycle tracking API for Aida 2.0.
+
+Forecasts are derived only from the selected profile's own confirmed period-start
+history or an explicitly configured typical cycle length. No population default
+is silently substituted when personal evidence is insufficient.
+"""
+from __future__ import annotations
+
+import statistics
+import uuid
+from datetime import date, datetime, timedelta, timezone
+from typing import Any, Dict, Literal, Optional
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+class CycleEventCreate(BaseModel):
+    profile_id: str
+    event_type: Literal["period_start", "period_end", "symptom", "ovulation_test", "note"]
+    observed_at: str
+    value: Optional[str] = None
+    note: Optional[str] = None
+    source_type: Literal["manual", "device", "import"] = "manual"
+
+
+class CycleSettingsUpdate(BaseModel):
+    profile_id: str
+    typical_cycle_length: Optional[int] = Field(default=None, ge=15, le=60)
+    typical_period_length: Optional[int] = Field(default=None, ge=1, le=14)
+    reminders_enabled: bool = False
+
+
+def _as_date(value: str) -> date:
+    try:
+        return date.fromisoformat(value[:10])
+    except Exception as exc:
+        raise HTTPException(422, "Invalid date") from exc
+
+
+def build_cycle_router(db, auth) -> APIRouter:
+    router = APIRouter(prefix="/api/cycle", tags=["cycle"])
+
+    async def require(account: Dict[str, Any], profile_id: str, write: bool = False):
+        if not await auth.has_profile_access(str(account["id"]), profile_id, write=write):
+            raise HTTPException(404, "Profile not found")
+
+    @router.get("/{profile_id}")
+    async def get_cycle(profile_id: str, account: Dict[str, Any] = Depends(auth.require_account)):
+        await require(account, profile_id)
+        events = await db.cycle_events.find({"profile_id": profile_id}, {"_id": 0}).sort("observed_at", -1).to_list(1000)
+        settings = await db.cycle_settings.find_one({"profile_id": profile_id}, {"_id": 0}) or {}
+        return {"profile_id": profile_id, "events": events, "settings": settings}
+
+    @router.post("/events")
+    async def add_event(data: CycleEventCreate, account: Dict[str, Any] = Depends(auth.require_account)):
+        await require(account, data.profile_id, write=True)
+        _as_date(data.observed_at)
+        event = {"id": str(uuid.uuid4()), **data.model_dump(), "created_at": _now_iso()}
+        await db.cycle_events.insert_one(event)
+        return event
+
+    @router.delete("/events/{event_id}")
+    async def delete_event(event_id: str, account: Dict[str, Any] = Depends(auth.require_account)):
+        event = await db.cycle_events.find_one({"id": event_id}, {"_id": 0})
+        if not event:
+            raise HTTPException(404, "Cycle event not found")
+        await require(account, str(event.get("profile_id") or ""), write=True)
+        await db.cycle_events.delete_one({"id": event_id})
+        return {"ok": True}
+
+    @router.put("/settings")
+    async def save_settings(data: CycleSettingsUpdate, account: Dict[str, Any] = Depends(auth.require_account)):
+        await require(account, data.profile_id, write=True)
+        payload = {**data.model_dump(), "updated_at": _now_iso()}
+        current = await db.cycle_settings.find_one({"profile_id": data.profile_id}, {"_id": 0})
+        if current:
+            await db.cycle_settings.update_one({"profile_id": data.profile_id}, {"$set": payload})
+        else:
+            payload["id"] = str(uuid.uuid4())
+            await db.cycle_settings.insert_one(payload)
+        return payload
+
+    @router.get("/{profile_id}/forecast")
+    async def forecast(profile_id: str, account: Dict[str, Any] = Depends(auth.require_account)):
+        await require(account, profile_id)
+        starts = await db.cycle_events.find({"profile_id": profile_id, "event_type": "period_start"}, {"_id": 0}).sort("observed_at", 1).to_list(1000)
+        settings = await db.cycle_settings.find_one({"profile_id": profile_id}, {"_id": 0}) or {}
+        dates = sorted({_as_date(str(item.get("observed_at"))) for item in starts if item.get("observed_at")})
+        intervals = [(dates[i] - dates[i-1]).days for i in range(1, len(dates))]
+        plausible = [v for v in intervals if 15 <= v <= 60]
+        configured = settings.get("typical_cycle_length")
+
+        if len(plausible) >= 2:
+            cycle_length = int(round(statistics.median(plausible)))
+            spread = int(round(statistics.median([abs(v - cycle_length) for v in plausible]))) if plausible else 0
+            confidence = "high" if len(plausible) >= 5 and spread <= 3 else "medium"
+            basis = "personal_history"
+        elif configured:
+            cycle_length = int(configured)
+            spread = 3
+            confidence = "low"
+            basis = "user_settings"
+        else:
+            return {
+                "state": "insufficient_data",
+                "profile_id": profile_id,
+                "message": "Недостаточно личных данных для прогноза",
+                "evidence_count": len(dates),
+            }
+
+        if not dates:
+            return {"state": "insufficient_data", "profile_id": profile_id, "message": "Нет даты начала последней менструации", "evidence_count": 0}
+        last = dates[-1]
+        next_start = last + timedelta(days=cycle_length)
+        uncertainty = max(2, spread)
+        today = date.today()
+        cycle_day = (today - last).days + 1 if today >= last else None
+        return {
+            "state": "data",
+            "profile_id": profile_id,
+            "cycle_day": cycle_day,
+            "last_period_start": last.isoformat(),
+            "estimated_next_start": next_start.isoformat(),
+            "window_start": (next_start - timedelta(days=uncertainty)).isoformat(),
+            "window_end": (next_start + timedelta(days=uncertainty)).isoformat(),
+            "estimated_cycle_length": cycle_length,
+            "confidence": confidence,
+            "basis": basis,
+            "evidence_count": len(dates),
+            "disclaimer": "Прогноз основан на вашей истории и не является подтверждением овуляции или беременности.",
+        }
+
+    return router
