@@ -40,6 +40,7 @@ os.environ.setdefault("MONGO_URL", "google-sheets://aida")
 os.environ.setdefault("DB_NAME", "aida")
 
 import server as legacy_server  # noqa: E402
+from account_sessions import build_account_session_router  # noqa: E402
 from ai_context import build_ai_context  # noqa: E402
 from auth_api import build_auth_router  # noqa: E402
 from body_insights import build_body_insights_router  # noqa: E402
@@ -115,6 +116,7 @@ async def require_authenticated_api(request: Request, call_next):
 
 
 app.include_router(auth_router)
+app.include_router(build_account_session_router(_google_db, auth_service))
 app.include_router(build_profile_router(_google_db, auth_service))
 app.include_router(build_family_router(_google_db, auth_service))
 app.include_router(build_secure_legacy_router(_google_db, auth_service))
