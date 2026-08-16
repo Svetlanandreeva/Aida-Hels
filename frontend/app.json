@@ -28,7 +28,23 @@
       },
       "edgeToEdgeEnabled": true,
       "package": "com.emergent.lifehealthhub.b7m5uj",
-      "permissions": ["CAMERA", "READ_MEDIA_IMAGES", "SCHEDULE_EXACT_ALARM"]
+      "permissions": [
+        "CAMERA",
+        "READ_MEDIA_IMAGES",
+        "SCHEDULE_EXACT_ALARM",
+        "android.permission.health.READ_HEART_RATE",
+        "android.permission.health.READ_HEART_RATE_VARIABILITY",
+        "android.permission.health.READ_STEPS",
+        "android.permission.health.READ_ACTIVE_CALORIES_BURNED",
+        "android.permission.health.READ_SLEEP",
+        "android.permission.health.READ_OXYGEN_SATURATION",
+        "android.permission.health.READ_RESPIRATORY_RATE",
+        "android.permission.health.READ_VO2_MAX",
+        "android.permission.health.READ_WEIGHT",
+        "android.permission.health.READ_BODY_FAT",
+        "android.permission.health.READ_SKIN_TEMPERATURE",
+        "android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND"
+      ]
     },
     "web": {
       "bundler": "metro",
