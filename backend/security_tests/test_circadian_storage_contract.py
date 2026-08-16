@@ -40,3 +40,16 @@ def test_healthkit_sleep_is_staged_as_candidates_before_circadian_use():
     assert 'kind: "wake"' in coordinator
     assert 'api/circadian/wearable-candidates' in client
     assert 'Authorization' in client
+
+
+def test_health_connect_sleep_is_staged_as_candidates_before_circadian_use():
+    manager = (REPO_ROOT / "android" / "AidaHealthConnectManager.kt").read_text(encoding="utf-8")
+    client = (REPO_ROOT / "android" / "AidaCircadianCandidateClient.kt").read_text(encoding="utf-8")
+
+    assert "readSleepSessions" in manager
+    assert "SleepSessionRecord" in manager
+    assert 'provider = "android_health_connect"' in client
+    assert 'kind = "bedtime"' in client
+    assert 'kind = "wake"' in client
+    assert "/api/circadian/wearable-candidates" in client
+    assert 'setRequestProperty("Authorization", "Bearer $bearerToken")' in client
