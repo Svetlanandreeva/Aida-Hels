@@ -21,10 +21,12 @@ permissions:
 jobs:
   build-and-deploy:
     runs-on: [self-hosted, linux, x64, aida-prod]
+    timeout-minutes: 45
     env:
       RUVDS_HOST: ${{ secrets.RUVDS_HOST }}
       RUVDS_USER: ${{ secrets.RUVDS_USER }}
       RUVDS_PORT: ${{ secrets.RUVDS_PORT }}
+      CI: '1'
     steps:
       - name: Checkout production revision
         uses: actions/checkout@v4
@@ -45,16 +47,38 @@ jobs:
         with:
           node-version: 20.19.5
 
-      - name: Validate and build Expo web frontend
-        working-directory: frontend
+      - name: Prepare Yarn
+        timeout-minutes: 2
         run: |
           corepack enable
           corepack prepare yarn@1.22.22 --activate
-          yarn install --frozen-lockfile
-          yarn lint
-          npx tsc --noEmit
-          npx expo export -p web
+          yarn --version
+          node --version
+
+      - name: Install frontend dependencies
+        timeout-minutes: 12
+        working-directory: frontend
+        run: yarn install --frozen-lockfile --non-interactive --prefer-offline --network-timeout 60000
+
+      - name: Lint frontend
+        timeout-minutes: 5
+        working-directory: frontend
+        run: yarn lint
+
+      - name: Type-check frontend
+        timeout-minutes: 5
+        working-directory: frontend
+        run: npx --no-install tsc --noEmit
+
+      - name: Export Expo web frontend
+        timeout-minutes: 10
+        working-directory: frontend
+        env:
+          EXPO_NO_TELEMETRY: '1'
+        run: |
+          npx --no-install expo export -p web
           test -f dist/index.html
+          test -d dist/_expo
 
       - name: Setup Python 3.12
         uses: actions/setup-python@v5
@@ -64,6 +88,7 @@ jobs:
           cache-dependency-path: backend/requirements.txt
 
       - name: Validate backend before deployment
+        timeout-minutes: 10
         working-directory: backend
         env:
           PYTHONPATH: .
@@ -108,13 +133,15 @@ jobs:
           ssh-keygen -y -f ~/.ssh/ruvds >/dev/null
 
       - name: Verify restricted production access
+        timeout-minutes: 2
         run: |
-          ssh -p "$RUVDS_PORT" -i ~/.ssh/ruvds -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes "$RUVDS_USER@$RUVDS_HOST" \
+          ssh -p "$RUVDS_PORT" -i ~/.ssh/ruvds -o ConnectTimeout=10 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes "$RUVDS_USER@$RUVDS_HOST" \
             'set -e; test -w /opt/aida/backend; test -w /opt/aida/frontend; sudo -n /usr/bin/systemctl status aida-backend >/dev/null'
 
       - name: Upload application sources
+        timeout-minutes: 5
         run: |
-          SSH="ssh -p $RUVDS_PORT -i ~/.ssh/ruvds -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes"
+          SSH="ssh -p $RUVDS_PORT -i ~/.ssh/ruvds -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes"
           $SSH "$RUVDS_USER@$RUVDS_HOST" <<'EOF'
           set -euo pipefail
           find /opt/aida/backend -mindepth 1 -maxdepth 1 ! -name '.env' ! -name '.venv' -exec rm -rf -- {} +
@@ -127,8 +154,9 @@ jobs:
             $SSH "$RUVDS_USER@$RUVDS_HOST" 'tar -xzf - -C /opt/aida/frontend'
 
       - name: Restart backend and verify production
+        timeout-minutes: 5
         run: |
-          ssh -p "$RUVDS_PORT" -i ~/.ssh/ruvds -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes "$RUVDS_USER@$RUVDS_HOST" <<'EOF'
+          ssh -p "$RUVDS_PORT" -i ~/.ssh/ruvds -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes "$RUVDS_USER@$RUVDS_HOST" <<'EOF'
           set -euo pipefail
           cd /opt/aida/backend
           if [ ! -x .venv/bin/python ]; then
