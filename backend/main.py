@@ -46,6 +46,7 @@ from body_insights import build_body_insights_router  # noqa: E402
 from candidate_records import build_candidate_router  # noqa: E402
 from circadian_api import build_circadian_router  # noqa: E402
 from documents import build_documents_router  # noqa: E402
+from family_api import build_family_router  # noqa: E402
 from healthkit_api import build_healthkit_router  # noqa: E402
 from lab_pipeline import build_lab_router  # noqa: E402
 from lab_trends import build_lab_trends_router  # noqa: E402
@@ -113,6 +114,7 @@ async def require_authenticated_api(request: Request, call_next):
 
 app.include_router(auth_router)
 app.include_router(build_profile_router(_google_db, auth_service))
+app.include_router(build_family_router(_google_db, auth_service))
 app.include_router(build_secure_legacy_router(_google_db, auth_service))
 app.include_router(build_puzzle_router(_google_db, auth_service))
 app.include_router(build_task_router(_google_db, auth_service))
