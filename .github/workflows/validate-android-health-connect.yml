@@ -1,17 +1,10 @@
 name: Validate Android Health Connect
 
+# Native Android compilation remains a real release gate, but it requires a
+# GitHub-hosted runner. Keep it explicit/manual while hosted minutes are
+# unavailable instead of creating automatic failures before a runner starts.
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - "frontend/app.json"
-      - "frontend/plugins/with-health-connect-min-sdk.js"
-      - "frontend/modules/aida-health-connect/**"
-      - "frontend/src/native-health.ts"
-      - "frontend/src/wearables.ts"
-      - "frontend/app/devices.tsx"
-      - ".github/workflows/validate-android-health-connect.yml"
-  workflow_dispatch:
+  workflow_dispatch: {}
 
 permissions:
   contents: read

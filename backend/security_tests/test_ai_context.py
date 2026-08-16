@@ -50,8 +50,24 @@ class DB:
         ])
         self.labs = Collection([])
         self.vitals = Collection([
-            {"id": "v1", "profile_id": "p1", "metric": "heart_rate", "value": 72, "provider_id": "apple_health", "observed_at": "2026-08-16T00:00:00Z"},
-            {"id": "v2", "profile_id": "p2", "metric": "heart_rate", "value": 99, "provider_id": "android_health_connect", "observed_at": "2026-08-16T00:00:00Z"},
+            {
+                "id": "v1",
+                "profile_id": "p1",
+                "metric": "heart_rate",
+                "value": 72,
+                "provider_id": "apple_health",
+                "observed_at": "2026-08-16T00:00:00Z",
+                "verification_status": "source_verified",
+                "quality": "high",
+            },
+            {
+                "id": "v2",
+                "profile_id": "p2",
+                "metric": "heart_rate",
+                "value": 99,
+                "provider_id": "android_health_connect",
+                "observed_at": "2026-08-16T00:00:00Z",
+            },
         ])
         self.checkins = Collection([])
 
@@ -61,13 +77,26 @@ def test_context_never_mixes_profiles_and_keeps_provenance():
     assert context["profile_id"] == "p1"
     assert [item["name"] for item in context["active_medications"]] == ["A"]
     assert [item["name"] for item in context["recent_symptoms"]] == ["headache"]
-    assert context["recent_measurements"][0]["value"] == 72
-    assert context["recent_measurements"][0]["source"] == "apple_health"
-    assert context["recent_measurements"][0]["evidence_id"] == "vital:v1"
+    measurement = context["recent_measurements"][0]
+    assert measurement["value"] == 72
+    assert measurement["source"] == "apple_health"
+    assert measurement["evidence_id"] == "vital:v1"
+    assert measurement["verification_status"] == "source_verified"
+    assert measurement["quality"] == "high"
+    assert measurement["freshness"]["status"] in {"fresh", "recent", "stale"}
+    assert isinstance(measurement["freshness"]["age_seconds"], int)
     serialized = str(context)
     assert "Bob" not in serialized
     assert "fever" not in serialized
     assert "99" not in serialized
+
+
+def test_context_marks_missing_timestamp_freshness_unknown():
+    context = asyncio.run(build_ai_context(DB(), "p1", as_json=False))
+    medication = context["active_medications"][0]
+    assert medication["freshness"] == {"status": "unknown", "age_seconds": None}
+    assert medication["verification_status"] == "unverified"
+    assert medication["quality"] == "unknown"
 
 
 def test_context_respects_ai_privacy_opt_out():

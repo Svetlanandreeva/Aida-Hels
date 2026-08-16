@@ -1,26 +1,10 @@
 name: Validate consolidated Aida2
 
+# GitHub-hosted minutes are currently unavailable for this private repository.
+# Keep this workflow available for an explicit manual run, but do not create
+# automatic red PR checks that never reach a runner. Production main is still
+# validated by deploy-ruvds.yml on the trusted self-hosted aida-prod runner.
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - 'frontend/**'
-      - 'backend/**'
-      - 'ios/**'
-      - 'android/**'
-      - '.github/workflows/validate-consolidated-aida2.yml'
-      - '.github/workflows/deploy-ruvds.yml'
-  push:
-    branches:
-      - main
-      - 'hardening/**'
-    paths:
-      - 'frontend/**'
-      - 'backend/**'
-      - 'ios/**'
-      - 'android/**'
-      - '.github/workflows/validate-consolidated-aida2.yml'
-      - '.github/workflows/deploy-ruvds.yml'
   workflow_dispatch: {}
 
 permissions:

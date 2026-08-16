@@ -1,4 +1,5 @@
 import { Platform } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Notifications from "expo-notifications";
 
 const CHANNEL_ID = "aida-reminders";
@@ -64,9 +65,7 @@ export async function schedulePersonalSleepWindowReminder(input: { date: string;
   if (Platform.OS === "web" || !/^\d{4}-\d{2}-\d{2}$/.test(input.date) || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(input.time)) return null;
   let at = new Date(`${input.date}T${input.time}:00`);
   if (Number.isNaN(at.getTime())) return null;
-  if (at.getTime() <= Date.now()) {
-    at = new Date(at.getTime() + 24 * 60 * 60 * 1000);
-  }
+  if (at.getTime() <= Date.now()) at = new Date(at.getTime() + 24 * 60 * 60 * 1000);
   if (!(await ensureReminderPermission())) return null;
   const window = input.windowStart ? `${input.windowStart}–${input.windowEnd}` : input.windowEnd;
   return Notifications.scheduleNotificationAsync({
@@ -78,6 +77,48 @@ export async function schedulePersonalSleepWindowReminder(input: { date: string;
     },
     trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: at, ...(Platform.OS === "android" ? { channelId: CHANNEL_ID } : {}) },
   });
+}
+
+const cycleReminderKey = (profileId: string) => `aida:cycle-reminder:${profileId}`;
+
+type CycleForecastForReminder = { state?: string; window_start?: string | null; window_end?: string | null; estimated_next_start?: string | null };
+
+export async function syncCycleWindowReminder(input: { profileId: string; enabled: boolean; forecast?: CycleForecastForReminder | null; showDetails?: boolean }): Promise<string | null> {
+  if (Platform.OS === "web") return null;
+  const storageKey = cycleReminderKey(input.profileId);
+  const existingRaw = await AsyncStorage.getItem(storageKey).catch(() => null);
+  let existing: { id?: string; signature?: string } | null = null;
+  try { existing = existingRaw ? JSON.parse(existingRaw) : null; } catch { existing = null; }
+
+  const start = input.forecast?.window_start || null;
+  const end = input.forecast?.window_end || null;
+  const estimated = input.forecast?.estimated_next_start || null;
+  const signature = input.enabled && input.forecast?.state === "data" && start && end ? `${start}|${end}|${estimated || ""}` : "";
+
+  if (existing?.id && (!signature || existing.signature !== signature)) {
+    await Notifications.cancelScheduledNotificationAsync(existing.id).catch(() => {});
+    await AsyncStorage.removeItem(storageKey).catch(() => {});
+  }
+  if (!signature) return null;
+  if (existing?.id && existing.signature === signature) return existing.id;
+
+  const at = new Date(`${start}T10:00:00`);
+  if (Number.isNaN(at.getTime()) || at.getTime() <= Date.now()) return null;
+  if (!(await ensureReminderPermission())) return null;
+
+  const id = await Notifications.scheduleNotificationAsync({
+    content: {
+      title: "Аида · Цикл",
+      body: input.showDetails
+        ? `По вашим данным начинается прогнозное окно менструации: ${start}–${end}. Это ориентир, а не точная дата.`
+        : "Откройте Аиду, чтобы посмотреть обновление по вашему циклу.",
+      data: { url: "/cycle", profileId: input.profileId, cycleWindow: true },
+      sound: true,
+    },
+    trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: at, ...(Platform.OS === "android" ? { channelId: CHANNEL_ID } : {}) },
+  });
+  await AsyncStorage.setItem(storageKey, JSON.stringify({ id, signature })).catch(() => {});
+  return id;
 }
 
 export async function scheduleMedicationDoseAt(input: { medicationId: string; name: string; dose?: string | null; date: string; time: string; showDetails?: boolean }): Promise<string | null> {
