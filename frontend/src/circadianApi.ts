@@ -15,7 +15,7 @@ export type CircadianDay = {
   date: string;
   wake?: CircadianEvent | null;
   bedtime?: CircadianEvent | null;
-  plan?: { planned_time?: string | null } | null;
+  plan?: { planned_time?: string | null; notification_id?: string | null } | null;
 };
 
 async function req(path: string, options?: RequestInit) {
@@ -31,15 +31,9 @@ export function getCircadianDay(profileId: string, date: string): Promise<Circad
 }
 
 export function recordRhythmEvent(profileId: string, kind: "wake" | "bedtime", date: string, time: string) {
-  return req("/circadian/events", {
-    method: "POST",
-    body: JSON.stringify({ profile_id: profileId, kind, local_date: date, local_time: time, source: "manual" }),
-  });
+  return req("/circadian/events", { method: "POST", body: JSON.stringify({ profile_id: profileId, kind, local_date: date, local_time: time, source: "manual" }) });
 }
 
-export function saveBedtimePlan(profileId: string, date: string, plannedTime: string) {
-  return req("/circadian/bedtime-plan", {
-    method: "POST",
-    body: JSON.stringify({ profile_id: profileId, local_date: date, planned_time: plannedTime }),
-  });
+export function saveBedtimePlan(profileId: string, date: string, plannedTime: string, notificationId?: string | null) {
+  return req("/circadian/bedtime-plan", { method: "POST", body: JSON.stringify({ profile_id: profileId, local_date: date, planned_time: plannedTime, notification_id: notificationId || null }) });
 }
