@@ -53,3 +53,20 @@ def test_health_connect_sleep_is_staged_as_candidates_before_circadian_use():
     assert 'kind = "wake"' in client
     assert "/api/circadian/wearable-candidates" in client
     assert 'setRequestProperty("Authorization", "Bearer $bearerToken")' in client
+
+
+def test_expo_health_connect_bridge_routes_sleep_sessions_to_candidate_api():
+    module_root = REPO_ROOT / "frontend" / "modules" / "aida-health-connect"
+    manager = (module_root / "android" / "src" / "main" / "java" / "expo" / "modules" / "aidahealthconnect" / "AidaHealthConnectManager.kt").read_text(encoding="utf-8")
+    module = (module_root / "android" / "src" / "main" / "java" / "expo" / "modules" / "aidahealthconnect" / "AidaHealthConnectModule.kt").read_text(encoding="utf-8")
+    native_health = (REPO_ROOT / "frontend" / "src" / "native-health.ts").read_text(encoding="utf-8")
+    circadian_api = (REPO_ROOT / "frontend" / "src" / "circadianApi.ts").read_text(encoding="utf-8")
+
+    assert "readSleepSessions" in manager
+    assert '"sleep_sessions" to sleepSessions' in module
+    assert "stageHealthConnectSleep" in native_health
+    assert 'provider: "android_health_connect"' in native_health
+    assert 'kind: "bedtime"' in native_health
+    assert 'kind: "wake"' in native_health
+    assert "stageWearableRhythmCandidate" in native_health
+    assert 'req("/circadian/wearable-candidates"' in circadian_api
