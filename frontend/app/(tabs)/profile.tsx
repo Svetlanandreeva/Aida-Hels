@@ -162,6 +162,7 @@ export default function ProfileScreen() {
             {activeProfile.sex === "female" ? <FeatureLink icon="flower-outline" title={lang === "ru" ? "Женское здоровье" : "Women's health"} subtitle={lang === "ru" ? "Цикл, планирование, беременность" : "Cycle, planning, pregnancy"} onPress={() => router.push("/womens-health" as any)} /> : null}
             <FeatureLink icon="people-outline" title={lang === "ru" ? "Семья и доступ" : "Family & access"} subtitle={lang === "ru" ? "Профили и разрешения" : "Profiles and permissions"} onPress={() => router.push("/family" as any)} />
             <FeatureLink icon="shield-checkmark-outline" title={lang === "ru" ? "Приватность" : "Privacy"} subtitle={lang === "ru" ? "AI, уведомления и сессии" : "AI, notifications and sessions"} onPress={() => router.push("/privacy" as any)} />
+            <FeatureLink icon="download-outline" title={lang === "ru" ? "Экспорт данных" : "Data export"} subtitle={lang === "ru" ? "Скачать данные профиля" : "Download profile data"} onPress={() => router.push("/export-data" as any)} />
             <FeatureLink icon="medical-outline" title={lang === "ru" ? "Экстренная медкарта" : "Emergency card"} subtitle={lang === "ru" ? "Краткие важные данные" : "Essential health summary"} onPress={() => router.push("/emergency-card" as any)} />
           </View>
 

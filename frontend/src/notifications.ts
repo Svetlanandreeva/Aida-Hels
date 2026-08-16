@@ -36,6 +36,7 @@ export async function scheduleTaskReminder(input: {
   reminderAt: string;
   route?: string | null;
   taskId?: string | null;
+  showDetails?: boolean;
 }): Promise<string | null> {
   if (Platform.OS === "web") return null;
 
@@ -46,7 +47,7 @@ export async function scheduleTaskReminder(input: {
   return Notifications.scheduleNotificationAsync({
     content: {
       title: "Аида · Напоминание",
-      body: input.title,
+      body: input.showDetails ? input.title : "Откройте Аиду, чтобы посмотреть напоминание",
       data: {
         url: input.route || "/(tabs)/tasks",
         taskId: input.taskId || undefined,

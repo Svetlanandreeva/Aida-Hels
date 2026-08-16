@@ -51,7 +51,7 @@ const isTime = (value: string) => /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
 export default function TasksScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { activeId, refreshTick, bumpRefresh } = useApp();
+  const { activeId, activeProfile, refreshTick, bumpRefresh } = useApp();
   const { t, lang } = useI18n();
   const { toast } = useLog();
   const responsive = useResponsiveLayout();
@@ -109,6 +109,7 @@ export default function TasksScreen() {
           reminderAt: updated.reminder_at,
           route: updated.action_route || ACTION_ROUTES[updated.kind],
           taskId: updated.id,
+          showDetails: activeProfile?.privacy?.show_notification_details === true,
         });
         if (notificationId) {
           await api.updateTask(updated.id, { notification_id: notificationId });
@@ -157,6 +158,7 @@ export default function TasksScreen() {
           reminderAt,
           route: created.action_route || actionRoute,
           taskId: created.id,
+          showDetails: activeProfile?.privacy?.show_notification_details === true,
         });
         if (notificationId) {
           await api.updateTask(created.id, { notification_id: notificationId });
