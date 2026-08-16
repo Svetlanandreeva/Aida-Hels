@@ -1,4 +1,4 @@
-"""Extended profile API for Aida 2.0 medical card."""
+"""Extended profile API for Aida 2.0 medical card and onboarding."""
 
 from __future__ import annotations
 
@@ -12,6 +12,15 @@ from pydantic import BaseModel, Field
 
 def _now():
     return datetime.now(timezone.utc)
+
+
+def _default_privacy() -> Dict[str, Any]:
+    return {
+        "include_in_ai_context": True,
+        "share_documents": False,
+        "show_notification_details": False,
+        "allow_wearable_ai": True,
+    }
 
 
 class Surgery(BaseModel):
@@ -35,11 +44,15 @@ class ProfileFull(BaseModel):
     diagnoses: List[str] = Field(default_factory=list)
     surgeries: List[Surgery] = Field(default_factory=list)
     avatar_url: Optional[str] = None
-    privacy: Dict[str, Any] = Field(default_factory=lambda: {
-        "include_in_ai_context": True,
-        "share_documents": False,
-    })
+    privacy: Dict[str, Any] = Field(default_factory=_default_privacy)
     module_settings: Dict[str, bool] = Field(default_factory=dict)
+    goals: List[str] = Field(default_factory=list)
+    onboarding_completed: bool = False
+    women_health: Dict[str, Any] = Field(default_factory=dict)
+    emergency_contacts: List[Dict[str, Any]] = Field(default_factory=list)
+    preferred_locale: Optional[str] = None
+    timezone: Optional[str] = None
+    accessibility: Dict[str, Any] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=_now)
     updated_at: datetime = Field(default_factory=_now)
 
@@ -59,6 +72,13 @@ class ProfileCreate(BaseModel):
     avatar_url: Optional[str] = None
     privacy: Dict[str, Any] = Field(default_factory=dict)
     module_settings: Dict[str, bool] = Field(default_factory=dict)
+    goals: List[str] = Field(default_factory=list)
+    onboarding_completed: bool = False
+    women_health: Dict[str, Any] = Field(default_factory=dict)
+    emergency_contacts: List[Dict[str, Any]] = Field(default_factory=list)
+    preferred_locale: Optional[str] = None
+    timezone: Optional[str] = None
+    accessibility: Dict[str, Any] = Field(default_factory=dict)
 
 
 class ProfileUpdate(BaseModel):
@@ -75,6 +95,13 @@ class ProfileUpdate(BaseModel):
     avatar_url: Optional[str] = None
     privacy: Optional[Dict[str, Any]] = None
     module_settings: Optional[Dict[str, bool]] = None
+    goals: Optional[List[str]] = None
+    onboarding_completed: Optional[bool] = None
+    women_health: Optional[Dict[str, Any]] = None
+    emergency_contacts: Optional[List[Dict[str, Any]]] = None
+    preferred_locale: Optional[str] = None
+    timezone: Optional[str] = None
+    accessibility: Optional[Dict[str, Any]] = None
 
 
 def _normalize(doc: Dict[str, Any]) -> Dict[str, Any]:
@@ -83,8 +110,17 @@ def _normalize(doc: Dict[str, Any]) -> Dict[str, Any]:
     out.setdefault("chronic_conditions", [])
     out.setdefault("diagnoses", [])
     out.setdefault("surgeries", [])
-    out.setdefault("privacy", {"include_in_ai_context": True, "share_documents": False})
+    privacy = _default_privacy()
+    privacy.update(out.get("privacy") or {})
+    out["privacy"] = privacy
     out.setdefault("module_settings", {})
+    out.setdefault("goals", [])
+    out.setdefault("onboarding_completed", False)
+    out.setdefault("women_health", {})
+    out.setdefault("emergency_contacts", [])
+    out.setdefault("preferred_locale", None)
+    out.setdefault("timezone", None)
+    out.setdefault("accessibility", {})
     return out
 
 
@@ -93,7 +129,6 @@ def build_profile_router(db, auth) -> APIRouter:
 
     async def require_access(account_id: str, profile_id: str, write: bool = False):
         if not await auth.has_profile_access(account_id, profile_id, write=write):
-            # Do not distinguish missing from inaccessible profiles.
             raise HTTPException(404, "Profile not found")
 
     async def require_owner(account_id: str, profile_id: str):
@@ -101,7 +136,6 @@ def build_profile_router(db, auth) -> APIRouter:
             {"account_id": account_id, "profile_id": profile_id}, {"_id": 0}
         )
         if not grant or grant.get("revoked_at") or str(grant.get("role") or "") != "owner":
-            # Keep the same response as inaccessible profiles.
             raise HTTPException(404, "Profile not found")
 
     @router.get("", response_model=List[ProfileFull])
@@ -121,6 +155,9 @@ def build_profile_router(db, auth) -> APIRouter:
     async def create_profile(data: ProfileCreate, account: Dict[str, Any] = Depends(auth.require_account)):
         payload = data.model_dump()
         payload["account_id"] = account["id"]
+        privacy = _default_privacy()
+        privacy.update(payload.get("privacy") or {})
+        payload["privacy"] = privacy
         p = ProfileFull(**payload)
         doc = p.model_dump()
         doc["account_id"] = account["id"]
@@ -154,6 +191,11 @@ def build_profile_router(db, auth) -> APIRouter:
         if not current:
             raise HTTPException(404, "Profile not found")
         patch = data.model_dump(exclude_unset=True)
+        if "privacy" in patch and patch["privacy"] is not None:
+            merged = _default_privacy()
+            merged.update(current.get("privacy") or {})
+            merged.update(patch["privacy"] or {})
+            patch["privacy"] = merged
         patch["updated_at"] = _now()
         await db.profiles.update_one({"id": profile_id}, {"$set": patch})
         doc = await db.profiles.find_one({"id": profile_id}, {"_id": 0})

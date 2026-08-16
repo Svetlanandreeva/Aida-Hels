@@ -1,4 +1,4 @@
-import { BASE } from "@/src/api";
+import { apiFetch } from "@/src/api";
 
 export type MedicationSlot = {
   id: string;
@@ -23,10 +23,9 @@ export type MedicationEvent = {
 };
 
 async function jsonReq(path: string, options?: RequestInit) {
-  const res = await fetch(BASE + path, {
-    headers: { "Content-Type": "application/json" },
-    ...options,
-  });
+  const headers = new Headers(options?.headers || {});
+  if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+  const res = await apiFetch(path, { ...options, headers });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(`${res.status}: ${text}`);

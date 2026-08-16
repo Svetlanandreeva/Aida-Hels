@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { View, Text, Pressable, StyleSheet, TextInput } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import { useApp } from "@/src/store";
 import { useI18n } from "@/src/i18n";
 import { useResponsiveLayout } from "@/src/hooks/use-responsive-layout";
@@ -21,6 +22,7 @@ const AVATARS = {
 export const avatarFor = (kind: string) => AVATARS[kind as keyof typeof AVATARS] || AVATARS.me;
 
 export const TopBar: React.FC<{ subtitle?: string }> = ({ subtitle }) => {
+  const router = useRouter();
   const { profiles, activeProfile, setActive, reload } = useApp();
   const { t, lang, toggleLang } = useI18n();
   const responsive = useResponsiveLayout();
@@ -79,15 +81,26 @@ export const TopBar: React.FC<{ subtitle?: string }> = ({ subtitle }) => {
           </View>
         </Pressable>
 
-        <Pressable
-          testID="lang-toggle"
-          style={[styles.langBtn, responsive.isCompactPhone && styles.langBtnCompact]}
-          onPress={toggleLang}
-        >
-          <Text style={[styles.langText, responsive.isCompactPhone && styles.langTextCompact]}>
-            {lang === "ru" ? "RU" : "EN"}
-          </Text>
-        </Pressable>
+        <View style={styles.actions}>
+          <Pressable
+            testID="settings-button"
+            accessibilityRole="button"
+            accessibilityLabel={lang === "ru" ? "Настройки" : "Settings"}
+            style={[styles.iconBtn, responsive.isCompactPhone && styles.iconBtnCompact]}
+            onPress={() => router.push("/settings" as any)}
+          >
+            <Ionicons name="settings-outline" size={responsive.isCompactPhone ? 18 : 20} color={colors.onSurface} />
+          </Pressable>
+          <Pressable
+            testID="lang-toggle"
+            style={[styles.langBtn, responsive.isCompactPhone && styles.langBtnCompact]}
+            onPress={toggleLang}
+          >
+            <Text style={[styles.langText, responsive.isCompactPhone && styles.langTextCompact]}>
+              {lang === "ru" ? "RU" : "EN"}
+            </Text>
+          </Pressable>
+        </View>
       </View>
       {subtitle ? (
         <Text
@@ -171,6 +184,18 @@ const styles = StyleSheet.create({
   kindRow: { flexDirection: "row", alignItems: "center", gap: 3, minWidth: 0 },
   kind: { fontSize: fontSize.sm, color: colors.onSurfaceSecondary, fontFamily: fonts.text },
   kindTiny: { fontSize: 11 },
+  actions: { flexDirection: "row", alignItems: "center", gap: spacing.sm, flexShrink: 0 },
+  iconBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.surfaceSecondary,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  iconBtnCompact: { width: 38, height: 38, borderRadius: 19 },
   langBtn: {
     width: 44,
     height: 44,

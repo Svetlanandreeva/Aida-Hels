@@ -39,9 +39,18 @@ export type Profile = {
   privacy?: {
     include_in_ai_context?: boolean;
     share_documents?: boolean;
+    show_notification_details?: boolean;
+    allow_wearable_ai?: boolean;
     [key: string]: any;
   };
   module_settings?: Record<string, boolean>;
+  goals?: string[];
+  onboarding_completed?: boolean;
+  women_health?: Record<string, any>;
+  emergency_contacts?: Array<{ name?: string; relation?: string; phone?: string; note?: string }>;
+  preferred_locale?: string | null;
+  timezone?: string | null;
+  accessibility?: Record<string, any>;
   avatar_url?: string | null;
 };
 
@@ -83,7 +92,6 @@ export type Medication = {
   meal_relation?: "any" | "before" | "with" | "after" | string;
   active: boolean;
   start_date?: string | null;
-  // Compatibility with older imported medication rows used by History.
   date?: string | null;
   created_at?: string | null;
   notes?: string | null;
@@ -101,6 +109,8 @@ export type Vital = {
   id: string;
   profile_id: string;
   kind: string;
+  metric?: string | null;
+  type?: string | null;
   systolic?: number | null;
   diastolic?: number | null;
   pulse?: number | null;
@@ -208,65 +218,63 @@ export const api = {
   deleteProfile: (id: string) => req(`/profiles/${id}`, { method: "DELETE" }),
 
   listLabs: (pid: string): Promise<LabTest[]> => req(`/labs?profile_id=${pid}`),
-  createLab: (data: any): Promise<LabTest> =>
-    req("/labs", { method: "POST", body: JSON.stringify(data) }),
+  createLab: (data: any): Promise<LabTest> => req("/labs", { method: "POST", body: JSON.stringify(data) }),
   deleteLab: (id: string) => req(`/labs/${id}`, { method: "DELETE" }),
 
   listSymptoms: (pid: string): Promise<Symptom[]> => req(`/symptoms?profile_id=${pid}`),
-  createSymptom: (data: any): Promise<Symptom> =>
-    req("/symptoms", { method: "POST", body: JSON.stringify(data) }),
+  createSymptom: (data: any): Promise<Symptom> => req("/symptoms", { method: "POST", body: JSON.stringify(data) }),
   deleteSymptom: (id: string) => req(`/symptoms/${id}`, { method: "DELETE" }),
 
-  listMeds: async (pid: string): Promise<Medication[]> =>
-    sortMedicationsForNow(await req(`/medications?profile_id=${pid}`)),
-  createMed: (data: any): Promise<Medication> =>
-    req("/medications", { method: "POST", body: JSON.stringify(data) }),
+  listMeds: async (pid: string): Promise<Medication[]> => sortMedicationsForNow(await req(`/medications?profile_id=${pid}`)),
+  createMed: (data: any): Promise<Medication> => req("/medications", { method: "POST", body: JSON.stringify(data) }),
   deleteMed: (id: string) => req(`/medications/${id}`, { method: "DELETE" }),
 
   listChat: (pid: string): Promise<ChatMsg[]> => req(`/chat?profile_id=${pid}`),
-  sendChat: (pid: string, text: string, lang: string) =>
-    req(`/chat?language=${lang}`, { method: "POST", body: JSON.stringify({ profile_id: pid, text }) }),
+  sendChat: (pid: string, text: string, lang: string) => req(`/chat?language=${lang}`, { method: "POST", body: JSON.stringify({ profile_id: pid, text }) }),
   clearChat: (pid: string) => req(`/chat?profile_id=${pid}`, { method: "DELETE" }),
 
-  readiness: (pid: string): Promise<{ scores: Record<string, number>; overall: number }> =>
-    req(`/analytics/readiness/${pid}`),
+  readiness: (pid: string): Promise<{ scores: Record<string, number>; overall: number }> => req(`/analytics/readiness/${pid}`),
   gamification: (pid: string): Promise<any> => req(`/gamification/${pid}`),
   getPuzzle: (pid: string): Promise<any> => req(`/puzzle/${pid}`),
-  savePuzzle: (pid: string, widgets: any[]) =>
-    req(`/puzzle/${pid}`, { method: "POST", body: JSON.stringify({ profile_id: pid, widgets }) }),
-  report: (pid: string, days: number, lang: string): Promise<any> =>
-    req(`/report/${pid}?days=${days}&language=${lang}`),
+  savePuzzle: (pid: string, widgets: any[]) => req(`/puzzle/${pid}`, { method: "POST", body: JSON.stringify({ profile_id: pid, widgets }) }),
+  report: (pid: string, days: number, lang: string): Promise<any> => req(`/report/${pid}?days=${days}&language=${lang}`),
 
-  listVitals: (pid: string, kind?: string): Promise<Vital[]> =>
-    req(`/vitals?profile_id=${pid}${kind ? `&kind=${kind}` : ""}`),
-  createVital: (data: any): Promise<Vital> =>
-    req("/vitals", { method: "POST", body: JSON.stringify(data) }),
+  listVitals: (pid: string, kind?: string): Promise<Vital[]> => req(`/vitals?profile_id=${pid}${kind ? `&kind=${kind}` : ""}`),
+  createVital: (data: any): Promise<Vital> => req("/vitals", { method: "POST", body: JSON.stringify(data) }),
   deleteVital: (id: string) => req(`/vitals/${id}`, { method: "DELETE" }),
 
   listCheckins: (pid: string): Promise<Checkin[]> => req(`/checkins?profile_id=${pid}`),
-  createCheckin: (data: any): Promise<Checkin> =>
-    req("/checkins", { method: "POST", body: JSON.stringify(data) }),
+  createCheckin: (data: any): Promise<Checkin> => req("/checkins", { method: "POST", body: JSON.stringify(data) }),
 
   listTasks: (pid: string): Promise<Task[]> => req(`/tasks?profile_id=${pid}`),
-  createTask: (data: any): Promise<Task> =>
-    req("/tasks", { method: "POST", body: JSON.stringify(data) }),
-  updateTask: (id: string, data: Partial<Task>): Promise<Task> =>
-    req(`/tasks/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  createTask: (data: any): Promise<Task> => req("/tasks", { method: "POST", body: JSON.stringify(data) }),
+  updateTask: (id: string, data: Partial<Task>): Promise<Task> => req(`/tasks/${id}`, { method: "PUT", body: JSON.stringify(data) }),
   toggleTask: (id: string): Promise<Task> => req(`/tasks/${id}/toggle`, { method: "PUT" }),
   deleteTask: (id: string) => req(`/tasks/${id}`, { method: "DELETE" }),
 
-  overview: (pid: string, lang: string): Promise<{ attention: any[]; ai_summary: string | null }> =>
-    req(`/overview/${pid}?language=${lang}`),
+  overview: (pid: string, lang: string): Promise<{ attention: any[]; ai_summary: string | null }> => req(`/overview/${pid}?language=${lang}`),
 
-  listDocuments: (pid: string): Promise<MedicalDocument[]> =>
-    req(`/documents?profile_id=${encodeURIComponent(pid)}`),
+  listDocuments: (pid: string): Promise<MedicalDocument[]> => req(`/documents?profile_id=${encodeURIComponent(pid)}`),
 
-  uploadDocument: async (
-    pid: string,
-    documentType: string,
-    note: string,
-    file: { uri: string; name: string; type: string }
-  ): Promise<MedicalDocument> => {
+  wearableProviders: (): Promise<any> => req("/health/wearables/providers"),
+  wearableStatus: (pid: string): Promise<any> => req(`/health/wearables/status/${encodeURIComponent(pid)}`),
+
+  familyAccess: (pid: string): Promise<any> => req(`/family/${encodeURIComponent(pid)}`),
+  shareProfile: (pid: string, email: string, role: "viewer" | "editor", expiresAt?: string | null) =>
+    req(`/family/${encodeURIComponent(pid)}/share`, { method: "POST", body: JSON.stringify({ email, role, expires_at: expiresAt || null }) }),
+  revokeShare: (pid: string, grantId: string) => req(`/family/${encodeURIComponent(pid)}/share/${encodeURIComponent(grantId)}`, { method: "DELETE" }),
+
+  listSessions: (): Promise<any> => req("/privacy/sessions"),
+  revokeSession: (sessionId: string) => req("/privacy/sessions/revoke", { method: "POST", body: JSON.stringify({ session_id: sessionId }) }),
+  revokeAllSessions: () => req("/privacy/sessions/revoke-all", { method: "POST" }),
+
+  emergencyCard: (pid: string): Promise<any> => req(`/emergency-card/${encodeURIComponent(pid)}`),
+  exportProfile: (pid: string): Promise<any> => req(`/export/${encodeURIComponent(pid)}`),
+  aiContext: (pid: string): Promise<any> => req(`/ai/context/${encodeURIComponent(pid)}`),
+  biologicalAge: (pid: string): Promise<any> => req(`/insights/biological-age/${encodeURIComponent(pid)}`),
+  bodySystems: (pid: string): Promise<any> => req(`/insights/body-systems/${encodeURIComponent(pid)}`),
+
+  uploadDocument: async (pid: string, documentType: string, note: string, file: { uri: string; name: string; type: string }): Promise<MedicalDocument> => {
     const form = new FormData();
     form.append("profile_id", pid);
     form.append("document_type", documentType);

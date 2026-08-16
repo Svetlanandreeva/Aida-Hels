@@ -3,6 +3,8 @@ import * as Notifications from "expo-notifications";
 
 const CHANNEL_ID = "aida-reminders";
 
+export type NotificationPermissionState = "granted" | "denied" | "undetermined" | "unavailable";
+
 if (Platform.OS !== "web") {
   Notifications.setNotificationHandler({
     handleNotification: async () => ({
@@ -14,21 +16,37 @@ if (Platform.OS !== "web") {
   });
 }
 
-async function ensureReminderPermission(): Promise<boolean> {
-  if (Platform.OS === "web") return false;
+async function ensureAndroidChannel() {
+  if (Platform.OS !== "android") return;
+  await Notifications.setNotificationChannelAsync(CHANNEL_ID, {
+    name: "Aida reminders",
+    importance: Notifications.AndroidImportance.HIGH,
+    vibrationPattern: [0, 200, 120, 200],
+  });
+}
 
-  if (Platform.OS === "android") {
-    await Notifications.setNotificationChannelAsync(CHANNEL_ID, {
-      name: "Aida reminders",
-      importance: Notifications.AndroidImportance.HIGH,
-      vibrationPattern: [0, 200, 120, 200],
-    });
-  }
+export async function getNotificationPermissionState(): Promise<NotificationPermissionState> {
+  if (Platform.OS === "web") return "unavailable";
+  await ensureAndroidChannel();
+  const permission = await Notifications.getPermissionsAsync();
+  if (permission.granted) return "granted";
+  if (permission.status === Notifications.PermissionStatus.DENIED) return "denied";
+  return "undetermined";
+}
 
+export async function requestNotificationPermission(): Promise<NotificationPermissionState> {
+  if (Platform.OS === "web") return "unavailable";
+  await ensureAndroidChannel();
   const current = await Notifications.getPermissionsAsync();
-  if (current.granted) return true;
+  if (current.granted) return "granted";
   const requested = await Notifications.requestPermissionsAsync();
-  return requested.granted;
+  if (requested.granted) return "granted";
+  if (requested.status === Notifications.PermissionStatus.DENIED) return "denied";
+  return "undetermined";
+}
+
+async function ensureReminderPermission(): Promise<boolean> {
+  return (await requestNotificationPermission()) === "granted";
 }
 
 export async function scheduleTaskReminder(input: {
@@ -36,6 +54,7 @@ export async function scheduleTaskReminder(input: {
   reminderAt: string;
   route?: string | null;
   taskId?: string | null;
+  showDetails?: boolean;
 }): Promise<string | null> {
   if (Platform.OS === "web") return null;
 
@@ -46,7 +65,7 @@ export async function scheduleTaskReminder(input: {
   return Notifications.scheduleNotificationAsync({
     content: {
       title: "Аида · Напоминание",
-      body: input.title,
+      body: input.showDetails ? input.title : "Откройте Аиду, чтобы посмотреть напоминание",
       data: {
         url: input.route || "/(tabs)/tasks",
         taskId: input.taskId || undefined,
@@ -64,4 +83,9 @@ export async function scheduleTaskReminder(input: {
 export async function cancelTaskReminder(notificationId?: string | null) {
   if (!notificationId || Platform.OS === "web") return;
   await Notifications.cancelScheduledNotificationAsync(notificationId).catch(() => {});
+}
+
+export async function cancelAllAidaReminders() {
+  if (Platform.OS === "web") return;
+  await Notifications.cancelAllScheduledNotificationsAsync().catch(() => {});
 }

@@ -7,6 +7,7 @@ on:
       - 'frontend/**'
       - 'backend/**'
       - 'ios/**'
+      - 'android/**'
       - '.github/workflows/validate-consolidated-aida2.yml'
       - '.github/workflows/deploy-ruvds.yml'
   push:
@@ -17,6 +18,7 @@ on:
       - 'frontend/**'
       - 'backend/**'
       - 'ios/**'
+      - 'android/**'
       - '.github/workflows/validate-consolidated-aida2.yml'
       - '.github/workflows/deploy-ruvds.yml'
   workflow_dispatch: {}
@@ -83,16 +85,18 @@ jobs:
           PYTHONPATH: .
         run: python -c "import main; assert main.app is not None"
 
-      - name: Run authorization unit tests
+      - name: Run security and wearable regression tests
         working-directory: backend
         env:
           PYTHONPATH: .
-        run: pytest -q security_tests/test_access_control.py
+        run: pytest -q security_tests
 
-      - name: Verify iOS source exists
+      - name: Verify native health bridge sources exist
         run: |
           test -f ios/AppleHealthSyncClient.swift
           test -f ios/HealthKitManager.swift
+          test -f ios/AidaHealthSyncCoordinator.swift
+          test -f android/AidaHealthConnectManager.kt
 
       - name: Consolidated application validation passed
-        run: echo 'Aida2 frontend, backend authorization layer, and iOS source validated'
+        run: echo 'Aida2 frontend, backend, security tests, and native health bridge sources validated'

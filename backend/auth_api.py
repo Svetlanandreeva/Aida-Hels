@@ -209,7 +209,7 @@ class AuthService:
         password = os.environ.get("SMTP_PASSWORD", "")
         use_ssl = os.environ.get("SMTP_SSL", "false").lower() == "true"
         starttls = os.environ.get("SMTP_STARTTLS", "true").lower() == "true"
-        base_url = os.environ.get("PASSWORD_RESET_BASE_URL", "frontend://reset-password").strip()
+        base_url = os.environ.get("PASSWORD_RESET_BASE_URL", "https://aidaassistent.ru/reset-password").strip()
         reset_url = f"{base_url}{'&' if '?' in base_url else '?'}token={quote(reset_token)}"
 
         message = EmailMessage()

@@ -37,6 +37,7 @@ os.environ.setdefault("MONGO_URL", "google-sheets://aida")
 os.environ.setdefault("DB_NAME", "aida")
 
 import server as legacy_server  # noqa: E402
+from ai_context import build_ai_context  # noqa: E402
 from auth_api import build_auth_router  # noqa: E402
 from candidate_records import build_candidate_router  # noqa: E402
 from documents import build_documents_router  # noqa: E402
@@ -49,6 +50,9 @@ from puzzle_api import build_puzzle_router  # noqa: E402
 from secure_legacy_api import build_secure_legacy_router  # noqa: E402
 from task_api import build_task_router  # noqa: E402
 from timeline_api import build_timeline_router  # noqa: E402
+from user_testing_api import build_user_testing_router  # noqa: E402
+from wearable_cloud_oauth import build_wearable_cloud_oauth_router  # noqa: E402
+from wearables_api import build_wearables_router  # noqa: E402
 
 legacy_server.app.router.on_startup = [
     handler
@@ -56,17 +60,9 @@ legacy_server.app.router.on_startup = [
     if getattr(handler, "__name__", "") != "_startup"
 ]
 
-_legacy_get_profile_context = legacy_server.get_profile_context
-
 
 async def _privacy_aware_profile_context(profile_id: str) -> str:
-    profile = await _google_db.profiles.find_one({"id": profile_id}, {"_id": 0})
-    if not profile:
-        return ""
-    privacy = profile.get("privacy") or {}
-    if privacy.get("include_in_ai_context") is False:
-        return ""
-    return await _legacy_get_profile_context(profile_id)
+    return await build_ai_context(_google_db, profile_id, as_json=True)
 
 
 legacy_server.get_profile_context = _privacy_aware_profile_context
@@ -94,8 +90,6 @@ legacy_server.app.router.routes = [
     if not str(getattr(route, "path", "")).startswith(_REPLACED_LEGACY_PREFIXES)
 ]
 
-# Remove legacy wildcard CORS. Same-origin production needs no CORS entry;
-# trusted cross-origin web clients can be listed explicitly in AIDA_CORS_ORIGINS.
 legacy_server.app.user_middleware = [
     middleware
     for middleware in legacy_server.app.user_middleware
@@ -173,3 +167,6 @@ app.include_router(build_lab_router(_google_db, auth_service))
 app.include_router(build_lab_trends_router(_google_db))
 app.include_router(build_documents_router(_google_db, auth_service))
 app.include_router(build_healthkit_router(_google_db, auth_service))
+app.include_router(build_wearables_router(_google_db, auth_service))
+app.include_router(build_wearable_cloud_oauth_router(_google_db, auth_service))
+app.include_router(build_user_testing_router(_google_db, auth_service))
