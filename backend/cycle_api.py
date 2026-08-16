@@ -42,6 +42,125 @@ def _as_date(value: str) -> date:
         raise HTTPException(422, "Invalid date") from exc
 
 
+def _positive_ovulation_test(value: Any) -> bool:
+    normalized = str(value or "").strip().lower()
+    return normalized in {"positive", "положительный", "+", "true", "1", "lh_positive"}
+
+
+def _preceding_start(target: date, starts: list[date]) -> Optional[date]:
+    prior = [item for item in starts if item <= target]
+    return prior[-1] if prior else None
+
+
+def _build_phase_estimates(
+    *,
+    starts: list[date],
+    next_start: date,
+    period_length: Optional[int],
+    ovulation_tests: list[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Build profile-specific phase estimates without population timing assumptions.
+
+    Menstrual range is derived only when the user supplied a typical period length.
+    Ovulation-related ranges exist only when this same profile has positive ovulation-test
+    evidence that can be linked to a preceding recorded period start. We deliberately do
+    not infer ovulation from a generic day-14/luteal-phase assumption.
+    """
+    if not starts:
+        return {"state": "insufficient_data", "reason": "no_period_start"}
+
+    last = starts[-1]
+    phases: list[Dict[str, Any]] = []
+    if period_length:
+        menstrual_end = min(last + timedelta(days=int(period_length) - 1), next_start - timedelta(days=1))
+        phases.append({
+            "key": "menstrual",
+            "label": "Менструальная фаза",
+            "start": last.isoformat(),
+            "end": menstrual_end.isoformat(),
+            "status": "predicted",
+            "basis": "user_period_length",
+        })
+
+    positive_offsets: list[int] = []
+    positive_dates: list[date] = []
+    for item in ovulation_tests:
+        if not _positive_ovulation_test(item.get("value")) or not item.get("observed_at"):
+            continue
+        observed = _as_date(str(item["observed_at"]))
+        start = _preceding_start(observed, starts)
+        if not start:
+            continue
+        offset = (observed - start).days
+        if 5 <= offset <= 40:
+            positive_offsets.append(offset)
+            positive_dates.append(observed)
+
+    ovulation: Dict[str, Any]
+    if len(positive_offsets) >= 2:
+        median_offset = int(round(statistics.median(positive_offsets)))
+        spread = int(round(statistics.median([abs(v - median_offset) for v in positive_offsets])))
+        uncertainty = max(1, spread)
+        center = last + timedelta(days=median_offset)
+        window_start = center - timedelta(days=uncertainty)
+        window_end = center + timedelta(days=uncertainty)
+        ovulation = {
+            "state": "predicted",
+            "window_start": window_start.isoformat(),
+            "window_end": window_end.isoformat(),
+            "basis": "personal_positive_ovulation_tests",
+            "evidence_count": len(positive_offsets),
+            "confidence": "medium" if len(positive_offsets) < 5 else "high",
+            "disclaimer": "Окно рассчитано только по вашей истории положительных тестов и не подтверждает овуляцию в текущем цикле.",
+        }
+        if period_length:
+            menstrual_end = last + timedelta(days=int(period_length) - 1)
+            follicular_start = menstrual_end + timedelta(days=1)
+            follicular_end = window_start - timedelta(days=1)
+            if follicular_start <= follicular_end:
+                phases.append({
+                    "key": "follicular",
+                    "label": "Фолликулярная фаза",
+                    "start": follicular_start.isoformat(),
+                    "end": follicular_end.isoformat(),
+                    "status": "predicted",
+                    "basis": "personal_ovulation_test_history",
+                })
+        phases.append({
+            "key": "ovulation_window",
+            "label": "Окно возможной овуляции",
+            "start": window_start.isoformat(),
+            "end": window_end.isoformat(),
+            "status": "predicted",
+            "basis": "personal_positive_ovulation_tests",
+        })
+        luteal_start = window_end + timedelta(days=1)
+        luteal_end = next_start - timedelta(days=1)
+        if luteal_start <= luteal_end:
+            phases.append({
+                "key": "luteal",
+                "label": "Лютеиновая фаза",
+                "start": luteal_start.isoformat(),
+                "end": luteal_end.isoformat(),
+                "status": "predicted",
+                "basis": "personal_ovulation_test_history",
+            })
+    else:
+        ovulation = {
+            "state": "insufficient_data",
+            "basis": "none",
+            "evidence_count": len(positive_offsets),
+            "message": "Недостаточно персональных положительных тестов для оценки овуляционного окна.",
+        }
+
+    return {
+        "state": "data" if phases else "insufficient_data",
+        "phases": phases,
+        "ovulation": ovulation,
+        "disclaimer": "Все фазы являются расчётными диапазонами. Фактические события имеют приоритет над прогнозом.",
+    }
+
+
 def build_cycle_router(db, auth) -> APIRouter:
     router = APIRouter(prefix="/api/cycle", tags=["cycle"])
 
@@ -89,6 +208,7 @@ def build_cycle_router(db, auth) -> APIRouter:
     async def forecast(profile_id: str, account: Dict[str, Any] = Depends(auth.require_account)):
         await require(account, profile_id)
         starts = await db.cycle_events.find({"profile_id": profile_id, "event_type": "period_start"}, {"_id": 0}).sort("observed_at", 1).to_list(1000)
+        ovulation_tests = await db.cycle_events.find({"profile_id": profile_id, "event_type": "ovulation_test"}, {"_id": 0}).sort("observed_at", 1).to_list(1000)
         settings = await db.cycle_settings.find_one({"profile_id": profile_id}, {"_id": 0}) or {}
         dates = sorted({_as_date(str(item.get("observed_at"))) for item in starts if item.get("observed_at")})
         intervals = [(dates[i] - dates[i-1]).days for i in range(1, len(dates))]
@@ -120,6 +240,12 @@ def build_cycle_router(db, auth) -> APIRouter:
         uncertainty = max(2, spread)
         today = date.today()
         cycle_day = (today - last).days + 1 if today >= last else None
+        phase_estimates = _build_phase_estimates(
+            starts=dates,
+            next_start=next_start,
+            period_length=settings.get("typical_period_length"),
+            ovulation_tests=ovulation_tests,
+        )
         return {
             "state": "data",
             "profile_id": profile_id,
@@ -132,6 +258,7 @@ def build_cycle_router(db, auth) -> APIRouter:
             "confidence": confidence,
             "basis": basis,
             "evidence_count": len(dates),
+            "phase_estimates": phase_estimates,
             "disclaimer": "Прогноз основан на вашей истории и не является подтверждением овуляции или беременности.",
         }
 
