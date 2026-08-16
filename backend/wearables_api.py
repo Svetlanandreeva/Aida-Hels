@@ -1,8 +1,9 @@
 """Unified wearable/device ingestion API for Aida.
 
-Native system bridges (Apple Health / Android Health Connect) and future cloud
-connectors normalize their data into one canonical measurement contract. The
-API is intentionally provider-agnostic for the UI and AI layers.
+Native system bridges (Apple Health / Android Health Connect) and cloud
+connectors normalize their data into one canonical measurement contract. A
+separate connection registry keeps permission/sync state even when a connected
+device has not produced any samples yet.
 """
 
 from __future__ import annotations
@@ -11,7 +12,7 @@ import hashlib
 import math
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -41,31 +42,13 @@ PROVIDERS: Dict[str, Dict[str, Any]] = {
 }
 
 CORE_METRICS = {
-    "heart_rate",
-    "resting_heart_rate",
-    "hrv_sdnn",
-    "hrv_rmssd",
-    "steps",
-    "active_energy",
-    "total_energy",
-    "distance",
-    "sleep_stage",
-    "sleep_session",
-    "spo2",
-    "respiratory_rate",
-    "wrist_temperature",
-    "skin_temperature",
-    "body_temperature",
-    "basal_temperature",
-    "vo2_max",
-    "weight",
-    "body_fat_percentage",
-    "lean_body_mass",
-    "blood_pressure_systolic",
-    "blood_pressure_diastolic",
+    "heart_rate", "resting_heart_rate", "hrv_sdnn", "hrv_rmssd", "steps", "active_energy", "total_energy", "distance",
+    "sleep_stage", "sleep_session", "spo2", "respiratory_rate", "wrist_temperature", "skin_temperature", "body_temperature",
+    "basal_temperature", "vo2_max", "weight", "body_fat_percentage", "lean_body_mass", "blood_pressure_systolic", "blood_pressure_diastolic",
 }
 
 STALE_AFTER = timedelta(hours=36)
+CONNECTION_STATES = {"not_connected", "connected_no_data", "permission_denied", "sync_error", "data", "stale"}
 
 
 def _now() -> datetime:
@@ -73,20 +56,11 @@ def _now() -> datetime:
 
 
 def sample_fingerprint(provider: str, profile_id: str, sample: "WearableSample") -> str:
-    """Stable idempotency key when a provider does not expose a record id."""
-    payload = "|".join(
-        [
-            provider,
-            profile_id,
-            sample.metric,
-            sample.start_at.astimezone(timezone.utc).isoformat(),
-            (sample.end_at or sample.start_at).astimezone(timezone.utc).isoformat(),
-            format(sample.value, ".12g"),
-            sample.unit.strip().lower(),
-            (sample.source_name or "").strip().lower(),
-            (sample.device_name or "").strip().lower(),
-        ]
-    )
+    payload = "|".join([
+        provider, profile_id, sample.metric, sample.start_at.astimezone(timezone.utc).isoformat(),
+        (sample.end_at or sample.start_at).astimezone(timezone.utc).isoformat(), format(sample.value, ".12g"),
+        sample.unit.strip().lower(), (sample.source_name or "").strip().lower(), (sample.device_name or "").strip().lower(),
+    ])
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
@@ -129,6 +103,16 @@ class WearableSyncRequest(BaseModel):
     samples: List[WearableSample] = Field(default_factory=list, max_length=5000)
 
 
+class WearableConnectionUpdate(BaseModel):
+    profile_id: str
+    state: Literal["connected_no_data", "permission_denied", "sync_error", "data"]
+    error_code: Optional[str] = Field(default=None, max_length=120)
+    error_message: Optional[str] = Field(default=None, max_length=500)
+    device_name: Optional[str] = Field(default=None, max_length=200)
+    device_model: Optional[str] = Field(default=None, max_length=200)
+    os_version: Optional[str] = Field(default=None, max_length=120)
+
+
 class WearableSyncResponse(BaseModel):
     ok: bool = True
     provider: str
@@ -147,10 +131,38 @@ def build_wearables_router(db, auth) -> APIRouter:
         if not await auth.has_profile_access(account_id, profile_id, write=write):
             raise HTTPException(404, "Profile not found")
 
+    async def save_connection(provider: str, profile_id: str, state: str, **patch: Any):
+        if state not in CONNECTION_STATES:
+            raise ValueError("Unsupported connection state")
+        now = _now()
+        existing = await db.wearable_connections.find_one({"profile_id": profile_id, "provider_id": provider}, {"_id": 0})
+        payload = {"state": state, "updated_at": now, **patch}
+        if existing:
+            await db.wearable_connections.update_one({"id": existing.get("id")}, {"$set": payload})
+        else:
+            await db.wearable_connections.insert_one({
+                "id": str(uuid.uuid4()), "profile_id": profile_id, "provider_id": provider,
+                "created_at": now, **payload,
+            })
+
     @router.get("/providers")
     async def list_providers(account: Dict[str, Any] = Depends(auth.require_account)):
         _ = account
         return {"providers": [{"id": key, **value} for key, value in PROVIDERS.items()], "core_metrics": sorted(CORE_METRICS)}
+
+    @router.post("/{provider}/connection")
+    async def update_connection(provider: str, data: WearableConnectionUpdate, account: Dict[str, Any] = Depends(auth.require_account)):
+        meta = PROVIDERS.get(provider)
+        if not meta:
+            raise HTTPException(404, "Unsupported wearable provider")
+        await require_access(str(account["id"]), data.profile_id, write=True)
+        await save_connection(
+            provider, data.profile_id, data.state,
+            error_code=data.error_code, error_message=data.error_message,
+            device_name=data.device_name, device_model=data.device_model, os_version=data.os_version,
+            last_attempt_at=_now(),
+        )
+        return {"ok": True, "provider": provider, "state": data.state}
 
     @router.post("/{provider}/sync", response_model=WearableSyncResponse)
     async def sync_provider(provider: str, data: WearableSyncRequest, account: Dict[str, Any] = Depends(auth.require_account)):
@@ -187,7 +199,14 @@ def build_wearables_router(db, auth) -> APIRouter:
                 "verification_status": "source_reported", "synced_at": synced_at,
             })
             inserted += 1
-        return WearableSyncResponse(provider=provider, inserted=inserted, skipped=skipped, rejected=rejected, state="data" if inserted or skipped else "connected_no_data", last_sync_at=synced_at, sync_cursor=data.sync_cursor)
+        state = "data" if inserted or skipped else "connected_no_data"
+        await save_connection(
+            provider, data.profile_id, state,
+            last_sync_at=synced_at, sync_cursor=data.sync_cursor,
+            error_code=None, error_message=None,
+            device_name=data.device_name, device_model=data.device_model, os_version=data.os_version,
+        )
+        return WearableSyncResponse(provider=provider, inserted=inserted, skipped=skipped, rejected=rejected, state=state, last_sync_at=synced_at, sync_cursor=data.sync_cursor)
 
     @router.get("/status/{profile_id}")
     async def wearable_status(profile_id: str, account: Dict[str, Any] = Depends(auth.require_account)):
@@ -196,11 +215,25 @@ def build_wearables_router(db, auth) -> APIRouter:
         for provider, meta in PROVIDERS.items():
             rows = await db.vitals.find({"profile_id": profile_id, "source": provider}, {"_id": 0}).sort("synced_at", -1).to_list(1)
             latest = rows[0] if rows else None
-            state = sample_state(latest)
+            connection = await db.wearable_connections.find_one({"profile_id": profile_id, "provider_id": provider}, {"_id": 0})
+            measured_state = sample_state(latest)
+            if latest:
+                state = measured_state
+            elif connection:
+                state = str(connection.get("state") or "connected_no_data")
+            else:
+                state = "not_connected"
+            connected = state in {"connected_no_data", "data", "stale", "sync_error"}
             result.append({
-                "id": provider, **meta, "state": state, "connected": bool(latest),
-                "last_sync_at": latest.get("synced_at") if latest else None, "freshness": state,
-                "device": {"name": latest.get("device_name"), "model": latest.get("device_model"), "os_version": latest.get("os_version")} if latest else None,
+                "id": provider, **meta, "state": state, "connected": connected,
+                "last_sync_at": (latest or {}).get("synced_at") or (connection or {}).get("last_sync_at"),
+                "last_attempt_at": (connection or {}).get("last_attempt_at"), "freshness": measured_state if latest else state,
+                "error": {"code": (connection or {}).get("error_code"), "message": (connection or {}).get("error_message")} if connection and connection.get("error_message") else None,
+                "device": {
+                    "name": (latest or {}).get("device_name") or (connection or {}).get("device_name"),
+                    "model": (latest or {}).get("device_model") or (connection or {}).get("device_model"),
+                    "os_version": (latest or {}).get("os_version") or (connection or {}).get("os_version"),
+                } if latest or connection else None,
             })
         return {"providers": result}
 
