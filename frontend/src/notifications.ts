@@ -6,18 +6,12 @@ const CHANNEL_ID = "aida-reminders";
 export type NotificationPermissionState = "granted" | "denied" | "undetermined" | "unavailable";
 
 if (Platform.OS !== "web") {
-  Notifications.setNotificationHandler({
-    handleNotification: async () => ({ shouldPlaySound: true, shouldSetBadge: false, shouldShowBanner: true, shouldShowList: true }),
-  });
+  Notifications.setNotificationHandler({ handleNotification: async () => ({ shouldPlaySound: true, shouldSetBadge: false, shouldShowBanner: true, shouldShowList: true }) });
 }
 
 async function ensureAndroidChannel() {
   if (Platform.OS !== "android") return;
-  await Notifications.setNotificationChannelAsync(CHANNEL_ID, {
-    name: "Aida reminders",
-    importance: Notifications.AndroidImportance.HIGH,
-    vibrationPattern: [0, 200, 120, 200],
-  });
+  await Notifications.setNotificationChannelAsync(CHANNEL_ID, { name: "Aida reminders", importance: Notifications.AndroidImportance.HIGH, vibrationPattern: [0, 200, 120, 200] });
 }
 
 export async function getNotificationPermissionState(): Promise<NotificationPermissionState> {
@@ -50,12 +44,7 @@ export async function scheduleTaskReminder(input: { title: string; reminderAt: s
   if (Number.isNaN(date.getTime()) || date.getTime() <= Date.now()) return null;
   if (!(await ensureReminderPermission())) return null;
   return Notifications.scheduleNotificationAsync({
-    content: {
-      title: "Аида · Напоминание",
-      body: input.showDetails ? input.title : "Откройте Аиду, чтобы посмотреть напоминание",
-      data: { url: input.route || "/(tabs)/tasks", taskId: input.taskId || undefined },
-      sound: true,
-    },
+    content: { title: "Аида · Напоминание", body: input.showDetails ? input.title : "Откройте Аиду, чтобы посмотреть напоминание", data: { url: input.route || "/(tabs)/tasks", taskId: input.taskId || undefined }, sound: true },
     trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date, ...(Platform.OS === "android" ? { channelId: CHANNEL_ID } : {}) },
   });
 }
@@ -66,10 +55,21 @@ export async function scheduleBedtimeReminder(input: { date: string; time: strin
   if (Number.isNaN(at.getTime()) || at.getTime() <= Date.now()) return null;
   if (!(await ensureReminderPermission())) return null;
   return Notifications.scheduleNotificationAsync({
+    content: { title: "Аида · Пора готовиться ко сну", body: "Вы планировали лечь спать сейчас. Отметить отход ко сну?", data: { url: "/sleep-rhythm", rhythmAction: "bedtime" }, sound: true },
+    trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: at, ...(Platform.OS === "android" ? { channelId: CHANNEL_ID } : {}) },
+  });
+}
+
+export async function scheduleMedicationDoseAt(input: { medicationId: string; name: string; dose?: string | null; date: string; time: string; showDetails?: boolean }): Promise<string | null> {
+  if (Platform.OS === "web" || !/^\d{4}-\d{2}-\d{2}$/.test(input.date) || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(input.time)) return null;
+  const at = new Date(`${input.date}T${input.time}:00`);
+  if (Number.isNaN(at.getTime()) || at.getTime() <= Date.now()) return null;
+  if (!(await ensureReminderPermission())) return null;
+  return Notifications.scheduleNotificationAsync({
     content: {
-      title: "Аида · Пора готовиться ко сну",
-      body: "Вы планировали лечь спать сейчас. Отметить отход ко сну?",
-      data: { url: "/sleep-rhythm", rhythmAction: "bedtime" },
+      title: "Аида · Лекарство",
+      body: input.showDetails ? [input.name, input.dose].filter(Boolean).join(" · ") : "Откройте Аиду, чтобы посмотреть напоминание",
+      data: { url: "/medications", medicationId: input.medicationId, scheduledTime: input.time, adaptive: true },
       sound: true,
     },
     trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: at, ...(Platform.OS === "android" ? { channelId: CHANNEL_ID } : {}) },
@@ -84,12 +84,7 @@ export async function scheduleMedicationReminders(input: { medicationId: string;
   for (const time of validTimes) {
     const [hour, minute] = time.split(":").map(Number);
     const id = await Notifications.scheduleNotificationAsync({
-      content: {
-        title: "Аида · Лекарство",
-        body: input.showDetails ? [input.name, input.dose].filter(Boolean).join(" · ") : "Откройте Аиду, чтобы посмотреть напоминание",
-        data: { url: "/medications", medicationId: input.medicationId, scheduledTime: time },
-        sound: true,
-      },
+      content: { title: "Аида · Лекарство", body: input.showDetails ? [input.name, input.dose].filter(Boolean).join(" · ") : "Откройте Аиду, чтобы посмотреть напоминание", data: { url: "/medications", medicationId: input.medicationId, scheduledTime: time }, sound: true },
       trigger: { type: Notifications.SchedulableTriggerInputTypes.DAILY, hour, minute, ...(Platform.OS === "android" ? { channelId: CHANNEL_ID } : {}) },
     });
     ids.push(id);
