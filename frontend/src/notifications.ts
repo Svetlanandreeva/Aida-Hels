@@ -60,6 +60,26 @@ export async function scheduleBedtimeReminder(input: { date: string; time: strin
   });
 }
 
+export async function schedulePersonalSleepWindowReminder(input: { date: string; time: string; windowStart?: string | null; windowEnd: string }): Promise<string | null> {
+  if (Platform.OS === "web" || !/^\d{4}-\d{2}-\d{2}$/.test(input.date) || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(input.time)) return null;
+  let at = new Date(`${input.date}T${input.time}:00`);
+  if (Number.isNaN(at.getTime())) return null;
+  if (at.getTime() <= Date.now()) {
+    at = new Date(at.getTime() + 24 * 60 * 60 * 1000);
+  }
+  if (!(await ensureReminderPermission())) return null;
+  const window = input.windowStart ? `${input.windowStart}–${input.windowEnd}` : input.windowEnd;
+  return Notifications.scheduleNotificationAsync({
+    content: {
+      title: "Аида · Ваш ритм сна",
+      body: `По вашим данным самочувствие чаще было лучше, когда сон начинался примерно в ${window}. Если вам комфортно, можно постепенно завершать день.`,
+      data: { url: "/sleep-rhythm", personalizedSleep: true },
+      sound: true,
+    },
+    trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: at, ...(Platform.OS === "android" ? { channelId: CHANNEL_ID } : {}) },
+  });
+}
+
 export async function scheduleMedicationDoseAt(input: { medicationId: string; name: string; dose?: string | null; date: string; time: string; showDetails?: boolean }): Promise<string | null> {
   if (Platform.OS === "web" || !/^\d{4}-\d{2}-\d{2}$/.test(input.date) || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(input.time)) return null;
   const at = new Date(`${input.date}T${input.time}:00`);
