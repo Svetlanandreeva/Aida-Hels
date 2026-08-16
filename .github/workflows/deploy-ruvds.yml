@@ -161,6 +161,49 @@ jobs:
           tar -C frontend --exclude='node_modules' --exclude='.git' -czf - . | \
             $SSH "$RUVDS_USER@$RUVDS_HOST" 'tar -xzf - -C /opt/aida/frontend'
 
+      - name: Ensure persistent production auth secret
+        timeout-minutes: 2
+        run: |
+          ssh -p "$RUVDS_PORT" -i ~/.ssh/ruvds -o ConnectTimeout=10 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes "$RUVDS_USER@$RUVDS_HOST" <<'EOF'
+          set -euo pipefail
+          cd /opt/aida/backend
+          touch .env
+          test -w .env || (echo 'Production .env is not writable by deploy user' && exit 1)
+          chmod 600 .env
+          python3 - <<'PY'
+          from pathlib import Path
+          import secrets
+
+          path = Path('.env')
+          lines = path.read_text().splitlines()
+          existing = None
+          for line in lines:
+              if line.startswith('JWT_SECRET='):
+                  existing = line.split('=', 1)[1].strip()
+                  break
+
+          if existing and len(existing) >= 32:
+              print('JWT_SECRET is already configured; preserving existing value.')
+          else:
+              generated = secrets.token_hex(32)
+              updated = []
+              replaced = False
+              for line in lines:
+                  if line.startswith('JWT_SECRET='):
+                      if not replaced:
+                          updated.append(f'JWT_SECRET={generated}')
+                          replaced = True
+                      continue
+                  updated.append(line)
+              if not replaced:
+                  if updated and updated[-1] != '':
+                      updated.append('')
+                  updated.append(f'JWT_SECRET={generated}')
+              path.write_text('\n'.join(updated).rstrip() + '\n')
+              print('JWT_SECRET was missing or invalid and has been generated once for this server.')
+          PY
+          EOF
+
       - name: Restart backend and verify production
         timeout-minutes: 5
         run: |
