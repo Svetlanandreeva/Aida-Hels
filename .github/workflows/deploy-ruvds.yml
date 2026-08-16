@@ -21,7 +21,7 @@ permissions:
 jobs:
   build-and-deploy:
     runs-on: [self-hosted, linux, x64, aida-prod]
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       RUVDS_HOST: ${{ secrets.RUVDS_HOST }}
       RUVDS_USER: ${{ secrets.RUVDS_USER }}
@@ -58,6 +58,8 @@ jobs:
       - name: Install frontend dependencies
         timeout-minutes: 12
         working-directory: frontend
+        env:
+          YARN_NETWORK_CONCURRENCY: '1'
         run: yarn install --frozen-lockfile --non-interactive --prefer-offline --network-timeout 60000
 
       - name: Lint frontend
@@ -70,13 +72,19 @@ jobs:
         working-directory: frontend
         run: npx --no-install tsc --noEmit
 
-      - name: Export Expo web frontend
-        timeout-minutes: 10
+      - name: Report runner memory before Expo export
+        run: |
+          free -h || true
+          swapon --show || true
+
+      - name: Export Expo web frontend in low-memory mode
+        timeout-minutes: 20
         working-directory: frontend
         env:
           EXPO_NO_TELEMETRY: '1'
+          NODE_OPTIONS: '--max-old-space-size=640'
         run: |
-          npx --no-install expo export -p web
+          npx --no-install expo export -p web --max-workers 1
           test -f dist/index.html
           test -d dist/_expo
 
@@ -181,4 +189,4 @@ jobs:
           EOF
 
       - name: Deployment summary
-        run: echo 'Aida production validated and deployed through the self-hosted aida-prod runner.'
+        run: echo 'Aida production validated and deployed through the self-hosted aida-prod runner in low-memory mode.'
