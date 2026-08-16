@@ -52,6 +52,8 @@ def _normalize_med(doc):
     result.setdefault("dose", None)
     result.setdefault("notes", None)
     result.setdefault("start_date", None)
+    result.setdefault("first_dose_anchor", "clock")
+    result.setdefault("wake_offset_minutes", 0)
     return result
 
 
@@ -66,6 +68,8 @@ class MedicationCreate(BaseModel):
     start_date: Optional[str] = None
     notes: Optional[str] = None
     notification_ids: List[str] = Field(default_factory=list)
+    first_dose_anchor: str = "clock"  # clock | wake
+    wake_offset_minutes: int = 0
 
 
 class MedicationUpdate(BaseModel):
@@ -78,11 +82,37 @@ class MedicationUpdate(BaseModel):
     start_date: Optional[str] = None
     notes: Optional[str] = None
     notification_ids: Optional[List[str]] = None
+    first_dose_anchor: Optional[str] = None
+    wake_offset_minutes: Optional[int] = None
 
 
 class IntakeMark(BaseModel):
     scheduled_at: str
     status: str
+
+
+def _minutes(value: str) -> int:
+    h, m = value.split(":")
+    return int(h) * 60 + int(m)
+
+
+def _hhmm(total: int) -> str:
+    total %= 24 * 60
+    return f"{total // 60:02d}:{total % 60:02d}"
+
+
+def _effective_times(med: Dict[str, Any], wake_time: Optional[str]) -> List[Dict[str, Any]]:
+    times = list(med.get("times") or [])
+    if not times:
+        return []
+    effective = [{"planned_time": t, "time": t, "anchor": "clock"} for t in times]
+    if med.get("first_dose_anchor") == "wake" and wake_time and _TIME_RE.match(wake_time):
+        offset = max(-240, min(720, int(med.get("wake_offset_minutes") or 0)))
+        wake_based = _hhmm(_minutes(wake_time) + offset)
+        # Never pull a wake-anchored dose earlier than its planned clock time.
+        if _minutes(wake_based) > _minutes(times[0]):
+            effective[0] = {"planned_time": times[0], "time": wake_based, "anchor": "wake"}
+    return effective
 
 
 def build_medication_router(db, auth) -> APIRouter:
@@ -103,6 +133,9 @@ def build_medication_router(db, auth) -> APIRouter:
             raise HTTPException(400, "Medication name is required")
         payload["times"] = _times(payload.get("times"))
         payload["notification_ids"] = _notification_ids(payload.get("notification_ids"))
+        if payload.get("first_dose_anchor") not in {"clock", "wake"}:
+            raise HTTPException(400, "first_dose_anchor must be clock or wake")
+        payload["wake_offset_minutes"] = max(-240, min(720, int(payload.get("wake_offset_minutes") or 0)))
         meal = str(payload.get("meal_relation") or "any").lower()
         if meal not in _ALLOWED_MEAL:
             raise HTTPException(400, "Invalid meal relation")
@@ -123,6 +156,10 @@ def build_medication_router(db, auth) -> APIRouter:
             patch["times"] = _times(patch["times"])
         if "notification_ids" in patch:
             patch["notification_ids"] = _notification_ids(patch["notification_ids"])
+        if "first_dose_anchor" in patch and patch["first_dose_anchor"] not in {"clock", "wake"}:
+            raise HTTPException(400, "first_dose_anchor must be clock or wake")
+        if "wake_offset_minutes" in patch:
+            patch["wake_offset_minutes"] = max(-240, min(720, int(patch["wake_offset_minutes"])))
         if "meal_relation" in patch:
             meal = str(patch["meal_relation"]).lower()
             if meal not in _ALLOWED_MEAL:
@@ -162,44 +199,46 @@ def build_medication_router(db, auth) -> APIRouter:
             patch = {"status": status, "occurred_at": occurred_at, "updated_at": occurred_at}
             await db.medication_events.update_one({"medication_id": medication_id, "scheduled_at": scheduled_at}, {"$set": patch})
             return {**existing, **patch}
-        event = {
-            "id": str(uuid.uuid4()),
-            "profile_id": med.get("profile_id"),
-            "medication_id": medication_id,
-            "medication_name": med.get("name"),
-            "scheduled_at": scheduled_at,
-            "occurred_at": occurred_at,
-            "status": status,
-            "created_at": occurred_at,
-            "updated_at": occurred_at,
-        }
+        event = {"id": str(uuid.uuid4()), "profile_id": med.get("profile_id"), "medication_id": medication_id, "medication_name": med.get("name"), "scheduled_at": scheduled_at, "occurred_at": occurred_at, "status": status, "created_at": occurred_at, "updated_at": occurred_at}
         await db.medication_events.insert_one(event)
         return event
 
     @router.get("/schedule/day")
-    async def day_schedule(profile_id: str, date: str, account: Dict[str, Any] = Depends(auth.require_account)):
+    async def day_schedule(profile_id: str, date: str, now_local: Optional[str] = None, account: Dict[str, Any] = Depends(auth.require_account)):
         await require_profile_access(auth, account, profile_id)
         meds = await db.medications.find({"profile_id": profile_id, "active": True}, {"_id": 0}).to_list(300)
         events = await db.medication_events.find({"profile_id": profile_id}, {"_id": 0}).to_list(1000)
+        rhythm = await db.circadian_events.find({"profile_id": profile_id, "local_date": date}, {"_id": 0}).to_list(50)
+        wake = next((e for e in reversed(rhythm) if e.get("kind") == "wake"), None)
+        wake_time = str((wake or {}).get("local_time") or "") or None
         event_map = {(e.get("medication_id"), e.get("scheduled_at")): e for e in events if str(e.get("scheduled_at") or "").startswith(date)}
+        current_minutes = _minutes(now_local) if now_local and _TIME_RE.match(now_local) else None
         slots = []
         for raw in meds:
             med = _normalize_med(raw)
-            for time in med.get("times") or []:
+            effective = _effective_times(med, wake_time)
+            for index, item in enumerate(effective):
+                time = item["time"]
                 scheduled_at = f"{date}T{time}:00"
                 event = event_map.get((med.get("id"), scheduled_at))
+                next_time = effective[index + 1]["time"] if index + 1 < len(effective) else None
+                expired = bool(event is None and current_minutes is not None and next_time and current_minutes >= _minutes(next_time))
+                status = event.get("status") if event else ("missed" if expired else "pending")
                 slots.append({
                     "id": f"{med.get('id')}:{date}:{time}",
                     "medication_id": med.get("id"),
                     "name": med.get("name"),
                     "dose": med.get("dose"),
                     "time": time,
+                    "planned_time": item["planned_time"],
+                    "anchor": item["anchor"],
                     "scheduled_at": scheduled_at,
                     "meal_relation": med.get("meal_relation"),
-                    "status": event.get("status") if event else "pending",
+                    "status": status,
+                    "can_take": status == "pending",
                     "occurred_at": event.get("occurred_at") if event else None,
                 })
         slots.sort(key=lambda item: item["time"])
-        return {"profile_id": profile_id, "date": date, "slots": slots}
+        return {"profile_id": profile_id, "date": date, "wake_time": wake_time, "slots": slots}
 
     return router
