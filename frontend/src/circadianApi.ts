@@ -36,6 +36,23 @@ export type SleepInsight = {
   clinical_prompt?: { level: string; message_ru: string; message_en: string } | null;
 };
 
+export type WearableCircadianCandidate = {
+  id: string;
+  profile_id: string;
+  entity_type: "circadian_event";
+  status: "pending" | "approved" | "rejected";
+  proposed_by: "import";
+  payload: {
+    kind: "wake" | "bedtime";
+    local_date: string;
+    local_time: string;
+    provider: string;
+    source_record_id: string;
+    confidence?: number | null;
+    metadata?: Record<string, unknown>;
+  };
+};
+
 async function req(path: string, options?: RequestInit) {
   const headers = new Headers(options?.headers || {});
   if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
@@ -54,6 +71,45 @@ export function getSleepInsight(profileId: string): Promise<SleepInsight> {
 
 export function recordRhythmEvent(profileId: string, kind: "wake" | "bedtime", date: string, time: string) {
   return req("/circadian/events", { method: "POST", body: JSON.stringify({ profile_id: profileId, kind, local_date: date, local_time: time, source: "manual" }) });
+}
+
+export function stageWearableRhythmCandidate(input: {
+  profileId: string;
+  provider: string;
+  sourceRecordId: string;
+  kind: "wake" | "bedtime";
+  localDate: string;
+  localTime: string;
+  confidence?: number | null;
+  metadata?: Record<string, unknown>;
+}): Promise<WearableCircadianCandidate> {
+  return req("/circadian/wearable-candidates", {
+    method: "POST",
+    body: JSON.stringify({
+      profile_id: input.profileId,
+      provider: input.provider,
+      source_record_id: input.sourceRecordId,
+      kind: input.kind,
+      local_date: input.localDate,
+      local_time: input.localTime,
+      confidence: input.confidence ?? null,
+      metadata: input.metadata || {},
+    }),
+  });
+}
+
+export function listPendingCircadianCandidates(profileId: string): Promise<WearableCircadianCandidate[]> {
+  return req(`/candidates?profile_id=${encodeURIComponent(profileId)}&status=pending`).then((items: WearableCircadianCandidate[]) =>
+    items.filter((item) => item.entity_type === "circadian_event")
+  );
+}
+
+export function approveCircadianCandidate(candidateId: string) {
+  return req(`/candidates/${encodeURIComponent(candidateId)}/approve`, { method: "POST", body: JSON.stringify({}) });
+}
+
+export function rejectCircadianCandidate(candidateId: string) {
+  return req(`/candidates/${encodeURIComponent(candidateId)}/reject`, { method: "POST", body: JSON.stringify({}) });
 }
 
 export function saveBedtimePlan(profileId: string, date: string, plannedTime: string, notificationId?: string | null) {
