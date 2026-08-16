@@ -30,3 +30,5 @@ if needle in text and 'router.push("/export-data"' not in text:
     insert = '            <FeatureLink icon="download-outline" title={lang === "ru" ? "Экспорт данных" : "Data export"} subtitle={lang === "ru" ? "Скачать данные профиля" : "Download profile data"} onPress={() => router.push("/export-data" as any)} />\n'
     text = text.replace(needle, insert + needle, 1)
 profile.write_text(text)
+
+# Trigger marker: final user-testing patch v2.
