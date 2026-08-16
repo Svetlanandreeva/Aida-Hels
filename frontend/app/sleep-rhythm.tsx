@@ -9,6 +9,7 @@ import { api, Medication } from "@/src/api";
 import { getCircadianDay, recordRhythmEvent, saveBedtimePlan, CircadianDay } from "@/src/circadianApi";
 import { updateMedicationSchedule } from "@/src/medicationScheduleApi";
 import { cancelNotificationIds, scheduleBedtimeReminder } from "@/src/notifications";
+import { SleepInsightCard } from "@/src/components/SleepInsightCard";
 import { colors, fontSize, fonts, radius, spacing } from "@/src/theme";
 
 const TIME_RE = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
@@ -54,7 +55,7 @@ export default function SleepRhythmScreen() {
     try {
       await recordRhythmEvent(activeId, "wake", date, time);
       await load();
-      bumpRefresh(); // forces medication reminders to be recalculated from wake time
+      bumpRefresh();
     } finally { setBusy(null); }
   };
 
@@ -63,6 +64,7 @@ export default function SleepRhythmScreen() {
     setBusy("sleep");
     try {
       if (day?.plan?.notification_id) await cancelNotificationIds([day.plan.notification_id]);
+      if (day?.plan?.recommendation_notification_id) await cancelNotificationIds([day.plan.recommendation_notification_id]);
       await recordRhythmEvent(activeId, "bedtime", date, localTime());
       await load();
       bumpRefresh();
@@ -110,6 +112,8 @@ export default function SleepRhythmScreen() {
         <View style={styles.row}><TextInput value={wakeTime} onChangeText={setWakeTime} style={styles.input} placeholder="12:00" placeholderTextColor={colors.onSurfaceSecondary} /><Pressable style={styles.primary} onPress={() => saveWake()}><Text style={styles.primaryText}>{busy === "wake" ? "…" : (ru ? "Я проснулась" : "I'm awake")}</Text></Pressable></View>
         <Pressable onPress={() => { const now = localTime(); setWakeTime(now); void saveWake(now); }} style={styles.textButton}><Text style={styles.textButtonText}>{ru ? "Отметить текущее время" : "Use current time"}</Text></Pressable>
       </View>
+
+      <SleepInsightCard />
 
       <View style={[styles.card, { marginBottom: spacing.md }]}>
         <Ionicons name="medkit-outline" size={24} color={colors.onSurface} />
