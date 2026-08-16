@@ -3,10 +3,23 @@ import { getApiToken } from "@/src/api";
 import AidaHealthConnect from "../modules/aida-health-connect";
 import { syncWearableProvider, updateWearableConnection } from "@/src/wearables";
 
+export type AppleHealthMedication = {
+  external_id: string;
+  display_text: string;
+  nickname?: string | null;
+  is_archived: boolean;
+  has_schedule: boolean;
+  general_form?: string | null;
+  rxnorm_code?: string | null;
+  codings?: Array<{ system: string; code: string; version?: string | null }>;
+};
+
 const healthKit = NativeModules.AidaHealthKit as undefined | {
   connect: (profileId: string, bearerToken: string) => Promise<any>;
   sync: (profileId: string, bearerToken: string) => Promise<any>;
   disconnect: () => Promise<any>;
+  requestMedicationAccess?: () => Promise<{ granted: boolean }>;
+  listMedications?: () => Promise<AppleHealthMedication[]>;
 };
 
 function authToken() {
@@ -17,6 +30,10 @@ function authToken() {
 
 export function appleHealthBridgeAvailable() {
   return Platform.OS === "ios" && !!healthKit;
+}
+
+export function appleMedicationBridgeAvailable() {
+  return Platform.OS === "ios" && !!healthKit?.requestMedicationAccess && !!healthKit?.listMedications;
 }
 
 export function healthConnectBridgeAvailable() {
@@ -31,6 +48,20 @@ export async function connectAppleHealth(profileId: string) {
 export async function syncAppleHealth(profileId: string) {
   if (!appleHealthBridgeAvailable() || !healthKit) throw new Error("Apple Health bridge is not available in this build");
   return healthKit.sync(profileId, authToken());
+}
+
+export async function requestAppleMedicationAccess() {
+  if (!appleMedicationBridgeAvailable() || !healthKit?.requestMedicationAccess) {
+    throw new Error("Apple Health medication import is not available in this build");
+  }
+  return healthKit.requestMedicationAccess();
+}
+
+export async function listAppleHealthMedications() {
+  if (!appleMedicationBridgeAvailable() || !healthKit?.listMedications) {
+    throw new Error("Apple Health medication import is not available in this build");
+  }
+  return healthKit.listMedications();
 }
 
 export async function connectHealthConnect(profileId: string) {
