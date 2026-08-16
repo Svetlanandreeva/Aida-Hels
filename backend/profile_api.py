@@ -152,20 +152,14 @@ def build_profile_router(db, auth) -> APIRouter:
             raise HTTPException(404, "Profile not found")
 
     async def require_owner(account_id: str, profile_id: str):
-        grant = await db.access_grants.find_one(
-            {"account_id": account_id, "profile_id": profile_id}, {"_id": 0}
-        )
+        grant = await db.access_grants.find_one({"account_id": account_id, "profile_id": profile_id}, {"_id": 0})
         if not grant or grant.get("revoked_at") or str(grant.get("role") or "") != "owner":
             raise HTTPException(404, "Profile not found")
 
     @router.get("", response_model=List[ProfileFull])
     async def list_profiles(account: Dict[str, Any] = Depends(auth.require_account)):
         grants = await db.access_grants.find({"account_id": account["id"]}, {"_id": 0}).to_list(500)
-        profile_ids = {
-            str(grant.get("profile_id"))
-            for grant in grants
-            if grant.get("profile_id") and not grant.get("revoked_at")
-        }
+        profile_ids = {str(grant.get("profile_id")) for grant in grants if grant.get("profile_id") and not grant.get("revoked_at")}
         if not profile_ids:
             return []
         docs = await db.profiles.find({}, {"_id": 0}).sort("created_at", 1).to_list(1000)
@@ -183,14 +177,7 @@ def build_profile_router(db, auth) -> APIRouter:
         doc["account_id"] = account["id"]
         await db.profiles.insert_one(doc)
         try:
-            await db.access_grants.insert_one({
-                "id": str(uuid.uuid4()),
-                "account_id": account["id"],
-                "profile_id": p.id,
-                "role": "owner",
-                "created_at": _now(),
-                "revoked_at": None,
-            })
+            await db.access_grants.insert_one({"id": str(uuid.uuid4()), "account_id": account["id"], "profile_id": p.id, "role": "owner", "created_at": _now(), "revoked_at": None})
         except Exception:
             await db.profiles.delete_one({"id": p.id})
             raise
@@ -220,24 +207,16 @@ def build_profile_router(db, auth) -> APIRouter:
         was_completed = bool(current.get("onboarding_completed"))
         finishing_onboarding = patch.get("onboarding_completed") is True and not was_completed
         effective_goals = list(patch.get("goals") if "goals" in patch else (current.get("goals") or []))
-
         if finishing_onboarding and "module_settings" not in patch and not (current.get("module_settings") or {}):
             patch["module_settings"] = _module_settings_for_goals(effective_goals)
 
         patch["updated_at"] = _now()
         await db.profiles.update_one({"id": profile_id}, {"$set": patch})
 
-        # Goal-based personalization is a one-time initializer only. A persisted
-        # Puzzle means the user has an explicit Home configuration; never replace it.
         if finishing_onboarding:
             existing_puzzle = await db.puzzle.find_one({"profile_id": profile_id}, {"_id": 0})
             if not existing_puzzle:
-                await db.puzzle.insert_one({
-                    "profile_id": profile_id,
-                    "widgets": widgets_for_goals(effective_goals),
-                    "source": "onboarding_goals",
-                    "updated_at": _now(),
-                })
+                await db.puzzle.insert_one({"profile_id": profile_id, "widgets": widgets_for_goals(effective_goals), "source": "onboarding_goals", "updated_at": _now()})
 
         doc = await db.profiles.find_one({"id": profile_id}, {"_id": 0})
         return _normalize(doc)
@@ -247,18 +226,9 @@ def build_profile_router(db, auth) -> APIRouter:
         await require_owner(str(account["id"]), profile_id)
         await db.profiles.delete_one({"id": profile_id})
         for collection in (
-            db.labs,
-            db.symptoms,
-            db.medications,
-            db.medication_events,
-            db.chat_messages,
-            db.vitals,
-            db.checkins,
-            db.tasks,
-            db.files,
-            db.candidates,
-            db.puzzle,
-            db.access_grants,
+            db.labs, db.symptoms, db.medications, db.medication_events, db.chat_messages,
+            db.vitals, db.checkins, db.tasks, db.files, db.candidates, db.puzzle,
+            db.circadian_events, db.circadian_plans, db.access_grants,
         ):
             await collection.delete_many({"profile_id": profile_id})
         return {"ok": True}
