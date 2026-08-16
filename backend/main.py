@@ -45,6 +45,7 @@ from auth_api import build_auth_router  # noqa: E402
 from body_insights import build_body_insights_router  # noqa: E402
 from candidate_records import build_candidate_router  # noqa: E402
 from circadian_api import build_circadian_router  # noqa: E402
+from cycle_api import build_cycle_router  # noqa: E402
 from documents import build_documents_router  # noqa: E402
 from family_api import build_family_router  # noqa: E402
 from healthkit_api import build_healthkit_router  # noqa: E402
@@ -120,6 +121,7 @@ app.include_router(build_puzzle_router(_google_db, auth_service))
 app.include_router(build_task_router(_google_db, auth_service))
 app.include_router(build_medication_router(_google_db, auth_service))
 app.include_router(build_circadian_router(_google_db, auth_service))
+app.include_router(build_cycle_router(_google_db, auth_service))
 app.include_router(build_body_insights_router(_google_db, auth_service))
 app.include_router(build_timeline_router(_google_db))
 app.include_router(build_candidate_router(_google_db, auth_service))
