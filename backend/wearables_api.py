@@ -1,14 +1,16 @@
-"""Unified wearable/device sync API for Aida.
+"""Unified wearable/device ingestion API for Aida.
 
 Native system bridges (Apple Health / Android Health Connect) and future cloud
-connectors normalize their data into the same vitals collection. This keeps
-analytics independent from a specific watch vendor.
+connectors normalize their data into one canonical measurement contract. The
+API is intentionally provider-agnostic for the UI and AI layers.
 """
 
 from __future__ import annotations
 
+import hashlib
+import math
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -22,6 +24,7 @@ PROVIDERS: Dict[str, Dict[str, Any]] = {
         "mode": "native_system",
         "platform": "ios",
         "ready": True,
+        "capabilities": ["heart_rate", "resting_heart_rate", "hrv", "steps", "active_energy", "sleep", "spo2", "respiratory_rate", "wrist_temperature", "vo2_max", "weight", "body_fat"],
     },
     "android_health_connect": {
         "name": "Health Connect",
@@ -29,66 +32,93 @@ PROVIDERS: Dict[str, Dict[str, Any]] = {
         "mode": "native_system",
         "platform": "android",
         "ready": True,
+        "capabilities": ["heart_rate", "resting_heart_rate", "hrv", "steps", "active_energy", "sleep", "spo2", "respiratory_rate", "skin_temperature", "vo2_max", "weight", "body_fat"],
     },
-    "fitbit": {
-        "name": "Fitbit",
-        "devices": ["Fitbit watches and trackers"],
-        "mode": "cloud_oauth",
-        "platform": "cloud",
-        "ready": False,
-    },
-    "garmin": {
-        "name": "Garmin",
-        "devices": ["Garmin watches and trackers"],
-        "mode": "cloud_partner",
-        "platform": "cloud",
-        "ready": False,
-    },
-    "oura": {
-        "name": "Oura",
-        "devices": ["Oura Ring"],
-        "mode": "cloud_oauth",
-        "platform": "cloud",
-        "ready": False,
-    },
-    "withings": {
-        "name": "Withings",
-        "devices": ["Withings watches", "scales", "sleep devices", "blood-pressure devices"],
-        "mode": "cloud_oauth",
-        "platform": "cloud",
-        "ready": False,
-    },
+    "fitbit": {"name": "Fitbit", "devices": ["Fitbit watches and trackers"], "mode": "cloud_oauth", "platform": "cloud", "ready": False, "capabilities": []},
+    "garmin": {"name": "Garmin", "devices": ["Garmin watches and trackers"], "mode": "cloud_partner", "platform": "cloud", "ready": False, "capabilities": []},
+    "oura": {"name": "Oura", "devices": ["Oura Ring"], "mode": "cloud_oauth", "platform": "cloud", "ready": False, "capabilities": []},
+    "withings": {"name": "Withings", "devices": ["Withings watches", "scales", "sleep devices", "blood-pressure devices"], "mode": "cloud_oauth", "platform": "cloud", "ready": False, "capabilities": []},
 }
 
-CORE_METRICS = [
+# Canonical metric codes accepted by ingestion. Vendor-specific values must be
+# mapped by an adapter before they reach this endpoint; unknown mappings fail
+# closed instead of silently polluting the medical timeline.
+CORE_METRICS = {
     "heart_rate",
     "resting_heart_rate",
     "hrv_sdnn",
     "steps",
     "active_energy",
+    "total_energy",
+    "distance",
     "sleep_stage",
+    "sleep_session",
     "spo2",
     "respiratory_rate",
     "wrist_temperature",
+    "skin_temperature",
+    "body_temperature",
+    "basal_temperature",
     "vo2_max",
     "weight",
     "body_fat_percentage",
-]
+    "lean_body_mass",
+    "blood_pressure_systolic",
+    "blood_pressure_diastolic",
+}
+
+STALE_AFTER = timedelta(hours=36)
 
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def sample_fingerprint(provider: str, profile_id: str, sample: "WearableSample") -> str:
+    """Stable idempotency key when a provider does not expose a record id."""
+    payload = "|".join(
+        [
+            provider,
+            profile_id,
+            sample.metric,
+            sample.start_at.astimezone(timezone.utc).isoformat(),
+            (sample.end_at or sample.start_at).astimezone(timezone.utc).isoformat(),
+            format(sample.value, ".12g"),
+            sample.unit.strip().lower(),
+            (sample.source_name or "").strip().lower(),
+            (sample.device_name or "").strip().lower(),
+        ]
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def sample_state(latest: Optional[Dict[str, Any]], now: Optional[datetime] = None) -> str:
+    if not latest:
+        return "not_connected"
+    observed = latest.get("end_at") or latest.get("start_at") or latest.get("synced_at")
+    if not observed:
+        return "data"
+    if isinstance(observed, str):
+        try:
+            observed = datetime.fromisoformat(observed.replace("Z", "+00:00"))
+        except ValueError:
+            return "data"
+    if observed.tzinfo is None:
+        observed = observed.replace(tzinfo=timezone.utc)
+    return "stale" if (now or _now()) - observed.astimezone(timezone.utc) > STALE_AFTER else "data"
+
+
 class WearableSample(BaseModel):
     external_id: Optional[str] = None
     metric: str
     value: float
-    unit: str
+    unit: str = Field(min_length=1, max_length=64)
     start_at: datetime
     end_at: Optional[datetime] = None
     source_name: Optional[str] = None
     device_name: Optional[str] = None
+    recording_method: Optional[str] = None
+    timezone_offset_minutes: Optional[int] = Field(default=None, ge=-840, le=840)
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
@@ -97,6 +127,7 @@ class WearableSyncRequest(BaseModel):
     device_name: Optional[str] = None
     device_model: Optional[str] = None
     os_version: Optional[str] = None
+    sync_cursor: Optional[str] = Field(default=None, max_length=1024)
     samples: List[WearableSample] = Field(default_factory=list, max_length=5000)
 
 
@@ -105,7 +136,10 @@ class WearableSyncResponse(BaseModel):
     provider: str
     inserted: int
     skipped: int
+    rejected: int = 0
+    state: str
     last_sync_at: datetime
+    sync_cursor: Optional[str] = None
 
 
 def build_wearables_router(db, auth) -> APIRouter:
@@ -120,7 +154,7 @@ def build_wearables_router(db, auth) -> APIRouter:
         _ = account
         return {
             "providers": [{"id": key, **value} for key, value in PROVIDERS.items()],
-            "core_metrics": CORE_METRICS,
+            "core_metrics": sorted(CORE_METRICS),
         }
 
     @router.post("/{provider}/sync", response_model=WearableSyncResponse)
@@ -129,45 +163,67 @@ def build_wearables_router(db, auth) -> APIRouter:
         data: WearableSyncRequest,
         account: Dict[str, Any] = Depends(auth.require_account),
     ):
-        if provider not in PROVIDERS:
+        meta = PROVIDERS.get(provider)
+        if not meta:
             raise HTTPException(404, "Unsupported wearable provider")
+        if not meta.get("ready"):
+            raise HTTPException(409, "Provider connector is not enabled")
         await require_access(str(account["id"]), data.profile_id, write=True)
 
         inserted = 0
         skipped = 0
+        rejected = 0
         synced_at = _now()
 
         for sample in data.samples:
-            if sample.external_id:
-                existing = await db.vitals.find_one(
-                    {
-                        "profile_id": data.profile_id,
-                        "source": provider,
-                        "external_id": sample.external_id,
-                    },
-                    {"_id": 0},
-                )
-                if existing:
-                    skipped += 1
-                    continue
+            metric = sample.metric.strip().lower()
+            if metric not in CORE_METRICS or not math.isfinite(sample.value):
+                rejected += 1
+                continue
+            if sample.end_at and sample.end_at < sample.start_at:
+                rejected += 1
+                continue
+
+            fingerprint = sample_fingerprint(provider, data.profile_id, sample)
+            lookup = {
+                "profile_id": data.profile_id,
+                "source": provider,
+                "external_id": sample.external_id,
+            } if sample.external_id else {
+                "profile_id": data.profile_id,
+                "source": provider,
+                "source_fingerprint": fingerprint,
+            }
+            if await db.vitals.find_one(lookup, {"_id": 0}):
+                skipped += 1
+                continue
 
             await db.vitals.insert_one(
                 {
                     "id": str(uuid.uuid4()),
                     "profile_id": data.profile_id,
                     "source": provider,
+                    "provider_id": provider,
                     "external_id": sample.external_id,
-                    "metric": sample.metric,
-                    "type": sample.metric,
+                    "source_record_id": sample.external_id,
+                    "source_fingerprint": fingerprint,
+                    "metric": metric,
+                    "type": metric,
                     "value": sample.value,
-                    "unit": sample.unit,
+                    "unit": sample.unit.strip(),
                     "start_at": sample.start_at,
                     "end_at": sample.end_at or sample.start_at,
+                    "observed_at": sample.end_at or sample.start_at,
+                    "received_at": synced_at,
                     "source_name": sample.source_name,
                     "device_name": sample.device_name or data.device_name,
                     "device_model": data.device_model,
                     "os_version": data.os_version,
+                    "recording_method": sample.recording_method,
+                    "timezone_offset_minutes": sample.timezone_offset_minutes,
                     "metadata": sample.metadata,
+                    "sync_cursor": data.sync_cursor,
+                    "verification_status": "source_reported",
                     "synced_at": synced_at,
                 }
             )
@@ -177,7 +233,10 @@ def build_wearables_router(db, auth) -> APIRouter:
             provider=provider,
             inserted=inserted,
             skipped=skipped,
+            rejected=rejected,
+            state="data" if inserted or skipped else "connected_no_data",
             last_sync_at=synced_at,
+            sync_cursor=data.sync_cursor,
         )
 
     @router.get("/status/{profile_id}")
@@ -194,19 +253,20 @@ def build_wearables_router(db, auth) -> APIRouter:
                 .to_list(1)
             )
             latest = rows[0] if rows else None
+            state = sample_state(latest)
             result.append(
                 {
                     "id": provider,
                     **meta,
+                    "state": state,
                     "connected": bool(latest),
                     "last_sync_at": latest.get("synced_at") if latest else None,
+                    "freshness": state,
                     "device": {
                         "name": latest.get("device_name"),
                         "model": latest.get("device_model"),
                         "os_version": latest.get("os_version"),
-                    }
-                    if latest
-                    else None,
+                    } if latest else None,
                 }
             )
         return {"providers": result}
