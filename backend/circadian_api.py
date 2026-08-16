@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from access_control import require_profile_access
+from sleep_personalization import build_sleep_insight
 
 _TIME_RE = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
 
@@ -21,7 +22,7 @@ def _now():
 
 class RhythmEventCreate(BaseModel):
     profile_id: str
-    kind: str
+    kind: str  # wake | bedtime
     local_date: str
     local_time: str
     source: str = "manual"
@@ -45,6 +46,14 @@ def build_circadian_router(db, auth) -> APIRouter:
         wake = next((e for e in reversed(events) if e.get("kind") == "wake"), None)
         bedtime = next((e for e in reversed(events) if e.get("kind") == "bedtime"), None)
         return {"profile_id": profile_id, "date": date, "wake": wake, "bedtime": bedtime, "plan": plan}
+
+    @router.get("/insight")
+    async def get_insight(profile_id: str, account: Dict[str, Any] = Depends(auth.require_account)):
+        await require_profile_access(auth, account, profile_id)
+        events = await db.circadian_events.find({"profile_id": profile_id}, {"_id": 0}).sort("local_date", 1).to_list(500)
+        checkins = await db.checkins.find({"profile_id": profile_id}, {"_id": 0}).sort("date", 1).to_list(500)
+        symptoms = await db.symptoms.find({"profile_id": profile_id}, {"_id": 0}).sort("date", 1).to_list(500)
+        return build_sleep_insight(events, checkins, symptoms)
 
     @router.post("/events")
     async def create_event(data: RhythmEventCreate, account: Dict[str, Any] = Depends(auth.require_account)):
