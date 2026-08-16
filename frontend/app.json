@@ -55,6 +55,7 @@
       "expo-image-picker",
       "expo-document-picker",
       "expo-notifications",
+      "./plugins/with-health-connect-min-sdk",
       [
         "expo-splash-screen",
         {
