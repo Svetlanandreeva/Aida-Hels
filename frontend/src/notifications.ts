@@ -80,6 +80,50 @@ export async function scheduleTaskReminder(input: {
   });
 }
 
+export async function scheduleMedicationReminders(input: {
+  medicationId: string;
+  name: string;
+  dose?: string | null;
+  times: string[];
+  showDetails?: boolean;
+}): Promise<string[]> {
+  if (Platform.OS === "web") return [];
+  const validTimes = [...new Set((input.times || []).filter((time) => /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time)))];
+  if (!validTimes.length || !(await ensureReminderPermission())) return [];
+
+  const ids: string[] = [];
+  for (const time of validTimes) {
+    const [hour, minute] = time.split(":").map(Number);
+    const id = await Notifications.scheduleNotificationAsync({
+      content: {
+        title: "Аида · Лекарство",
+        body: input.showDetails
+          ? [input.name, input.dose].filter(Boolean).join(" · ")
+          : "Откройте Аиду, чтобы посмотреть напоминание",
+        data: {
+          url: "/medications",
+          medicationId: input.medicationId,
+          scheduledTime: time,
+        },
+        sound: true,
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DAILY,
+        hour,
+        minute,
+        ...(Platform.OS === "android" ? { channelId: CHANNEL_ID } : {}),
+      },
+    });
+    ids.push(id);
+  }
+  return ids;
+}
+
+export async function cancelNotificationIds(ids?: string[] | null) {
+  if (Platform.OS === "web") return;
+  await Promise.all((ids || []).filter(Boolean).map((id) => Notifications.cancelScheduledNotificationAsync(id).catch(() => {})));
+}
+
 export async function cancelTaskReminder(notificationId?: string | null) {
   if (!notificationId || Platform.OS === "web") return;
   await Notifications.cancelScheduledNotificationAsync(notificationId).catch(() => {});
