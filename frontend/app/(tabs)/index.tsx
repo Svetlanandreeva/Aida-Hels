@@ -7,14 +7,14 @@ import {
   ActivityIndicator,
   Pressable,
   RefreshControl,
-  Switch,
+  TextInput,
 } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { TopBar } from "@/src/components/TopBar";
-import { Card, GradientCard, Title, Muted, Tag } from "@/src/components/ui";
+import { Card, GradientCard, Title, Muted, Tag, PrimaryButton } from "@/src/components/ui";
 import { Sheet } from "@/src/components/Sheet";
 import { useLog } from "@/src/components/LogProvider";
 import { useApp } from "@/src/store";
@@ -36,16 +36,6 @@ type PuzzleWidget = {
   notifications: boolean;
 };
 
-const WIDGET_LABELS: Record<string, { ru: string; en: string; icon: any }> = {
-  companion: { ru: "Спутник Аида", en: "Aida companion", icon: "heart-outline" },
-  readiness: { ru: "Готовность аналитики", en: "Analytics readiness", icon: "analytics-outline" },
-  next_medication: { ru: "Ближайшее лекарство", en: "Next medication", icon: "medkit-outline" },
-  recent_symptom: { ru: "Последний симптом", en: "Recent symptom", icon: "pulse-outline" },
-  latest_lab: { ru: "Последний анализ", en: "Latest lab result", icon: "water-outline" },
-  quests: { ru: "Квесты", en: "Quests", icon: "trophy-outline" },
-  quick_note: { ru: "Быстрая заметка", en: "Quick note", icon: "create-outline" },
-};
-
 const TASK_ROUTES: Record<string, string | undefined> = {
   medication: "/medications",
   pressure: "/pressure",
@@ -56,6 +46,14 @@ const TASK_ROUTES: Record<string, string | undefined> = {
   measurement: "/measurements",
 };
 
+const CHECKIN_METRICS = [
+  { key: "mood", ru: "Настроение", en: "Mood", icon: "happy-outline" as const, invert: false },
+  { key: "energy", ru: "Энергия", en: "Energy", icon: "flash-outline" as const, invert: false },
+  { key: "stress", ru: "Стресс", en: "Stress", icon: "thunderstorm-outline" as const, invert: true },
+  { key: "anxiety", ru: "Тревога", en: "Anxiety", icon: "pulse-outline" as const, invert: true },
+  { key: "sleep", ru: "Сон", en: "Sleep", icon: "moon-outline" as const, invert: false },
+];
+
 function localDateString(date = new Date()) {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, "0");
@@ -63,12 +61,20 @@ function localDateString(date = new Date()) {
   return `${y}-${m}-${d}`;
 }
 
+const scaleColor = (value: number, invert = false) => {
+  const good = invert ? value <= 2 : value >= 4;
+  const bad = invert ? value >= 4 : value <= 2;
+  if (good) return colors.success;
+  if (bad) return colors.error;
+  return colors.warning;
+};
+
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { activeId, activeProfile, refreshTick, bumpRefresh } = useApp();
   const { t, lang } = useI18n();
-  const { openMenu, openLab } = useLog();
+  const { openMenu, openLab, toast } = useLog();
   const responsive = useResponsiveLayout();
 
   const [loading, setLoading] = useState(true);
@@ -85,7 +91,11 @@ export default function HomeScreen() {
   const [actionBusy, setActionBusy] = useState<string | null>(null);
   const [widgets, setWidgets] = useState<PuzzleWidget[]>([]);
   const [overview, setOverview] = useState<{ attention: any[]; ai_summary: string | null } | null>(null);
-  const [customize, setCustomize] = useState(false);
+
+  const [checkinOpen, setCheckinOpen] = useState(false);
+  const [checkinSaving, setCheckinSaving] = useState(false);
+  const [checkinVals, setCheckinVals] = useState<Record<string, number>>({ mood: 3, energy: 3, stress: 3, anxiety: 3, sleep: 3 });
+  const [checkinTriggers, setCheckinTriggers] = useState("");
 
   const normalizeWidgets = (items: any[]): PuzzleWidget[] =>
     (items || [])
@@ -156,27 +166,6 @@ export default function HomeScreen() {
     setRefreshing(false);
   };
 
-  const persistWidgets = async (next: PuzzleWidget[]) => {
-    const normalized = next
-      .sort((a, b) => a.order - b.order)
-      .map((w, index) => ({ ...w, order: index }));
-    setWidgets(normalized);
-    if (activeId) await api.savePuzzle(activeId, normalized).catch(() => {});
-  };
-
-  const patchWidget = async (id: string, patch: Partial<PuzzleWidget>) => {
-    await persistWidgets(widgets.map((w) => (w.id === id ? { ...w, ...patch } : w)));
-  };
-
-  const moveWidget = async (id: string, direction: -1 | 1) => {
-    const sorted = [...widgets].sort((a, b) => a.order - b.order);
-    const index = sorted.findIndex((w) => w.id === id);
-    const target = index + direction;
-    if (index < 0 || target < 0 || target >= sorted.length) return;
-    [sorted[index], sorted[target]] = [sorted[target], sorted[index]];
-    await persistWidgets(sorted.map((w, i) => ({ ...w, order: i })));
-  };
-
   const { inRange, outRange } = useMemo(() => {
     let inR = 0;
     let outR = 0;
@@ -244,6 +233,27 @@ export default function HomeScreen() {
   const openTaskAction = (task: Task) => {
     const route = task.action_route || TASK_ROUTES[task.kind];
     if (route) router.push(route as any);
+  };
+
+  const saveQuickCheckin = async () => {
+    if (!activeId || checkinSaving) return;
+    setCheckinSaving(true);
+    try {
+      await api.createCheckin({
+        profile_id: activeId,
+        ...checkinVals,
+        triggers: checkinTriggers.trim() || null,
+      });
+      setCheckinVals({ mood: 3, energy: 3, stress: 3, anxiety: 3, sleep: 3 });
+      setCheckinTriggers("");
+      setCheckinOpen(false);
+      bumpRefresh();
+      toast(lang === "ru" ? "Самочувствие сохранено" : "Check-in saved");
+    } catch (_) {
+      toast(lang === "ru" ? "Не удалось сохранить. Попробуйте ещё раз" : "Could not save. Try again");
+    } finally {
+      setCheckinSaving(false);
+    }
   };
 
   const renderWidget = (id: string) => {
@@ -381,47 +391,67 @@ export default function HomeScreen() {
             )}
           </Card>
 
+          <Card style={{ marginBottom: spacing.md }} onPress={() => setCheckinOpen(true)} testID="quick-checkin-card">
+            <View style={styles.quickCheckinRow}>
+              <View style={styles.quickCheckinIcon}><Ionicons name="happy-outline" size={19} color={colors.onSurface} /></View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.quickCheckinTitle}>{lang === "ru" ? "Быстрый check-in" : "Quick check-in"}</Text>
+                <Muted>{lang === "ru" ? "Настроение, энергия, стресс, тревога и сон" : "Mood, energy, stress, anxiety and sleep"}</Muted>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={colors.onSurfaceSecondary} />
+            </View>
+          </Card>
+
           <View style={[styles.dualRow, responsive.width < 480 && styles.stackRow]}><Card style={[styles.dualCard, responsive.width < 480 && styles.fullWidthCard]} onPress={() => openLab()} testID="upload-records-card"><View style={styles.plusRow}><Ionicons name="cloud-upload-outline" size={22} color={colors.onSurface} /><View style={styles.plusBtn}><Ionicons name="add" size={18} color={colors.onSurface} /></View></View><Text style={styles.dualTitle}>{t("upload_lab")}</Text><Muted numberOfLines={1}>{labs.length > 0 ? `${labs.length} ${t("labs").toLowerCase()}` : (lang === "ru" ? "Анализов пока нет" : "No labs yet")}</Muted></Card><GradientCard gradient={gradients.pink} style={[styles.dualCard, responsive.width < 480 && styles.fullWidthCard]} onPress={() => router.push("/devices")} testID="connect-device-card"><View style={styles.plusRow}><Ionicons name="watch-outline" size={22} color={colors.onSurface} /><View style={styles.plusBtn}><Ionicons name="add" size={18} color={colors.onSurface} /></View></View><Text style={styles.dualTitle}>{lang === "ru" ? "Подключить устройство" : "Connect tracker"}</Text><Muted numberOfLines={1} style={{ color: "rgba(27,27,29,0.55)" }}>Apple Watch · Xiaomi</Muted></GradientCard></View>
           <View style={{ gap: spacing.md, marginTop: spacing.md }}>{rows}</View>
-          <Pressable style={styles.customizeBtn} onPress={() => setCustomize(true)} testID="customize-button"><Ionicons name="options-outline" size={18} color={colors.onSurface} /><Text style={styles.customizeText}>{t("customize")}</Text></Pressable>
         </ScrollView>
       )}
 
-      <Sheet visible={customize} onClose={() => setCustomize(false)} testID="customize-sheet" scroll>
-        <Text style={styles.customizeTitle}>{t("customize")}</Text>
-        <Muted style={{ marginTop: spacing.xs, marginBottom: spacing.lg }}>{lang === "ru" ? "Выберите, что работает, что видно на Главной и какие функции может использовать Аида." : "Choose what is active, visible on Home and available to Aida."}</Muted>
-        {widgets.map((w, index) => {
-          const meta = WIDGET_LABELS[w.id];
-          if (!meta) return null;
-          return (
-            <View key={w.id} style={styles.configCard} testID={`config-${w.id}`}>
-              <View style={styles.configHeader}>
-                <View style={styles.configIcon}><Ionicons name={meta.icon} size={19} color={colors.onSurface} /></View>
-                <View style={{ flex: 1 }}><Text style={styles.configTitle}>{lang === "ru" ? meta.ru : meta.en}</Text><Text style={styles.configOrder}>{lang === "ru" ? `Позиция ${index + 1}` : `Position ${index + 1}`}</Text></View>
-                <View style={styles.orderButtons}>
-                  <Pressable disabled={index === 0} onPress={() => moveWidget(w.id, -1)} style={[styles.orderButton, index === 0 && styles.orderDisabled]} testID={`move-up-${w.id}`}><Ionicons name="chevron-up" size={18} color={colors.onSurface} /></Pressable>
-                  <Pressable disabled={index === widgets.length - 1} onPress={() => moveWidget(w.id, 1)} style={[styles.orderButton, index === widgets.length - 1 && styles.orderDisabled]} testID={`move-down-${w.id}`}><Ionicons name="chevron-down" size={18} color={colors.onSurface} /></Pressable>
-                </View>
-              </View>
-
-              <ConfigToggle label={lang === "ru" ? "Модуль включён" : "Module enabled"} value={w.enabled} onChange={(value) => patchWidget(w.id, { enabled: value })} testID={`enabled-${w.id}`} />
-              <ConfigToggle label={lang === "ru" ? "Показывать на Главной" : "Show on Home"} value={w.show_on_home} disabled={!w.enabled} onChange={(value) => patchWidget(w.id, { show_on_home: value })} testID={`home-${w.id}`} />
-              <ConfigToggle label={lang === "ru" ? "Разрешить AI-аналитику" : "Allow AI analytics"} value={w.allow_ai_analytics} disabled={!w.enabled} onChange={(value) => patchWidget(w.id, { allow_ai_analytics: value })} testID={`ai-${w.id}`} />
-              <ConfigToggle label={lang === "ru" ? "Уведомления" : "Notifications"} value={w.notifications} disabled={!w.enabled} onChange={(value) => patchWidget(w.id, { notifications: value })} testID={`notifications-${w.id}`} last />
+      <Sheet visible={checkinOpen} onClose={() => setCheckinOpen(false)} testID="home-checkin-sheet" scroll>
+        <Text style={styles.sheetTitle}>{lang === "ru" ? "Как вы себя чувствуете?" : "How are you feeling?"}</Text>
+        <Muted style={{ marginTop: spacing.xs, marginBottom: spacing.lg }}>{lang === "ru" ? "Оцените каждый показатель от 1 до 5. Запись попадёт в дневник психики." : "Rate each metric from 1 to 5. The entry will be saved to your wellbeing diary."}</Muted>
+        {CHECKIN_METRICS.map((metric) => (
+          <View key={metric.key} style={styles.checkinMetric}>
+            <View style={styles.checkinMetricHead}>
+              <Ionicons name={metric.icon} size={17} color={colors.onSurfaceSecondary} />
+              <Text style={styles.checkinLabel}>{lang === "ru" ? metric.ru : metric.en}</Text>
             </View>
-          );
-        })}
+            <View style={styles.scaleRow}>
+              {[1, 2, 3, 4, 5].map((value) => {
+                const active = checkinVals[metric.key] === value;
+                const activeColor = scaleColor(value, metric.invert);
+                return (
+                  <Pressable
+                    key={value}
+                    onPress={() => setCheckinVals((prev) => ({ ...prev, [metric.key]: value }))}
+                    style={[styles.scaleButton, active && { backgroundColor: activeColor, borderColor: activeColor }]}
+                    testID={`home-checkin-${metric.key}-${value}`}
+                  >
+                    <Text style={[styles.scaleButtonText, active && { color: colors.onSurfaceInverse }]}>{value}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        ))}
+        <Text style={styles.checkinLabel}>{lang === "ru" ? "Что повлияло? · необязательно" : "What affected you? · optional"}</Text>
+        <TextInput
+          value={checkinTriggers}
+          onChangeText={setCheckinTriggers}
+          multiline
+          placeholder={lang === "ru" ? "Сон, работа, боль, событие…" : "Sleep, work, pain, event…"}
+          placeholderTextColor={colors.onSurfaceSecondary}
+          style={styles.checkinInput}
+          testID="home-checkin-triggers"
+        />
+        <PrimaryButton label={lang === "ru" ? "Сохранить" : "Save"} onPress={saveQuickCheckin} loading={checkinSaving} testID="home-checkin-save" style={{ marginTop: spacing.md }} />
+        <Pressable onPress={() => { setCheckinOpen(false); router.push("/mind" as any); }} style={styles.historyLink} testID="home-checkin-history">
+          <Text style={styles.historyLinkText}>{lang === "ru" ? "Открыть дневник и историю" : "Open diary and history"}</Text>
+        </Pressable>
       </Sheet>
     </View>
   );
 }
-
-const ConfigToggle: React.FC<{ label: string; value: boolean; onChange: (value: boolean) => void; disabled?: boolean; testID: string; last?: boolean }> = ({ label, value, onChange, disabled, testID, last }) => (
-  <View style={[styles.configToggle, last && styles.configToggleLast, disabled && styles.configDisabled]}>
-    <Text style={styles.configToggleLabel}>{label}</Text>
-    <Switch testID={testID} value={value} disabled={disabled} onValueChange={onChange} trackColor={{ true: colors.accent, false: colors.surfaceTertiary }} thumbColor={colors.surfaceSecondary} />
-  </View>
-);
 
 const WidgetHeader: React.FC<{ icon: any; label: string }> = ({ icon, label }) => <View style={styles.widgetHeader}><Ionicons name={icon} size={15} color={colors.onSurfaceSecondary} /><Text style={styles.widgetHeaderText}>{label}</Text></View>;
 
@@ -440,12 +470,6 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.surface },
   header: { paddingHorizontal: spacing.lg, paddingBottom: spacing.md, backgroundColor: colors.surface },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
-  emptyHero: { marginBottom: spacing.md, paddingVertical: spacing.xl },
-  emptyIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: "rgba(255,255,255,0.55)", alignItems: "center", justifyContent: "center", marginBottom: spacing.lg },
-  emptyTitle: { fontSize: fontSize.xl, lineHeight: 28, fontWeight: "800", color: colors.onSurface, fontFamily: fonts.display, letterSpacing: -0.4 },
-  emptyText: { marginTop: spacing.sm, fontSize: fontSize.base, lineHeight: 22, color: "rgba(27,27,29,0.62)", fontFamily: fonts.text },
-  emptyAction: { marginTop: spacing.lg, alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: spacing.sm, backgroundColor: colors.onSurface, paddingHorizontal: spacing.lg, paddingVertical: spacing.md, borderRadius: radius.pill },
-  emptyActionText: { color: colors.onSurfaceInverse, fontWeight: "700", fontSize: fontSize.base, fontFamily: fonts.text },
   statStrip: { flexDirection: "row", gap: spacing.md, marginBottom: spacing.md },
   statPill: { flex: 1, backgroundColor: colors.surfaceSecondary, borderRadius: radius.lg, padding: spacing.lg, borderWidth: 1, borderColor: colors.glassBorder },
   statNum: { fontSize: fontSize["4xl"], fontWeight: "800", color: colors.onSurface, letterSpacing: -1, fontFamily: fonts.display },
@@ -483,6 +507,19 @@ const styles = StyleSheet.create({
   todayAction: { minWidth: 76, height: 34, borderRadius: radius.pill, backgroundColor: colors.onSurface, alignItems: "center", justifyContent: "center", paddingHorizontal: spacing.md },
   todayActionText: { fontSize: fontSize.sm, fontWeight: "700", color: colors.onSurfaceInverse, fontFamily: fonts.text },
   todayStatusText: { fontSize: fontSize.sm, fontWeight: "600", color: colors.onSurfaceSecondary, fontFamily: fonts.text },
+  quickCheckinRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  quickCheckinIcon: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center" },
+  quickCheckinTitle: { fontSize: fontSize.base, fontWeight: "700", color: colors.onSurface, fontFamily: fonts.text, marginBottom: 2 },
+  sheetTitle: { fontSize: fontSize.xl, fontWeight: "700", color: colors.onSurface, fontFamily: fonts.display },
+  checkinMetric: { marginBottom: spacing.lg },
+  checkinMetricHead: { flexDirection: "row", alignItems: "center", gap: 7, marginBottom: spacing.sm },
+  checkinLabel: { fontSize: fontSize.base, fontWeight: "600", color: colors.onSurface, fontFamily: fonts.text },
+  scaleRow: { flexDirection: "row", gap: spacing.sm },
+  scaleButton: { flex: 1, height: 46, borderRadius: radius.md, backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center" },
+  scaleButtonText: { fontSize: fontSize.base, fontWeight: "700", color: colors.onSurfaceSecondary, fontFamily: fonts.text },
+  checkinInput: { minHeight: 82, marginTop: spacing.sm, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.border, color: colors.onSurface, fontSize: fontSize.base, fontFamily: fonts.text, textAlignVertical: "top" },
+  historyLink: { alignItems: "center", paddingVertical: spacing.md },
+  historyLinkText: { fontSize: fontSize.sm, fontWeight: "700", color: colors.onSurface, fontFamily: fonts.text },
   widgetHeaderText: { fontSize: fontSize.sm, color: colors.onSurfaceSecondary, fontWeight: "600", fontFamily: fonts.text },
   halfRow: { flexDirection: "row", gap: spacing.md },
   halfCard: { flex: 1, minHeight: 110 },
@@ -505,19 +542,4 @@ const styles = StyleSheet.create({
   xpText: { fontSize: fontSize.sm, fontWeight: "700", color: "rgba(27,27,29,0.6)", fontFamily: fonts.text },
   companionBar: { height: 8, backgroundColor: "rgba(27,27,29,0.15)", borderRadius: 4, overflow: "hidden" },
   companionHint: { fontSize: fontSize.sm, color: "rgba(27,27,29,0.6)", marginTop: 6, fontFamily: fonts.text },
-  customizeBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, marginTop: spacing.lg, paddingVertical: spacing.md },
-  customizeText: { fontSize: fontSize.base, fontWeight: "700", color: colors.onSurface, fontFamily: fonts.text },
-  customizeTitle: { fontSize: fontSize.xl, fontWeight: "700", color: colors.onSurface, fontFamily: fonts.display },
-  configCard: { backgroundColor: colors.surfaceSecondary, borderRadius: radius.lg, padding: spacing.md, marginBottom: spacing.md, borderWidth: 1, borderColor: colors.border },
-  configHeader: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingBottom: spacing.md },
-  configIcon: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center" },
-  configTitle: { fontSize: fontSize.base, fontWeight: "700", color: colors.onSurface, fontFamily: fonts.text },
-  configOrder: { marginTop: 2, fontSize: fontSize.sm, color: colors.onSurfaceSecondary, fontFamily: fonts.text },
-  orderButtons: { flexDirection: "row", gap: 6 },
-  orderButton: { width: 34, height: 34, borderRadius: 17, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center" },
-  orderDisabled: { opacity: 0.28 },
-  configToggle: { minHeight: 48, flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderTopWidth: 1, borderTopColor: colors.divider },
-  configToggleLast: { paddingBottom: 0 },
-  configToggleLabel: { flex: 1, paddingRight: spacing.md, fontSize: fontSize.sm, color: colors.onSurface, fontFamily: fonts.text },
-  configDisabled: { opacity: 0.45 },
 });
