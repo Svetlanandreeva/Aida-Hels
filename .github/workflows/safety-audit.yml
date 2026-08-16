@@ -1,10 +1,14 @@
 name: Safety Audit
 
+# Manual-only while GitHub-hosted minutes are unavailable. This avoids false
+# red PR checks caused by jobs that never get a runner. The production deploy
+# workflow performs the trusted main-branch frontend/backend validation before
+# deployment on aida-prod.
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
 
 jobs:
   safety-audit:
