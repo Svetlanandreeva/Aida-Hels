@@ -9,7 +9,7 @@ import { useResponsiveLayout } from "@/src/hooks/use-responsive-layout";
 import { api } from "@/src/api";
 import { colors, spacing, radius, fontSize, fonts } from "@/src/theme";
 
- type PuzzleWidget = {
+type PuzzleWidget = {
   id: string;
   enabled: boolean;
   show_on_home: boolean;
@@ -167,6 +167,7 @@ export default function SettingsScreen() {
         <Text style={styles.groupLabel}>{text("СИСТЕМА", "SYSTEM")}</Text>
         <View style={styles.sectionCard}>
           <SettingsLink icon="watch-outline" title={text("Устройства", "Devices")} subtitle={text("Apple Health, Health Connect и другие источники", "Apple Health, Health Connect and other sources")} onPress={() => router.push("/devices" as any)} />
+          <SettingsLink icon="notifications-outline" title={text("Уведомления", "Notifications")} subtitle={text("Лекарства, давление, задачи, анализы, дневник, цикл и сигналы Аиды", "Medications, pressure, tasks, labs, diary, cycle and Aida signals")} onPress={() => router.push("/notification-settings" as any)} />
           <SettingsLink icon="shield-checkmark-outline" title={text("Приватность", "Privacy")} subtitle={text("AI, уведомления, сессии и доступ", "AI, notifications, sessions and access")} onPress={() => router.push("/privacy" as any)} />
           <SettingsLink icon="download-outline" title={text("Экспорт данных", "Data export")} subtitle={text("Скачать данные текущего профиля", "Download the current profile data")} onPress={() => router.push("/export-data" as any)} last />
         </View>
