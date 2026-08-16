@@ -2,6 +2,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = ROOT.parent
 
 
 def test_google_storage_has_separate_circadian_tabs():
@@ -27,3 +28,15 @@ def test_wearable_sleep_anchor_requires_candidate_review():
     assert '"circadian_event": "circadian_events"' in candidates
     assert 'payload["source"] = "wearable_confirmed"' in candidates
     assert 'payload["verification_status"] = "user_confirmed"' in candidates
+
+
+def test_healthkit_sleep_is_staged_as_candidates_before_circadian_use():
+    coordinator = (REPO_ROOT / "ios" / "AidaHealthSyncCoordinator.swift").read_text(encoding="utf-8")
+    client = (REPO_ROOT / "ios" / "CircadianCandidateClient.swift").read_text(encoding="utf-8")
+
+    assert 'filter { $0.metric == "sleep_stage" }' in coordinator
+    assert 'provider: "apple_health"' in coordinator
+    assert 'kind: "bedtime"' in coordinator
+    assert 'kind: "wake"' in coordinator
+    assert 'api/circadian/wearable-candidates' in client
+    assert 'Authorization' in client
