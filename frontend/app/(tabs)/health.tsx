@@ -33,6 +33,9 @@ export default function HealthHub() {
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [addOpen, setAddOpen] = useState(false);
 
+  const goals = activeProfile?.goals || [];
+  const womenRelevant = activeProfile?.sex === "female" && goals.some((goal: string) => ["women", "cycle", "pregnancy_planning", "pregnancy"].includes(goal));
+  const cycleRelevant = womenRelevant && goals.includes("cycle");
   const enabled = (key?: string) => !key || activeProfile?.module_settings?.[key] !== false;
 
   const load = useCallback(async () => {
@@ -65,6 +68,8 @@ export default function HealthHub() {
     { key: "mind", settingKey: "mind", route: "/mind", label: t("m_mind"), icon: "happy", grad: gradients.lime, count: counts.mind },
     { key: "meds", settingKey: "medications", route: "/medications", label: t("m_meds"), icon: "medkit", grad: gradients.cool, count: counts.meds },
     { key: "measures", route: "/measurements", label: t("m_measures"), icon: "fitness", grad: gradients.warmSoft, count: counts.measures },
+    ...(womenRelevant ? [{ key: "women", settingKey: "women", route: "/womens-health", label: lang === "ru" ? "Женское здоровье" : "Women's health", icon: "flower", grad: gradients.pink } as Mod] : []),
+    ...(cycleRelevant ? [{ key: "cycle", settingKey: "women", route: "/cycle", label: lang === "ru" ? "Цикл" : "Cycle", icon: "calendar", grad: gradients.warmSoft } as Mod] : []),
     { key: "documents", route: "/documents", label: lang === "ru" ? "Документы" : "Documents", icon: "folder", grad: gradients.cool, count: counts.documents },
     { key: "history", route: "/history", label: t("m_history"), icon: "time", grad: gradients.pink },
   ].filter((m) => enabled(m.settingKey));
@@ -76,6 +81,7 @@ export default function HealthHub() {
     { key: "mind", settingKey: "mind", labelRu: "Самочувствие и сон", labelEn: "Wellbeing & sleep", hintRu: "Настроение, энергия, стресс, тревога и сон", hintEn: "Mood, energy, stress, anxiety and sleep", icon: "moon-outline", run: () => go("/mind") },
     { key: "medication", settingKey: "medications", labelRu: "Лекарство", labelEn: "Medication", hintRu: "Название, дозировка и расписание", hintEn: "Name, dose and schedule", icon: "medkit-outline", run: () => runSheetAction(openMed) },
     { key: "lab", settingKey: "labs", labelRu: "Анализ", labelEn: "Lab result", hintRu: "Распознать показатели из фото или PDF", hintEn: "Recognize biomarkers from a photo or PDF", icon: "document-text-outline", run: () => runSheetAction(() => openLab()) },
+    ...(cycleRelevant ? [{ key: "cycle", settingKey: "women", labelRu: "Событие цикла", labelEn: "Cycle event", hintRu: "Менструация, симптом, тест на овуляцию или заметка", hintEn: "Period, symptom, ovulation test or note", icon: "calendar-outline", run: () => go("/cycle") } as AddAction] : []),
     { key: "document", labelRu: "Медицинский документ", labelEn: "Medical document", hintRu: "Выписка, заключение, назначение — сохранить оригинал", hintEn: "Discharge summary, doctor note or prescription — store original", icon: "document-attach-outline", run: () => go("/documents") },
     { key: "measurement", labelRu: "Вес и измерения", labelEn: "Weight & measurements", hintRu: "Вес, температура, пульс, SpO₂, талия", hintEn: "Weight, temperature, pulse, SpO₂, waist", icon: "fitness-outline", run: () => go("/measurements") },
   ].filter((a) => enabled(a.settingKey));
@@ -90,7 +96,7 @@ export default function HealthHub() {
         <View style={styles.logCopy}><Text style={styles.logTitle}>{lang === "ru" ? "Добавить данные" : "Add health data"}</Text><Text style={styles.logSubtitle}>{lang === "ru" ? "Подъём, сон, давление, симптомы, документы и измерения" : "Wake, sleep, vitals, symptoms, documents and measurements"}</Text></View>
         <Ionicons name="chevron-forward" size={20} color={colors.surfaceSecondary} />
       </Pressable>
-      <View style={styles.grid}>{mods.map((m) => <Pressable key={m.key} testID={`module-${m.key}`} style={[styles.cell, { width: responsive.isTinyPhone ? "100%" : (responsive.isTablet || responsive.isDesktop) ? "31.6%" : "47.8%" }]} onPress={() => router.push(m.route as any)}><GradientCard gradient={m.grad} style={[styles.modCard, responsive.isCompactPhone && styles.modCardCompact]}><View style={styles.modIcon}><Ionicons name={m.icon} size={22} color={colors.onSurface} /></View><Text style={styles.modLabel}>{m.label}</Text>{m.key !== "history" && <Text style={[styles.modCount, (!m.count || m.count === 0) && styles.modEmpty]}>{countLabel(m.count)}</Text>}</GradientCard></Pressable>)}</View>
+      <View style={styles.grid}>{mods.map((m) => <Pressable key={m.key} testID={`module-${m.key}`} style={[styles.cell, { width: responsive.isTinyPhone ? "100%" : (responsive.isTablet || responsive.isDesktop) ? "31.6%" : "47.8%" }]} onPress={() => router.push(m.route as any)}><GradientCard gradient={m.grad} style={[styles.modCard, responsive.isCompactPhone && styles.modCardCompact]}><View style={styles.modIcon}><Ionicons name={m.icon} size={22} color={colors.onSurface} /></View><Text style={styles.modLabel}>{m.label}</Text>{m.key !== "history" && m.key !== "women" && m.key !== "cycle" && <Text style={[styles.modCount, (!m.count || m.count === 0) && styles.modEmpty]}>{countLabel(m.count)}</Text>}</GradientCard></Pressable>)}</View>
     </ScrollView>
     <Sheet visible={addOpen} onClose={() => setAddOpen(false)} testID="health-add-data-sheet" scroll>
       <Text style={styles.sheetTitle}>{lang === "ru" ? "Что добавить?" : "What would you like to add?"}</Text>
