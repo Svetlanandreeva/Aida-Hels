@@ -50,7 +50,7 @@ export default function HomeScreen() {
   const router = useRouter();
   const { activeId, activeProfile, refreshTick } = useApp();
   const { t, lang } = useI18n();
-  const { openMenu, openLab, toast } = useLog();
+  const { openMenu, openLab } = useLog();
   const responsive = useResponsiveLayout();
 
   const [loading, setLoading] = useState(true);
@@ -78,30 +78,35 @@ export default function HomeScreen() {
 
   const load = useCallback(async () => {
     if (!activeId) {
+      setReadiness(null);
+      setGame(null);
+      setMeds([]);
+      setSymptoms([]);
+      setLabs([]);
+      setWidgets([]);
+      setOverview(null);
       setLoading(false);
       return;
     }
-    try {
-      const [r, g, m, s, l, p] = await Promise.all([
-        api.readiness(activeId),
-        api.gamification(activeId),
-        api.listMeds(activeId),
-        api.listSymptoms(activeId),
-        api.listLabs(activeId),
-        api.getPuzzle(activeId),
-      ]);
-      setReadiness(r);
-      setGame(g);
-      setMeds(m);
-      setSymptoms(s);
-      setLabs(l);
-      setWidgets(normalizeWidgets(p.widgets || []));
-    } catch (e) {
-      // Widgets keep honest empty states when a request is unavailable.
-    } finally {
-      setLoading(false);
-    }
-    api.overview(activeId, lang).then(setOverview).catch(() => setOverview(null));
+
+    const [r, g, m, s, l, p, o] = await Promise.allSettled([
+      api.readiness(activeId),
+      api.gamification(activeId),
+      api.listMeds(activeId),
+      api.listSymptoms(activeId),
+      api.listLabs(activeId),
+      api.getPuzzle(activeId),
+      api.overview(activeId, lang),
+    ]);
+
+    setReadiness(r.status === "fulfilled" ? r.value : null);
+    setGame(g.status === "fulfilled" ? g.value : null);
+    setMeds(m.status === "fulfilled" ? m.value : []);
+    setSymptoms(s.status === "fulfilled" ? s.value : []);
+    setLabs(l.status === "fulfilled" ? l.value : []);
+    setWidgets(p.status === "fulfilled" ? normalizeWidgets(p.value.widgets || []) : []);
+    setOverview(o.status === "fulfilled" ? o.value : null);
+    setLoading(false);
   }, [activeId, lang]);
 
   useFocusEffect(
@@ -150,9 +155,13 @@ export default function HomeScreen() {
     return { inRange: inR, outRange: outR };
   }, [labs]);
 
-  const activeMed = meds.find((m) => m.active) || meds[0];
+  const activeMed = meds.find((m) => m.active) || null;
   const lastSymptom = symptoms[0];
   const lastLab = labs[0];
+  const hasLabStatusData = inRange + outRange > 0;
+  const readinessScores = readiness ? Object.values(readiness.scores || {}) : [];
+  const hasReadinessData = !!readiness && readinessScores.some((score) => Number.isFinite(score) && score > 0);
+  const hasHealthEvidence = hasLabStatusData || !!lastSymptom || !!activeMed || hasReadinessData;
 
   const readinessConfig = widgets.find((w) => w.id === "readiness");
   const readinessOn = (readinessConfig?.enabled ?? true) && (readinessConfig?.show_on_home ?? true);
@@ -205,7 +214,7 @@ export default function HomeScreen() {
         return (
           <Card key={id} testID="widget-quests">
             <WidgetHeader icon="trophy-outline" label={t("quests")} />
-            {(game?.quests || []).map((q: any) => <View key={q.id} style={styles.questRow}><Ionicons name={q.done ? "checkmark-circle" : "ellipse-outline"} size={20} color={q.done ? colors.success : colors.onSurfaceSecondary} /><Text style={[styles.questText, q.done && styles.questDone]}>{lang === "ru" ? q.title : q.title_en}</Text><Tag label={`+${q.xp}`} /></View>)}
+            {game?.quests?.length ? (game.quests || []).map((q: any) => <View key={q.id} style={styles.questRow}><Ionicons name={q.done ? "checkmark-circle" : "ellipse-outline"} size={20} color={q.done ? colors.success : colors.onSurfaceSecondary} /><Text style={[styles.questText, q.done && styles.questDone]}>{lang === "ru" ? q.title : q.title_en}</Text><Tag label={`+${q.xp}`} /></View>) : <Muted>{t("not_enough_data")}</Muted>}
           </Card>
         );
       case "quick_note":
@@ -233,10 +242,10 @@ export default function HomeScreen() {
       <View style={[styles.header, { paddingTop: insets.top + spacing.sm, paddingHorizontal: responsive.contentPadding }]}><TopBar subtitle={`${t("hello")}, ${activeProfile?.name || ""} · ${t("home_subtitle")}`} /></View>
       {loading ? <View style={styles.center}><ActivityIndicator size="large" color={colors.onSurface} /></View> : (
         <ScrollView contentContainerStyle={{ paddingHorizontal: responsive.contentPadding, paddingTop: spacing.lg, paddingBottom: (responsive.isDesktop ? 40 : 96) + insets.bottom }} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.onSurface} />}>
-          <View style={styles.statStrip}><View style={styles.statPill}><Text style={styles.statNum}>{inRange}</Text><View style={[styles.statTag, { backgroundColor: colors.accent }]}><Text style={styles.statTagText}>{lang === "ru" ? "В норме" : "In range"}</Text></View></View><View style={styles.statPill}><Text style={styles.statNum}>{outRange}</Text><View style={[styles.statTag, { backgroundColor: "#F6D8CE" }]}><Text style={[styles.statTagText, { color: colors.error }]}>{lang === "ru" ? "Вне нормы" : "Out of range"}</Text></View></View></View>
-          {readinessOn && <GradientCard gradient={gradients.warm} style={styles.hero} testID="hero-readiness"><Text style={styles.heroLabel}>{t("readiness")}</Text><Text style={styles.heroNum}>{readiness?.overall ?? 0}%</Text><Text style={styles.heroSub}>{t("readiness_hint")}</Text><View style={styles.heroBar}><View style={{ width: `${readiness?.overall ?? 0}%`, height: "100%", backgroundColor: colors.onSurface, borderRadius: 3 }} /></View></GradientCard>}
+          <View style={styles.statStrip}><View style={styles.statPill}><Text style={styles.statNum}>{hasLabStatusData ? inRange : "—"}</Text><View style={[styles.statTag, { backgroundColor: colors.accent }]}><Text style={styles.statTagText}>{lang === "ru" ? "В норме" : "In range"}</Text></View></View><View style={styles.statPill}><Text style={styles.statNum}>{hasLabStatusData ? outRange : "—"}</Text><View style={[styles.statTag, { backgroundColor: "#F6D8CE" }]}><Text style={[styles.statTagText, { color: colors.error }]}>{lang === "ru" ? "Вне нормы" : "Out of range"}</Text></View></View></View>
+          {readinessOn && <GradientCard gradient={gradients.warm} style={styles.hero} testID="hero-readiness"><Text style={styles.heroLabel}>{t("readiness")}</Text>{hasReadinessData ? <><Text style={styles.heroNum}>{readiness!.overall}%</Text><Text style={styles.heroSub}>{t("readiness_hint")}</Text><View style={styles.heroBar}><View style={{ width: `${Math.max(0, Math.min(100, readiness!.overall))}%`, height: "100%", backgroundColor: colors.onSurface, borderRadius: 3 }} /></View></> : <><Text style={styles.heroNum}>—</Text><Text style={styles.heroSub}>{t("not_enough_data")}</Text></>}</GradientCard>}
           {aiAnalyticsOn && overview?.ai_summary ? <GradientCard gradient={gradients.lime} style={{ marginBottom: spacing.md }} testID="ai-day-card"><View style={styles.aiHead}><Ionicons name="sparkles" size={16} color={colors.onSurface} /><Text style={styles.aiHeadText}>{t("ai_day")}</Text></View><Text style={styles.aiText}>{overview.ai_summary}</Text></GradientCard> : null}
-          <Card style={{ marginBottom: spacing.md }} testID="attention-card"><WidgetHeader icon="alert-circle-outline" label={t("needs_attention")} />{overview && overview.attention.length > 0 ? overview.attention.map((a, i) => <Pressable key={i} style={styles.attnRow} testID={`attention-${i}`} onPress={() => router.push((a.type === "bp" ? "/pressure" : a.type === "symptom" ? "/history" : "/labs") as any)}><View style={[styles.attnDot, { backgroundColor: a.severity === "error" ? colors.error : colors.warning }]} /><View style={{ flex: 1 }}><Text style={styles.attnTitle}>{a.title}</Text>{a.subtitle ? <Muted>{a.subtitle}</Muted> : null}</View><Ionicons name="chevron-forward" size={16} color={colors.onSurfaceSecondary} /></Pressable>) : <View style={styles.allGood}><Ionicons name="checkmark-circle" size={20} color={colors.success} /><Muted style={{ flex: 1 }}>{t("all_good")}</Muted></View>}</Card>
+          <Card style={{ marginBottom: spacing.md }} testID="attention-card"><WidgetHeader icon="alert-circle-outline" label={t("needs_attention")} />{overview?.attention?.length ? overview.attention.map((a, i) => <Pressable key={i} style={styles.attnRow} testID={`attention-${i}`} onPress={() => router.push((a.type === "bp" ? "/pressure" : a.type === "symptom" ? "/history" : "/labs") as any)}><View style={[styles.attnDot, { backgroundColor: a.severity === "error" ? colors.error : colors.warning }]} /><View style={{ flex: 1 }}><Text style={styles.attnTitle}>{a.title}</Text>{a.subtitle ? <Muted>{a.subtitle}</Muted> : null}</View><Ionicons name="chevron-forward" size={16} color={colors.onSurfaceSecondary} /></Pressable>) : hasHealthEvidence && overview ? <View style={styles.allGood}><Ionicons name="checkmark-circle" size={20} color={colors.success} /><Muted style={{ flex: 1 }}>{t("all_good")}</Muted></View> : <View style={styles.neutralState}><Ionicons name="information-circle-outline" size={20} color={colors.onSurfaceSecondary} /><Muted style={{ flex: 1 }}>{t("not_enough_data")}</Muted></View>}</Card>
           <View style={[styles.dualRow, responsive.width < 480 && styles.stackRow]}><Card style={[styles.dualCard, responsive.width < 480 && styles.fullWidthCard]} onPress={() => openLab()} testID="upload-records-card"><View style={styles.plusRow}><Ionicons name="cloud-upload-outline" size={22} color={colors.onSurface} /><View style={styles.plusBtn}><Ionicons name="add" size={18} color={colors.onSurface} /></View></View><Text style={styles.dualTitle}>{t("upload_lab")}</Text><Muted numberOfLines={1}>{labs.length > 0 ? `${labs.length} ${t("labs").toLowerCase()}` : (lang === "ru" ? "Анализов пока нет" : "No labs yet")}</Muted></Card><GradientCard gradient={gradients.pink} style={[styles.dualCard, responsive.width < 480 && styles.fullWidthCard]} onPress={() => router.push("/devices")} testID="connect-device-card"><View style={styles.plusRow}><Ionicons name="watch-outline" size={22} color={colors.onSurface} /><View style={styles.plusBtn}><Ionicons name="add" size={18} color={colors.onSurface} /></View></View><Text style={styles.dualTitle}>{lang === "ru" ? "Подключить устройство" : "Connect tracker"}</Text><Muted numberOfLines={1} style={{ color: "rgba(27,27,29,0.55)" }}>Apple Watch · Xiaomi</Muted></GradientCard></View>
           <View style={{ gap: spacing.md, marginTop: spacing.md }}>{rows}</View>
           <Pressable style={styles.customizeBtn} onPress={() => setCustomize(true)} testID="customize-button"><Ionicons name="options-outline" size={18} color={colors.onSurface} /><Text style={styles.customizeText}>{t("customize")}</Text></Pressable>
@@ -283,8 +292,13 @@ const WidgetHeader: React.FC<{ icon: any; label: string }> = ({ icon, label }) =
 
 const CompanionWidget: React.FC<{ game: any }> = ({ game }) => {
   const { t } = useI18n();
-  const pct = game ? (game.xp_in_level / game.next_threshold) * 100 : 0;
-  return <GradientCard gradient={gradients.lime} testID="widget-companion"><View style={styles.companionRow}><Image source={{ uri: COMPANION_IMG }} style={styles.companionImg} contentFit="cover" /><View style={{ flex: 1 }}><Text style={styles.companionName}>{t("companion")}</Text><View style={styles.levelRow}><View style={styles.levelBadge}><Text style={styles.levelBadgeText}>{t("level")} {game?.level ?? 1}</Text></View><Text style={styles.xpText}>{game?.xp ?? 0} XP</Text></View><View style={{ marginTop: spacing.sm }}><View style={styles.companionBar}><View style={{ width: `${pct}%`, height: "100%", backgroundColor: colors.onSurface, borderRadius: 4 }} /></View></View><Text style={styles.companionHint}>{game?.xp_to_next ?? 0} {t("xp_to_next")} {(game?.level ?? 1) + 1}</Text></View></View></GradientCard>;
+  if (!game) {
+    return <GradientCard gradient={gradients.lime} testID="widget-companion"><View style={styles.companionRow}><Image source={{ uri: COMPANION_IMG }} style={styles.companionImg} contentFit="cover" /><View style={{ flex: 1 }}><Text style={styles.companionName}>{t("companion")}</Text><Muted style={{ marginTop: spacing.sm }}>{t("not_enough_data")}</Muted></View></View></GradientCard>;
+  }
+  const nextThreshold = Number(game.next_threshold) || 0;
+  const xpInLevel = Number(game.xp_in_level) || 0;
+  const pct = nextThreshold > 0 ? Math.max(0, Math.min(100, (xpInLevel / nextThreshold) * 100)) : 0;
+  return <GradientCard gradient={gradients.lime} testID="widget-companion"><View style={styles.companionRow}><Image source={{ uri: COMPANION_IMG }} style={styles.companionImg} contentFit="cover" /><View style={{ flex: 1 }}><Text style={styles.companionName}>{t("companion")}</Text><View style={styles.levelRow}><View style={styles.levelBadge}><Text style={styles.levelBadgeText}>{t("level")} {game.level}</Text></View><Text style={styles.xpText}>{game.xp} XP</Text></View>{nextThreshold > 0 ? <><View style={{ marginTop: spacing.sm }}><View style={styles.companionBar}><View style={{ width: `${pct}%`, height: "100%", backgroundColor: colors.onSurface, borderRadius: 4 }} /></View></View><Text style={styles.companionHint}>{game.xp_to_next} {t("xp_to_next")} {Number(game.level) + 1}</Text></> : null}</View></View></GradientCard>;
 };
 
 const styles = StyleSheet.create({
