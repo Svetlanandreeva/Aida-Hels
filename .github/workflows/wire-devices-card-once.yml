@@ -1,0 +1,42 @@
+name: Wire devices card once
+
+on:
+  push:
+    branches:
+      - feature/wearables-foundation
+    paths:
+      - .github/workflows/wire-devices-card-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/wearables-foundation
+          fetch-depth: 0
+      - name: Wire Home device card to devices screen
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('frontend/app/(tabs)/index.tsx')
+          text = path.read_text()
+          old = 'onPress={() => toast(lang === "ru" ? "Подключение устройств — скоро" : "Device sync — coming soon")}'
+          new = 'onPress={() => router.push("/devices")}'
+          if old not in text:
+              raise SystemExit('Expected placeholder device action was not found')
+          text = text.replace(old, new, 1)
+          path.write_text(text)
+          PY
+          grep -F 'onPress={() => router.push("/devices")}' 'frontend/app/(tabs)/index.tsx'
+      - name: Remove one-shot workflow and commit
+        run: |
+          rm .github/workflows/wire-devices-card-once.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add 'frontend/app/(tabs)/index.tsx' .github/workflows/wire-devices-card-once.yml
+          git commit -m 'Wire device card to wearables screen'
+          git push origin HEAD:feature/wearables-foundation
