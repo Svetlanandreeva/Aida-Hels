@@ -51,6 +51,7 @@ from secure_legacy_api import build_secure_legacy_router  # noqa: E402
 from task_api import build_task_router  # noqa: E402
 from timeline_api import build_timeline_router  # noqa: E402
 from user_testing_api import build_user_testing_router  # noqa: E402
+from wearable_cloud_oauth import build_wearable_cloud_oauth_router  # noqa: E402
 from wearables_api import build_wearables_router  # noqa: E402
 
 legacy_server.app.router.on_startup = [
@@ -167,4 +168,5 @@ app.include_router(build_lab_trends_router(_google_db))
 app.include_router(build_documents_router(_google_db, auth_service))
 app.include_router(build_healthkit_router(_google_db, auth_service))
 app.include_router(build_wearables_router(_google_db, auth_service))
+app.include_router(build_wearable_cloud_oauth_router(_google_db, auth_service))
 app.include_router(build_user_testing_router(_google_db, auth_service))
