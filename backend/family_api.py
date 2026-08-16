@@ -21,7 +21,6 @@ def _normalize_email(value: str) -> str:
 class ShareProfileRequest(BaseModel):
     email: EmailStr
     role: Literal["viewer", "editor"] = "viewer"
-    expires_at: str | None = None
 
 
 def build_family_router(db, auth) -> APIRouter:
@@ -56,7 +55,6 @@ def build_family_router(db, auth) -> APIRouter:
                 "email": (target or {}).get("email"),
                 "role": grant.get("role") or "viewer",
                 "created_at": grant.get("created_at"),
-                "expires_at": grant.get("expires_at"),
                 "is_current_account": str(grant.get("account_id") or "") == str(account["id"]),
             })
 
@@ -94,7 +92,6 @@ def build_family_router(db, auth) -> APIRouter:
                 {"id": existing.get("id")},
                 {"$set": {
                     "role": data.role,
-                    "expires_at": data.expires_at,
                     "revoked_at": None,
                     "updated_at": now,
                 }},
@@ -109,7 +106,6 @@ def build_family_router(db, auth) -> APIRouter:
                 "role": data.role,
                 "created_at": now,
                 "updated_at": now,
-                "expires_at": data.expires_at,
                 "revoked_at": None,
             })
 
@@ -120,7 +116,6 @@ def build_family_router(db, auth) -> APIRouter:
             "name": target.get("name"),
             "email": target.get("email"),
             "role": data.role,
-            "expires_at": data.expires_at,
         }
 
     @router.delete("/{profile_id}/share/{grant_id}")
