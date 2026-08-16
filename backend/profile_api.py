@@ -73,6 +73,8 @@ class ProfileFull(BaseModel):
     preferred_locale: Optional[str] = None
     timezone: Optional[str] = None
     accessibility: Dict[str, Any] = Field(default_factory=dict)
+    access_role: Optional[str] = None
+    is_owner: bool = False
     created_at: datetime = Field(default_factory=_now)
     updated_at: datetime = Field(default_factory=_now)
 
@@ -124,7 +126,7 @@ class ProfileUpdate(BaseModel):
     accessibility: Optional[Dict[str, Any]] = None
 
 
-def _normalize(doc: Dict[str, Any]) -> Dict[str, Any]:
+def _normalize(doc: Dict[str, Any], access_role: Optional[str] = None) -> Dict[str, Any]:
     out = dict(doc)
     out.setdefault("allergies", [])
     out.setdefault("chronic_conditions", [])
@@ -141,6 +143,8 @@ def _normalize(doc: Dict[str, Any]) -> Dict[str, Any]:
     out.setdefault("preferred_locale", None)
     out.setdefault("timezone", None)
     out.setdefault("accessibility", {})
+    out["access_role"] = access_role
+    out["is_owner"] = access_role == "owner"
     return out
 
 
@@ -151,19 +155,33 @@ def build_profile_router(db, auth) -> APIRouter:
         if not await auth.has_profile_access(account_id, profile_id, write=write):
             raise HTTPException(404, "Profile not found")
 
-    async def require_owner(account_id: str, profile_id: str):
+    async def current_grant(account_id: str, profile_id: str):
         grant = await db.access_grants.find_one({"account_id": account_id, "profile_id": profile_id}, {"_id": 0})
-        if not grant or grant.get("revoked_at") or str(grant.get("role") or "") != "owner":
+        if not grant or grant.get("revoked_at"):
+            return None
+        return grant
+
+    async def require_owner(account_id: str, profile_id: str):
+        grant = await current_grant(account_id, profile_id)
+        if not grant or str(grant.get("role") or "") != "owner":
             raise HTTPException(404, "Profile not found")
 
     @router.get("", response_model=List[ProfileFull])
     async def list_profiles(account: Dict[str, Any] = Depends(auth.require_account)):
         grants = await db.access_grants.find({"account_id": account["id"]}, {"_id": 0}).to_list(500)
-        profile_ids = {str(grant.get("profile_id")) for grant in grants if grant.get("profile_id") and not grant.get("revoked_at")}
-        if not profile_ids:
+        active_grants = {
+            str(grant.get("profile_id")): grant
+            for grant in grants
+            if grant.get("profile_id") and not grant.get("revoked_at")
+        }
+        if not active_grants:
             return []
         docs = await db.profiles.find({}, {"_id": 0}).sort("created_at", 1).to_list(1000)
-        return [_normalize(d) for d in docs if str(d.get("id")) in profile_ids]
+        return [
+            _normalize(d, str(active_grants[str(d.get("id"))].get("role") or "viewer"))
+            for d in docs
+            if str(d.get("id")) in active_grants
+        ]
 
     @router.post("", response_model=ProfileFull)
     async def create_profile(data: ProfileCreate, account: Dict[str, Any] = Depends(auth.require_account)):
@@ -172,8 +190,8 @@ def build_profile_router(db, auth) -> APIRouter:
         privacy = _default_privacy()
         privacy.update(payload.get("privacy") or {})
         payload["privacy"] = privacy
-        p = ProfileFull(**payload)
-        doc = p.model_dump()
+        p = ProfileFull(**payload, access_role="owner", is_owner=True)
+        doc = p.model_dump(exclude={"access_role", "is_owner"})
         doc["account_id"] = account["id"]
         await db.profiles.insert_one(doc)
         try:
@@ -185,15 +203,18 @@ def build_profile_router(db, auth) -> APIRouter:
 
     @router.get("/{profile_id}", response_model=ProfileFull)
     async def get_profile(profile_id: str, account: Dict[str, Any] = Depends(auth.require_account)):
-        await require_access(str(account["id"]), profile_id)
+        account_id = str(account["id"])
+        await require_access(account_id, profile_id)
         doc = await db.profiles.find_one({"id": profile_id}, {"_id": 0})
         if not doc:
             raise HTTPException(404, "Profile not found")
-        return _normalize(doc)
+        grant = await current_grant(account_id, profile_id)
+        return _normalize(doc, str((grant or {}).get("role") or "viewer"))
 
     @router.put("/{profile_id}", response_model=ProfileFull)
     async def update_profile(profile_id: str, data: ProfileUpdate, account: Dict[str, Any] = Depends(auth.require_account)):
-        await require_access(str(account["id"]), profile_id, write=True)
+        account_id = str(account["id"])
+        await require_access(account_id, profile_id, write=True)
         current = await db.profiles.find_one({"id": profile_id}, {"_id": 0})
         if not current:
             raise HTTPException(404, "Profile not found")
@@ -219,7 +240,8 @@ def build_profile_router(db, auth) -> APIRouter:
                 await db.puzzle.insert_one({"profile_id": profile_id, "widgets": widgets_for_goals(effective_goals), "source": "onboarding_goals", "updated_at": _now()})
 
         doc = await db.profiles.find_one({"id": profile_id}, {"_id": 0})
-        return _normalize(doc)
+        grant = await current_grant(account_id, profile_id)
+        return _normalize(doc, str((grant or {}).get("role") or "viewer"))
 
     @router.delete("/{profile_id}")
     async def delete_profile(profile_id: str, account: Dict[str, Any] = Depends(auth.require_account)):
