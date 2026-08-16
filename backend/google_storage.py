@@ -78,16 +78,11 @@ def _matches(doc: Dict[str, Any], query: Dict[str, Any]) -> bool:
             for op, target in expected.items():
                 a = str(actual) if actual is not None else None
                 t = str(target)
-                if op == "$gte" and (a is None or a < t):
-                    return False
-                if op == "$gt" and (a is None or a <= t):
-                    return False
-                if op == "$lte" and (a is None or a > t):
-                    return False
-                if op == "$lt" and (a is None or a >= t):
-                    return False
-                if op == "$in" and actual not in target:
-                    return False
+                if op == "$gte" and (a is None or a < t): return False
+                if op == "$gt" and (a is None or a <= t): return False
+                if op == "$lte" and (a is None or a > t): return False
+                if op == "$lt" and (a is None or a >= t): return False
+                if op == "$in" and actual not in target: return False
         elif actual != expected:
             return False
     return True
@@ -100,6 +95,7 @@ class SheetsHTTP:
         self.credentials = service_account.Credentials.from_service_account_info(info, scopes=[SHEETS_SCOPE])
         self.auth_request = GoogleAuthRequest()
         self.auth_lock = threading.RLock()
+        self.sheet_lock = threading.RLock()
 
     def headers(self) -> Dict[str, str]:
         with self.auth_lock:
@@ -110,23 +106,44 @@ class SheetsHTTP:
     def _base(self, suffix: str) -> str:
         return f"{SHEETS_API}/{self.spreadsheet_id}/{suffix}"
 
+    def ensure_sheet(self, sheet: str) -> None:
+        with self.sheet_lock:
+            meta = requests.get(self._base("?fields=sheets.properties.title"), headers=self.headers(), timeout=20)
+            meta.raise_for_status()
+            titles = {item.get("properties", {}).get("title") for item in meta.json().get("sheets", [])}
+            if sheet in titles:
+                return
+            r = requests.post(
+                self._base(":batchUpdate"),
+                headers=self.headers(),
+                json={"requests": [{"addSheet": {"properties": {"title": sheet}}}]},
+                timeout=20,
+            )
+            if r.status_code == 400 and "already exists" in r.text.lower():
+                return
+            r.raise_for_status()
+
     def get_rows(self, sheet: str) -> List[List[Any]]:
+        self.ensure_sheet(sheet)
         rng = quote(f"'{sheet}'!A:ZZ", safe="")
         r = requests.get(self._base(f"values/{rng}"), headers=self.headers(), timeout=20)
         r.raise_for_status()
         return r.json().get("values", [])
 
     def update(self, sheet: str, range_a1: str, values: List[List[Any]]) -> None:
+        self.ensure_sheet(sheet)
         rng = quote(f"'{sheet}'!{range_a1}", safe="")
         r = requests.put(self._base(f"values/{rng}?valueInputOption=RAW"), headers=self.headers(), json={"majorDimension": "ROWS", "values": values}, timeout=20)
         r.raise_for_status()
 
     def append(self, sheet: str, values: List[List[Any]]) -> None:
+        self.ensure_sheet(sheet)
         rng = quote(f"'{sheet}'!A:ZZ", safe="")
         r = requests.post(self._base(f"values/{rng}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS"), headers=self.headers(), json={"majorDimension": "ROWS", "values": values}, timeout=20)
         r.raise_for_status()
 
     def clear_row(self, sheet: str, row_number: int, width: int) -> None:
+        self.ensure_sheet(sheet)
         rng = quote(f"'{sheet}'!A{row_number}:{_col(max(width, 1))}{row_number}", safe="")
         r = requests.post(self._base(f"values/{rng}:clear"), headers=self.headers(), json={}, timeout=20)
         r.raise_for_status()
