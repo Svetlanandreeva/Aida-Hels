@@ -37,6 +37,8 @@ SHEET_NAMES = {
     "access_grants": "access_grants",
     "audit_log": "audit_log",
     "candidates": "candidates",
+    "circadian_events": "circadian_events",
+    "circadian_plans": "circadian_plans",
 }
 
 
@@ -95,9 +97,7 @@ class SheetsHTTP:
     def __init__(self, spreadsheet_id: str, service_account_json: str):
         self.spreadsheet_id = spreadsheet_id
         info = json.loads(service_account_json)
-        self.credentials = service_account.Credentials.from_service_account_info(
-            info, scopes=[SHEETS_SCOPE]
-        )
+        self.credentials = service_account.Credentials.from_service_account_info(info, scopes=[SHEETS_SCOPE])
         self.auth_request = GoogleAuthRequest()
         self.auth_lock = threading.RLock()
 
@@ -105,10 +105,7 @@ class SheetsHTTP:
         with self.auth_lock:
             if not self.credentials.valid:
                 self.credentials.refresh(self.auth_request)
-            return {
-                "Authorization": f"Bearer {self.credentials.token}",
-                "Content-Type": "application/json",
-            }
+            return {"Authorization": f"Bearer {self.credentials.token}", "Content-Type": "application/json"}
 
     def _base(self, suffix: str) -> str:
         return f"{SHEETS_API}/{self.spreadsheet_id}/{suffix}"
@@ -121,22 +118,12 @@ class SheetsHTTP:
 
     def update(self, sheet: str, range_a1: str, values: List[List[Any]]) -> None:
         rng = quote(f"'{sheet}'!{range_a1}", safe="")
-        r = requests.put(
-            self._base(f"values/{rng}?valueInputOption=RAW"),
-            headers=self.headers(),
-            json={"majorDimension": "ROWS", "values": values},
-            timeout=20,
-        )
+        r = requests.put(self._base(f"values/{rng}?valueInputOption=RAW"), headers=self.headers(), json={"majorDimension": "ROWS", "values": values}, timeout=20)
         r.raise_for_status()
 
     def append(self, sheet: str, values: List[List[Any]]) -> None:
         rng = quote(f"'{sheet}'!A:ZZ", safe="")
-        r = requests.post(
-            self._base(f"values/{rng}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS"),
-            headers=self.headers(),
-            json={"majorDimension": "ROWS", "values": values},
-            timeout=20,
-        )
+        r = requests.post(self._base(f"values/{rng}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS"), headers=self.headers(), json={"majorDimension": "ROWS", "values": values}, timeout=20)
         r.raise_for_status()
 
     def clear_row(self, sheet: str, row_number: int, width: int) -> None:
@@ -161,10 +148,7 @@ class LazyCursor:
         _, rows = await self.collection._read()
         docs = [dict(doc) for _, doc in rows if _matches(doc, self.query)]
         if self.sort_field:
-            docs.sort(
-                key=lambda d: (d.get(self.sort_field) is None, str(d.get(self.sort_field) or "")),
-                reverse=self.sort_direction < 0,
-            )
+            docs.sort(key=lambda d: (d.get(self.sort_field) is None, str(d.get(self.sort_field) or "")), reverse=self.sort_direction < 0)
         return docs[:length]
 
 
@@ -204,12 +188,7 @@ class SheetsCollection:
         if not new_headers:
             new_headers = list(doc.keys())
         if new_headers != headers:
-            await asyncio.to_thread(
-                self.http.update,
-                self.sheet,
-                f"A1:{_col(len(new_headers))}1",
-                [new_headers],
-            )
+            await asyncio.to_thread(self.http.update, self.sheet, f"A1:{_col(len(new_headers))}1", [new_headers])
         return new_headers
 
     async def _append_unlocked(self, doc: Dict[str, Any]):
@@ -218,11 +197,7 @@ class SheetsCollection:
         payload["updated_at"] = _now()
         headers, _ = await self._read()
         headers = await self._headers_for(headers, payload)
-        await asyncio.to_thread(
-            self.http.append,
-            self.sheet,
-            [[_encode(payload.get(h)) for h in headers]],
-        )
+        await asyncio.to_thread(self.http.append, self.sheet, [[_encode(payload.get(h)) for h in headers]])
         return payload
 
     def find(self, query: Optional[Dict[str, Any]] = None, projection: Optional[Dict[str, Any]] = None):
@@ -250,12 +225,7 @@ class SheetsCollection:
                 doc.update(patch)
                 doc["updated_at"] = _now()
                 headers = await self._headers_for(headers, doc)
-                await asyncio.to_thread(
-                    self.http.update,
-                    self.sheet,
-                    f"A{row_number}:{_col(len(headers))}{row_number}",
-                    [[_encode(doc.get(h)) for h in headers]],
-                )
+                await asyncio.to_thread(self.http.update, self.sheet, f"A{row_number}:{_col(len(headers))}{row_number}", [[_encode(doc.get(h)) for h in headers]])
                 return {"matched_count": 1, "modified_count": 1}
             if upsert:
                 payload = dict(query)
@@ -301,10 +271,7 @@ class GoogleSheetsDB:
 
 class DisabledStorage:
     def __getattr__(self, name: str):
-        raise RuntimeError(
-            "Google storage is not configured. Set GOOGLE_SERVICE_ACCOUNT_JSON and "
-            "GOOGLE_SHEETS_SPREADSHEET_ID."
-        )
+        raise RuntimeError("Google storage is not configured. Set GOOGLE_SERVICE_ACCOUNT_JSON and GOOGLE_SHEETS_SPREADSHEET_ID.")
 
 
 def build_storage_from_env():
