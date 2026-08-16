@@ -10,6 +10,7 @@ This folder contains Aida's native iOS bridge for Apple Health. Apple Watch data
 - Reading SpO2, respiratory rate, VO2 max, weight and body-fat percentage when those samples exist in HealthKit.
 - Reading Apple sleeping wrist temperature on supported iOS/watch hardware.
 - Enabling hourly HealthKit background delivery and observer queries.
+- `AidaHealthSyncCoordinator` for authorization, initial import, persisted last-sync time and observer-driven incremental sync.
 - Mapping HealthKit samples into Aida's API format.
 - Authenticated sync to `POST /api/health/apple/sync`.
 - Server-side deduplication by HealthKit sample UUID.
@@ -17,10 +18,10 @@ This folder contains Aida's native iOS bridge for Apple Health. Apple Watch data
 ## Xcode setup
 
 1. Create/open the Aida iOS target in Xcode.
-2. Add `HealthKitManager.swift` and `AppleHealthSyncClient.swift` to the target.
+2. Add `HealthKitManager.swift`, `AppleHealthSyncClient.swift` and `AidaHealthSyncCoordinator.swift` to the target.
 3. In **Signing & Capabilities**, add **HealthKit**.
 4. Inside the HealthKit capability enable **Background Delivery**.
-5. Add `NSHealthShareUsageDescription` explaining why Aida reads health data.
+5. Add `NSHealthShareUsageDescription` explaining why Aida reads health data. The Expo app config already contains this description and the HealthKit/background-delivery entitlements for generated native projects.
 6. Do not enable Clinical Health Records unless Aida actually ships a clinical-record feature.
 7. Use `https://aidaassistent.ru` as the production API base URL.
 8. Pass the logged-in Aida bearer token and selected `profile_id` when syncing.
@@ -28,27 +29,11 @@ This folder contains Aida's native iOS bridge for Apple Health. Apple Watch data
 ## First sync
 
 ```swift
-let healthKit = HealthKitManager()
-try await healthKit.requestAuthorization()
-try await healthKit.enableBackgroundDelivery()
-
-let since = Calendar.current.date(byAdding: .day, value: -7, to: Date())!
-let samples = try await healthKit.readRecentSamples(since: since)
-
-let client = AppleHealthSyncClient(baseURL: URL(string: "https://aidaassistent.ru")!)
-let response = try await client.sync(
-    profileId: profileId,
-    bearerToken: token,
-    samples: samples,
-    deviceName: UIDevice.current.name,
-    deviceModel: UIDevice.current.model,
-    osVersion: UIDevice.current.systemVersion
-)
+let coordinator = AidaHealthSyncCoordinator()
+try await coordinator.connect(profileId: profileId, bearerToken: token)
 ```
 
-## Background sync
-
-After authorization, start HealthKit observer queries with `startObservingChanges`. When HealthKit reports changes, read only the period since the last successful sync and upload the resulting batch. Persist the last successful sync timestamp locally so background wakes do not repeatedly scan the full history.
+The coordinator requests HealthKit access, enables background delivery, imports recent samples and starts observer-driven incremental sync.
 
 ## Backend endpoints
 
