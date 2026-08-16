@@ -43,6 +43,7 @@ import server as legacy_server  # noqa: E402
 from ai_context import build_ai_context  # noqa: E402
 from auth_api import build_auth_router  # noqa: E402
 from candidate_records import build_candidate_router  # noqa: E402
+from circadian_api import build_circadian_router  # noqa: E402
 from documents import build_documents_router  # noqa: E402
 from healthkit_api import build_healthkit_router  # noqa: E402
 from lab_pipeline import build_lab_router  # noqa: E402
@@ -58,13 +59,7 @@ from user_testing_api import build_user_testing_router  # noqa: E402
 from wearable_cloud_oauth import build_wearable_cloud_oauth_router  # noqa: E402
 from wearables_api import build_wearables_router  # noqa: E402
 
-# Never run the legacy global demo seeder. New/real users must start with their
-# own empty profile and explicit no-data states.
-legacy_server.app.router.on_startup = [
-    handler
-    for handler in legacy_server.app.router.on_startup
-    if getattr(handler, "__name__", "") != "_startup"
-]
+legacy_server.app.router.on_startup = [handler for handler in legacy_server.app.router.on_startup if getattr(handler, "__name__", "") != "_startup"]
 
 
 async def _privacy_aware_profile_context(profile_id: str) -> str:
@@ -74,90 +69,44 @@ async def _privacy_aware_profile_context(profile_id: str) -> str:
 legacy_server.get_profile_context = _privacy_aware_profile_context
 
 _REPLACED_LEGACY_PREFIXES = (
-    "/api/profiles",
-    "/api/labs",
-    "/api/symptoms",
-    "/api/medications",
-    "/api/chat",
-    "/api/report/",
-    "/api/analytics/readiness/",
-    "/api/gamification/",
-    "/api/puzzle/",
-    "/api/seed",
-    "/api/vitals",
-    "/api/checkins",
-    "/api/tasks",
-    "/api/overview/",
+    "/api/profiles", "/api/labs", "/api/symptoms", "/api/medications", "/api/chat", "/api/report/",
+    "/api/analytics/readiness/", "/api/gamification/", "/api/puzzle/", "/api/seed", "/api/vitals",
+    "/api/checkins", "/api/tasks", "/api/overview/",
 )
-
-legacy_server.app.router.routes = [
-    route
-    for route in legacy_server.app.router.routes
-    if not str(getattr(route, "path", "")).startswith(_REPLACED_LEGACY_PREFIXES)
-]
-
-legacy_server.app.user_middleware = [
-    middleware
-    for middleware in legacy_server.app.user_middleware
-    if middleware.cls is not CORSMiddleware
-]
+legacy_server.app.router.routes = [route for route in legacy_server.app.router.routes if not str(getattr(route, "path", "")).startswith(_REPLACED_LEGACY_PREFIXES)]
+legacy_server.app.user_middleware = [middleware for middleware in legacy_server.app.user_middleware if middleware.cls is not CORSMiddleware]
 legacy_server.app.middleware_stack = None
 
 auth_router, auth_service = build_auth_router(_google_db)
 app = legacy_server.app
 
-cors_origins = [
-    origin.strip()
-    for origin in os.environ.get("AIDA_CORS_ORIGINS", "").split(",")
-    if origin.strip()
-]
+cors_origins = [origin.strip() for origin in os.environ.get("AIDA_CORS_ORIGINS", "").split(",") if origin.strip()]
 if cors_origins:
-    app.add_middleware(
-        CORSMiddleware,
-        allow_credentials=True,
-        allow_origins=cors_origins,
-        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Authorization", "Content-Type"],
-    )
+    app.add_middleware(CORSMiddleware, allow_credentials=True, allow_origins=cors_origins, allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"], allow_headers=["Authorization", "Content-Type"])
 
-_PUBLIC_API_PATHS = {
-    "/api/",
-    "/api/auth/register",
-    "/api/auth/login",
-    "/api/auth/forgot-password",
-    "/api/auth/reset-password",
-}
+_PUBLIC_API_PATHS = {"/api/", "/api/auth/register", "/api/auth/login", "/api/auth/forgot-password", "/api/auth/reset-password"}
 
 
 @app.middleware("http")
 async def require_authenticated_api(request: Request, call_next):
-    """Fail closed for API routes missed by feature-specific dependencies."""
     path = request.url.path
     if request.method == "OPTIONS" or not path.startswith("/api") or path in _PUBLIC_API_PATHS:
         return await call_next(request)
-
     header = request.headers.get("authorization", "")
     scheme, _, token = header.partition(" ")
     if scheme.lower() != "bearer" or not token.strip():
         return JSONResponse({"detail": "Authentication required"}, status_code=401)
-
     try:
         account = await auth_service.account_from_token(token.strip())
     except HTTPException as exc:
         return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
-
     request.state.account = account
     profile_id = request.query_params.get("profile_id")
     if profile_id:
         write = request.method not in {"GET", "HEAD", "OPTIONS"}
-        allowed = await auth_service.has_profile_access(
-            str(account.get("id") or ""),
-            profile_id,
-            write=write,
-        )
+        allowed = await auth_service.has_profile_access(str(account.get("id") or ""), profile_id, write=write)
         if not allowed:
             return JSONResponse({"detail": "Profile not found"}, status_code=404)
-
     return await call_next(request)
 
 
@@ -167,6 +116,7 @@ app.include_router(build_secure_legacy_router(_google_db, auth_service))
 app.include_router(build_puzzle_router(_google_db, auth_service))
 app.include_router(build_task_router(_google_db, auth_service))
 app.include_router(build_medication_router(_google_db, auth_service))
+app.include_router(build_circadian_router(_google_db, auth_service))
 app.include_router(build_timeline_router(_google_db))
 app.include_router(build_candidate_router(_google_db, auth_service))
 app.include_router(build_lab_router(_google_db, auth_service))
@@ -180,14 +130,6 @@ app.include_router(build_user_testing_router(_google_db, auth_service))
 
 @app.on_event("startup")
 async def _seed_opt_in_test_account() -> None:
-    """Create/reset only the explicitly enabled test profile.
-
-    This never seeds ordinary accounts and never provides a fallback data source.
-    """
     result = await seed_test_account(_google_db)
     if result.get("enabled"):
-        logging.info(
-            "Aida test account seeded in Google storage: email=%s profile_id=%s",
-            result.get("email"),
-            result.get("profile_id"),
-        )
+        logging.info("Aida test account seeded in Google storage: email=%s profile_id=%s", result.get("email"), result.get("profile_id"))
