@@ -55,6 +55,39 @@ def _merge_defaults(stored):
     return sorted(result, key=lambda w: w["order"])
 
 
+def widgets_for_goals(goals: List[str] | None) -> List[Dict[str, Any]]:
+    """Build the first Home layout from onboarding goals.
+
+    This is used only while there is no persisted Puzzle document. Once the user
+    customizes Home in Settings, onboarding/profile edits must not overwrite it.
+    """
+    selected = {str(goal) for goal in (goals or []) if goal}
+    if not selected:
+        return _merge_defaults(None)
+
+    widgets = _merge_defaults(None)
+    by_id = {item["id"]: item for item in widgets}
+
+    # Brand/product anchors remain available without forcing health data cards.
+    by_id["companion"].update(enabled=True, show_on_home=True)
+    by_id["quests"].update(enabled=True, show_on_home=True)
+
+    # Overall readiness is relevant to every explicitly personalized setup.
+    by_id["readiness"].update(enabled=True, show_on_home=True)
+
+    meds = bool(selected & {"meds", "chronic"})
+    symptoms = bool(selected & {"symptoms", "chronic", "general"})
+    labs = bool(selected & {"labs", "chronic", "general"})
+    quick = bool(selected & {"pressure", "sleep", "mental", "women", "cycle", "pregnancy_planning", "pregnancy"})
+
+    by_id["next_medication"].update(enabled=meds, show_on_home=meds, notifications=meds)
+    by_id["recent_symptom"].update(enabled=symptoms, show_on_home=symptoms)
+    by_id["latest_lab"].update(enabled=labs, show_on_home=labs)
+    by_id["quick_note"].update(enabled=quick, show_on_home=quick)
+
+    return sorted(by_id.values(), key=lambda item: item["order"])
+
+
 def build_puzzle_router(db, auth) -> APIRouter:
     router = APIRouter(prefix="/api/puzzle", tags=["puzzle"])
 

@@ -7,8 +7,21 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useApp } from "@/src/store";
 import { useI18n } from "@/src/i18n";
 import { useResponsiveLayout } from "@/src/hooks/use-responsive-layout";
-import { connectAppleHealth, appleHealthBridgeAvailable } from "@/src/native-health";
-import { WearableProvider, cloudWearableConfiguration, startCloudWearableAuthorization, wearableStatus } from "@/src/wearables";
+import {
+  appleHealthBridgeAvailable,
+  connectAppleHealth,
+  connectHealthConnect,
+  healthConnectBridgeAvailable,
+  syncAppleHealth,
+  syncHealthConnect,
+} from "@/src/native-health";
+import {
+  WearableProvider,
+  cloudWearableConfiguration,
+  startCloudWearableAuthorization,
+  updateWearableConnection,
+  wearableStatus,
+} from "@/src/wearables";
 import { colors, fonts, radius, spacing } from "@/src/theme";
 
 const providerIcon = (id: string): keyof typeof Ionicons.glyphMap => {
@@ -47,30 +60,59 @@ export default function DevicesScreen() {
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
+  const stateText = (provider: WearableProvider) => {
+    if (provider.state === "connected_no_data") return lang === "ru" ? "Подключено · данных пока нет" : "Connected · no data yet";
+    if (provider.state === "permission_denied") return lang === "ru" ? "Нет разрешения" : "Permission denied";
+    if (provider.state === "sync_error") return lang === "ru" ? "Ошибка синхронизации · повторить" : "Sync error · retry";
+    if (provider.state === "stale") return lang === "ru" ? "Данные устарели · обновить" : "Data is stale · refresh";
+    if (provider.state === "data") return lang === "ru" ? "Подключено" : "Connected";
+    return null;
+  };
+
   const actionText = (provider: WearableProvider) => {
-    if (provider.connected) return lang === "ru" ? "Подключено" : "Connected";
+    const state = stateText(provider);
+    if (state) return state;
     if (provider.id === "apple_health") {
       if (Platform.OS !== "ios") return lang === "ru" ? "Откройте Аиду на iPhone" : "Open Aida on iPhone";
       return appleHealthBridgeAvailable() ? (lang === "ru" ? "Подключить Apple Health" : "Connect Apple Health") : (lang === "ru" ? "Нужна iOS-сборка Аиды" : "Aida iOS build required");
     }
     if (provider.id === "android_health_connect") {
-      return Platform.OS === "android" ? (lang === "ru" ? "Подключить Health Connect" : "Connect Health Connect") : (lang === "ru" ? "Откройте Аиду на Android" : "Open Aida on Android");
+      if (Platform.OS !== "android") return lang === "ru" ? "Откройте Аиду на Android" : "Open Aida on Android";
+      return healthConnectBridgeAvailable() ? (lang === "ru" ? "Подключить Health Connect" : "Connect Health Connect") : (lang === "ru" ? "Нужна Android-сборка Аиды" : "Aida Android build required");
     }
     const cfg = cloudConfig[provider.id];
     if (cfg?.configured) return lang === "ru" ? "Подключить аккаунт" : "Connect account";
     return lang === "ru" ? "Требуются ключи провайдера" : "Provider credentials required";
   };
 
+  const canRetry = (provider: WearableProvider) => provider.state === "sync_error" || provider.state === "stale";
+  const disabled = (provider: WearableProvider) => connecting === provider.id || (provider.connected && !canRetry(provider));
+
+  const persistFailure = async (provider: WearableProvider, error: any) => {
+    if (!activeId) return;
+    const raw = String(error?.message || error || "");
+    const permission = /permission|denied|authorization|not authorized/i.test(raw);
+    await updateWearableConnection(
+      provider.id,
+      activeId,
+      permission ? "permission_denied" : "sync_error",
+      { code: permission ? "permission_denied" : "native_sync_error", message: raw.slice(0, 500) },
+    ).catch(() => undefined);
+  };
+
   const connect = async (provider: WearableProvider) => {
-    if (!activeId || provider.connected || connecting) return;
+    if (!activeId || disabled(provider)) return;
     setConnecting(provider.id); setMessage(null);
     try {
       if (provider.id === "apple_health") {
         if (!appleHealthBridgeAvailable()) throw new Error(lang === "ru" ? "HealthKit доступен только в нативной iOS-сборке" : "HealthKit is available only in the native iOS build");
-        await connectAppleHealth(activeId); await load(); return;
+        if (canRetry(provider)) await syncAppleHealth(activeId); else await connectAppleHealth(activeId);
+        await load(); return;
       }
       if (provider.id === "android_health_connect") {
-        throw new Error(lang === "ru" ? "Health Connect будет активен в нативной Android-сборке" : "Health Connect requires the native Android build");
+        if (!healthConnectBridgeAvailable()) throw new Error(lang === "ru" ? "Health Connect доступен только в нативной Android-сборке" : "Health Connect is available only in the native Android build");
+        if (canRetry(provider)) await syncHealthConnect(activeId); else await connectHealthConnect(activeId);
+        await load(); return;
       }
       const cfg = cloudConfig[provider.id];
       if (!cfg?.configured) {
@@ -79,9 +121,14 @@ export default function DevicesScreen() {
       }
       const auth = await startCloudWearableAuthorization(provider.id, activeId);
       await Linking.openURL(auth.authorization_url);
-    } catch (e: any) { setMessage(e?.message || (lang === "ru" ? "Не удалось подключить" : "Connection failed")); }
-    finally { setConnecting(null); }
+    } catch (e: any) {
+      if (provider.mode === "native_system") await persistFailure(provider, e);
+      setMessage(e?.message || (lang === "ru" ? "Не удалось подключить" : "Connection failed"));
+      await load();
+    } finally { setConnecting(null); }
   };
+
+  const isHealthyConnection = (provider: WearableProvider) => provider.state === "data" || provider.state === "connected_no_data";
 
   return (
     <View style={styles.screen}>
@@ -97,7 +144,8 @@ export default function DevicesScreen() {
           <View style={[styles.grid,responsive.width<700&&styles.gridStack]}>{providers.map((provider)=><View key={provider.id} style={[styles.providerCard,responsive.width<700&&styles.providerCardStack]}>
             <View style={styles.providerTop}><View style={styles.providerIcon}><Ionicons name={providerIcon(provider.id)} size={24} color={colors.onSurface}/></View><View style={{flex:1,minWidth:0}}><Text style={styles.providerName}>{provider.name}</Text><Text style={styles.providerDevices} numberOfLines={2}>{provider.devices.join(" · ")}</Text></View></View>
             <View style={styles.metricPills}>{(provider.id==="withings"?["Вес","Давление","Сон"]:["Пульс","Сон","Активность"]).map((item)=><View key={item} style={styles.metricPill}><Text style={styles.metricText}>{item}</Text></View>)}</View>
-            <Pressable style={[styles.statusRow,provider.connected&&styles.statusConnected]} onPress={()=>connect(provider)} disabled={provider.connected||connecting===provider.id}><View style={[styles.statusDot,provider.connected&&styles.statusDotConnected]}/>{connecting===provider.id?<ActivityIndicator size="small" color={colors.onSurface}/>:<Text style={styles.statusText}>{actionText(provider)}</Text>}</Pressable>
+            <Pressable style={[styles.statusRow,isHealthyConnection(provider)&&styles.statusConnected]} onPress={()=>connect(provider)} disabled={disabled(provider)}><View style={[styles.statusDot,isHealthyConnection(provider)&&styles.statusDotConnected]}/>{connecting===provider.id?<ActivityIndicator size="small" color={colors.onSurface}/>:<Text style={styles.statusText}>{actionText(provider)}</Text>}</Pressable>
+            {provider.error?.message ? <Text style={styles.lastSync}>{provider.error.message}</Text> : null}
             {provider.last_sync_at?<Text style={styles.lastSync}>{lang==="ru"?"Последняя синхронизация":"Last sync"}: {new Date(provider.last_sync_at).toLocaleString()}</Text>:null}
           </View>)}</View>
           <Text style={styles.footnote}>{lang === "ru" ? "Apple Watch подключается через Apple Health на iPhone. На Android Аида использует Health Connect. Облачные подключения включаются только после регистрации приложения у конкретного производителя и добавления его ключей на сервер." : "Apple Watch connects through Apple Health on iPhone. Android uses Health Connect. Cloud providers become available only after the app is registered with the vendor and its server credentials are configured."}</Text>

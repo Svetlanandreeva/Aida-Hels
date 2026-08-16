@@ -10,6 +10,8 @@ import * as SystemUI from "expo-system-ui";
 
 import { AuthProvider, useAuth } from "@/src/auth";
 import { useIconFonts } from "@/src/hooks/use-icon-fonts";
+import { useMedicationReminderSync } from "@/src/hooks/use-medication-reminder-sync";
+import { useSleepRecommendationSync } from "@/src/hooks/use-sleep-recommendation-sync";
 import { I18nProvider } from "@/src/i18n";
 import { AppProvider, useApp } from "@/src/store";
 import { LogProvider } from "@/src/components/LogProvider";
@@ -53,6 +55,8 @@ function useDeferredNotificationSetup() {
 function ProfileGate({ children }: { children: React.ReactNode }) {
   const { activeProfile, loading } = useApp();
   const segments = useSegments();
+  useMedicationReminderSync();
+  useSleepRecommendationSync();
   useEffect(() => {
     if (loading || !activeProfile) return;
     const route = String(segments[0] || "");
@@ -73,9 +77,9 @@ function RoutedApp() {
   useEffect(() => {
     if (loading) return;
     const route = String(segments[0] || "");
-    const publicRoute = route === "auth" || route === "reset-password";
+    const publicRoute = route === "" || route === "auth" || route === "reset-password";
     if (!token && !publicRoute) router.replace("/auth" as any);
-    if (token && publicRoute) router.replace("/(tabs)" as any);
+    if (token && (route === "auth" || route === "reset-password")) router.replace("/(tabs)" as any);
   }, [token, loading, segments]);
 
   if (loading) return <StartupPreview />;
@@ -84,6 +88,7 @@ function RoutedApp() {
     <View style={{ flex: 1, backgroundColor: colors.surface }}>
       <StatusBar style="dark" />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.surface } }}>
+        <Stack.Screen name="index" />
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="auth" />
         <Stack.Screen name="reset-password" />

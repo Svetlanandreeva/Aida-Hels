@@ -1,0 +1,49 @@
+name: Validate Android Health Connect
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "frontend/app.json"
+      - "frontend/plugins/with-health-connect-min-sdk.js"
+      - "frontend/modules/aida-health-connect/**"
+      - "frontend/src/native-health.ts"
+      - "frontend/src/wearables.ts"
+      - "frontend/app/devices.tsx"
+      - ".github/workflows/validate-android-health-connect.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android-native:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.19.5
+          cache: yarn
+          cache-dependency-path: frontend/yarn.lock
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: yarn install --frozen-lockfile
+      - name: Generate Android project
+        working-directory: frontend
+        run: npx expo prebuild --clean --platform android --no-install
+      - name: Verify local Expo module was autolinked
+        working-directory: frontend
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx expo-modules-autolinking resolve --platform android | tee /tmp/autolinking.json
+          grep -q 'aida-health-connect' /tmp/autolinking.json
+      - name: Compile Android app with Health Connect bridge
+        working-directory: frontend/android
+        run: ./gradlew :app:assembleDebug --no-daemon --stacktrace

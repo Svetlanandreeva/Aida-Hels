@@ -14,6 +14,20 @@ export type WearableProvider = {
   device?: { name?: string | null; model?: string | null; os_version?: string | null } | null;
 };
 
+export type WearableSyncSample = {
+  external_id?: string | null;
+  metric: string;
+  value: number;
+  unit: string;
+  start_at: string;
+  end_at?: string | null;
+  source_name?: string | null;
+  device_name?: string | null;
+  recording_method?: string | null;
+  timezone_offset_minutes?: number | null;
+  metadata?: Record<string, unknown>;
+};
+
 async function jsonRequest(path: string, options?: RequestInit) {
   const response = await apiFetch(path, options);
   if (!response.ok) {
@@ -45,6 +59,26 @@ export async function updateWearableConnection(
       state,
       error_code: error?.code || null,
       error_message: error?.message || null,
+    }),
+  });
+}
+
+export async function syncWearableProvider(
+  provider: string,
+  profileId: string,
+  samples: WearableSyncSample[],
+  options?: { syncCursor?: string | null; deviceName?: string | null; deviceModel?: string | null; osVersion?: string | null }
+): Promise<{ ok: boolean; provider: string; inserted: number; skipped: number; rejected: number; state: string; last_sync_at: string }> {
+  return jsonRequest(`/health/wearables/${encodeURIComponent(provider)}/sync`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      profile_id: profileId,
+      device_name: options?.deviceName || null,
+      device_model: options?.deviceModel || null,
+      os_version: options?.osVersion || null,
+      sync_cursor: options?.syncCursor || null,
+      samples,
     }),
   });
 }

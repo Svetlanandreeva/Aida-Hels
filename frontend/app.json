@@ -42,7 +42,6 @@
         "android.permission.health.READ_VO2_MAX",
         "android.permission.health.READ_WEIGHT",
         "android.permission.health.READ_BODY_FAT",
-        "android.permission.health.READ_SKIN_TEMPERATURE",
         "android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND"
       ]
     },
@@ -56,6 +55,7 @@
       "expo-image-picker",
       "expo-document-picker",
       "expo-notifications",
+      "./plugins/with-health-connect-min-sdk",
       [
         "expo-splash-screen",
         {
