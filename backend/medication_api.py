@@ -30,11 +30,21 @@ def _times(values) -> List[str]:
     return sorted(out)
 
 
+def _notification_ids(values) -> List[str]:
+    out = []
+    for value in values or []:
+        text = str(value).strip()
+        if text and text not in out:
+            out.append(text)
+    return out[:64]
+
+
 def _normalize_med(doc):
     if not doc:
         return doc
     result = dict(doc)
     result["times"] = _times(result.get("times"))
+    result["notification_ids"] = _notification_ids(result.get("notification_ids"))
     meal = str(result.get("meal_relation") or "any").lower()
     result["meal_relation"] = meal if meal in _ALLOWED_MEAL else "any"
     result.setdefault("active", True)
@@ -55,6 +65,7 @@ class MedicationCreate(BaseModel):
     active: bool = True
     start_date: Optional[str] = None
     notes: Optional[str] = None
+    notification_ids: List[str] = Field(default_factory=list)
 
 
 class MedicationUpdate(BaseModel):
@@ -66,6 +77,7 @@ class MedicationUpdate(BaseModel):
     active: Optional[bool] = None
     start_date: Optional[str] = None
     notes: Optional[str] = None
+    notification_ids: Optional[List[str]] = None
 
 
 class IntakeMark(BaseModel):
@@ -90,6 +102,7 @@ def build_medication_router(db, auth) -> APIRouter:
         if not payload["name"]:
             raise HTTPException(400, "Medication name is required")
         payload["times"] = _times(payload.get("times"))
+        payload["notification_ids"] = _notification_ids(payload.get("notification_ids"))
         meal = str(payload.get("meal_relation") or "any").lower()
         if meal not in _ALLOWED_MEAL:
             raise HTTPException(400, "Invalid meal relation")
@@ -108,6 +121,8 @@ def build_medication_router(db, auth) -> APIRouter:
                 raise HTTPException(400, "Medication name is required")
         if "times" in patch:
             patch["times"] = _times(patch["times"])
+        if "notification_ids" in patch:
+            patch["notification_ids"] = _notification_ids(patch["notification_ids"])
         if "meal_relation" in patch:
             meal = str(patch["meal_relation"]).lower()
             if meal not in _ALLOWED_MEAL:
