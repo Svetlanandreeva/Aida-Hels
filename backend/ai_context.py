@@ -2,14 +2,14 @@
 
 The LLM receives only data from the active profile that the authenticated
 application has already authorized. Every included fact keeps provenance,
-freshness and a stable evidence id so generated explanations can distinguish
-source data from inference.
+freshness, verification/quality and a stable evidence id so generated
+explanations can distinguish source data from inference.
 """
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
-from typing import Any, Dict, Iterable, List
+from datetime import date, datetime, timezone
+from typing import Any, Dict, Iterable
 
 
 def _iso_now() -> str:
@@ -20,12 +20,54 @@ def _evidence_id(kind: str, row: Dict[str, Any]) -> str:
     return f"{kind}:{row.get('id') or row.get('external_id') or row.get('source_fingerprint') or 'unknown'}"
 
 
+def _parse_observed_at(value: Any) -> datetime | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        dt = value
+    elif isinstance(value, date):
+        dt = datetime(value.year, value.month, value.day, tzinfo=timezone.utc)
+    else:
+        text = str(value).strip()
+        if not text:
+            return None
+        try:
+            dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        except ValueError:
+            try:
+                d = date.fromisoformat(text[:10])
+            except ValueError:
+                return None
+            dt = datetime(d.year, d.month, d.day, tzinfo=timezone.utc)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def _freshness(observed_at: Any, *, now: datetime | None = None) -> Dict[str, Any]:
+    observed = _parse_observed_at(observed_at)
+    if observed is None:
+        return {"status": "unknown", "age_seconds": None}
+    current = now or datetime.now(timezone.utc)
+    age_seconds = max(0, int((current - observed).total_seconds()))
+    if age_seconds <= 24 * 3600:
+        status = "fresh"
+    elif age_seconds <= 7 * 24 * 3600:
+        status = "recent"
+    else:
+        status = "stale"
+    return {"status": status, "age_seconds": age_seconds}
+
+
 def _compact(kind: str, row: Dict[str, Any], keys: Iterable[str]) -> Dict[str, Any]:
     item = {key: row.get(key) for key in keys if row.get(key) is not None}
+    observed_at = row.get("observed_at") or row.get("date") or row.get("created_at")
     item["evidence_id"] = _evidence_id(kind, row)
     item["source"] = row.get("source") or row.get("provider_id") or "user"
     item["verification_status"] = row.get("verification_status") or "unverified"
-    item["observed_at"] = row.get("observed_at") or row.get("date") or row.get("created_at")
+    item["quality"] = row.get("quality") or row.get("quality_status") or "unknown"
+    item["observed_at"] = observed_at
+    item["freshness"] = _freshness(observed_at)
     return item
 
 
@@ -95,6 +137,7 @@ async def build_ai_context(db, profile_id: str, *, as_json: bool = True) -> str 
             "do_not_infer_medical_facts_without_evidence": True,
             "do_not_mix_profiles": True,
             "wearable_values_are_source_reported_not_diagnoses": True,
+            "freshness_and_quality_must_be_considered": True,
         },
     }
     return json.dumps(context, ensure_ascii=False, default=str) if as_json else context
