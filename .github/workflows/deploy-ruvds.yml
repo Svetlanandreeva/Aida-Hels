@@ -10,17 +10,28 @@ concurrency:
   group: deploy-ruvds-production
   cancel-in-progress: false
 
-env:
-  RUVDS_HOST: 170.168.1.118
-  RUVDS_USER: aida
-
 jobs:
   build-and-deploy:
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
+    env:
+      RUVDS_HOST: ${{ secrets.RUVDS_HOST }}
+      RUVDS_USER: ${{ secrets.RUVDS_USER }}
+      RUVDS_PORT: ${{ secrets.RUVDS_PORT }}
     steps:
+      - name: Validate deploy configuration
+        env:
+          RUVDS_SSH_KEY: ${{ secrets.RUVDS_SSH_KEY }}
+          RUVDS_SSH_KNOWN_HOSTS: ${{ secrets.RUVDS_SSH_KNOWN_HOSTS }}
+        run: |
+          test -n "$RUVDS_HOST" || (echo 'RUVDS_HOST secret is missing' && exit 1)
+          test -n "$RUVDS_USER" || (echo 'RUVDS_USER secret is missing' && exit 1)
+          test -n "$RUVDS_SSH_KEY" || (echo 'RUVDS_SSH_KEY secret is missing' && exit 1)
+          test -n "$RUVDS_SSH_KNOWN_HOSTS" || (echo 'RUVDS_SSH_KNOWN_HOSTS secret is missing' && exit 1)
+          if [ -z "$RUVDS_PORT" ]; then echo 'RUVDS_PORT is empty; set it to 22 unless SSH uses another port.'; exit 1; fi
+
       - name: Checkout validated revision
         uses: actions/checkout@v4
         with:
@@ -45,8 +56,8 @@ jobs:
       - name: Prepare SSH
         env:
           RUVDS_SSH_KEY: ${{ secrets.RUVDS_SSH_KEY }}
+          RUVDS_SSH_KNOWN_HOSTS: ${{ secrets.RUVDS_SSH_KNOWN_HOSTS }}
         run: |
-          test -n "$RUVDS_SSH_KEY" || (echo 'RUVDS_SSH_KEY secret is missing' && exit 1)
           mkdir -p ~/.ssh
           python3 - <<'PY'
           import base64
@@ -57,7 +68,6 @@ jobs:
 
           raw = os.environ['RUVDS_SSH_KEY'].strip()
           key = raw.replace('\\n', '\n').replace('\r\n', '\n').replace('\r', '\n').strip()
-
           if '-----BEGIN ' not in key:
               try:
                   decoded = base64.b64decode(key, validate=True).decode('utf-8').strip()
@@ -65,74 +75,47 @@ jobs:
                       key = decoded
               except Exception:
                   pass
-
-          match = re.search(
-              r'(-----BEGIN [^-]+-----)(.*?)(-----END [^-]+-----)',
-              key,
-              flags=re.S,
-          )
+          match = re.search(r'(-----BEGIN [^-]+-----)(.*?)(-----END [^-]+-----)', key, flags=re.S)
           if match:
               begin, body, end = match.groups()
               compact = re.sub(r'\s+', '', body)
               if compact:
                   key = begin + '\n' + '\n'.join(textwrap.wrap(compact, 70)) + '\n' + end
-
           Path.home().joinpath('.ssh/ruvds').write_text(key + '\n')
+          Path.home().joinpath('.ssh/known_hosts').write_text(os.environ['RUVDS_SSH_KNOWN_HOSTS'].strip() + '\n')
           PY
-          chmod 600 ~/.ssh/ruvds
-          ssh-keygen -y -f ~/.ssh/ruvds >/dev/null || (echo 'RUVDS_SSH_KEY is not a valid private key after normalization' && exit 1)
-          ssh-keyscan -H "$RUVDS_HOST" >> ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/ruvds ~/.ssh/known_hosts
+          ssh-keygen -y -f ~/.ssh/ruvds >/dev/null || (echo 'RUVDS_SSH_KEY is not a valid private key' && exit 1)
 
-      - name: Verify deploy user access
+      - name: Verify restricted deploy access
         run: |
-          ssh -i ~/.ssh/ruvds -o IdentitiesOnly=yes "$RUVDS_USER@$RUVDS_HOST" \
-            'test -w /opt/aida/backend && test -w /opt/aida/frontend'
+          ssh -p "$RUVDS_PORT" -i ~/.ssh/ruvds -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes "$RUVDS_USER@$RUVDS_HOST" \
+            'set -e; test -w /opt/aida/backend; test -w /opt/aida/frontend; sudo -n /usr/bin/systemctl status aida-backend >/dev/null'
 
       - name: Upload application sources
         run: |
-          ssh -i ~/.ssh/ruvds -o IdentitiesOnly=yes "$RUVDS_USER@$RUVDS_HOST" <<'EOF'
+          SSH="ssh -p $RUVDS_PORT -i ~/.ssh/ruvds -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes"
+          $SSH "$RUVDS_USER@$RUVDS_HOST" <<'EOF'
           set -euo pipefail
           find /opt/aida/backend -mindepth 1 -maxdepth 1 ! -name '.env' ! -name '.venv' -exec rm -rf -- {} +
           find /opt/aida/frontend -mindepth 1 -maxdepth 1 ! -name 'node_modules' -exec rm -rf -- {} +
           EOF
 
-          tar -C backend \
-            --exclude='.env' \
-            --exclude='.venv' \
-            --exclude='node_modules' \
-            --exclude='.git' \
-            -czf - . | \
-            ssh -i ~/.ssh/ruvds -o IdentitiesOnly=yes "$RUVDS_USER@$RUVDS_HOST" \
-              'tar -xzf - -C /opt/aida/backend'
-
-          tar -C frontend \
-            --exclude='node_modules' \
-            --exclude='.git' \
-            -czf - . | \
-            ssh -i ~/.ssh/ruvds -o IdentitiesOnly=yes "$RUVDS_USER@$RUVDS_HOST" \
-              'tar -xzf - -C /opt/aida/frontend'
+          tar -C backend --exclude='.env' --exclude='.venv' --exclude='node_modules' --exclude='.git' -czf - . | \
+            $SSH "$RUVDS_USER@$RUVDS_HOST" 'tar -xzf - -C /opt/aida/backend'
+          tar -C frontend --exclude='node_modules' --exclude='.git' -czf - . | \
+            $SSH "$RUVDS_USER@$RUVDS_HOST" 'tar -xzf - -C /opt/aida/frontend'
 
       - name: Restart backend and verify production
         run: |
-          ssh -i ~/.ssh/ruvds -o IdentitiesOnly=yes "$RUVDS_USER@$RUVDS_HOST" <<'EOF'
+          ssh -p "$RUVDS_PORT" -i ~/.ssh/ruvds -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes "$RUVDS_USER@$RUVDS_HOST" <<'EOF'
           set -euo pipefail
           cd /opt/aida/backend
           if [ ! -x .venv/bin/python ]; then
             python3 -m venv .venv
           fi
           .venv/bin/python -m pip install -q -r requirements.txt
-
-          if sudo -n /usr/bin/systemctl restart aida-backend 2>/dev/null; then
-            echo 'Restarted aida-backend via restricted sudo.'
-          else
-            pid="$(pgrep -u "$(id -u)" -f 'uvicorn main:app' | head -n 1 || true)"
-            if [ -z "$pid" ]; then
-              echo 'Cannot restart aida-backend: no passwordless systemctl permission and no running aida-owned uvicorn process.'
-              exit 1
-            fi
-            kill -TERM "$pid"
-            echo 'Stopped the aida-owned backend process; systemd Restart=always should bring it back.'
-          fi
+          sudo -n /usr/bin/systemctl restart aida-backend
 
           for attempt in 1 2 3 4 5 6; do
             sleep 2
@@ -141,14 +124,13 @@ jobs:
             fi
             if [ "$attempt" -eq 6 ]; then
               echo 'Backend health check failed after restart.'
+              sudo -n /usr/bin/systemctl status aida-backend --no-pager || true
               exit 1
             fi
           done
 
-          curl --fail --silent --head \
-            --resolve aidaassistent.ru:443:127.0.0.1 \
-            https://aidaassistent.ru/ >/dev/null
+          curl --fail --silent --head --resolve aidaassistent.ru:443:127.0.0.1 https://aidaassistent.ru/ >/dev/null
           EOF
 
       - name: Deployment summary
-        run: echo 'Validated RU VDS deployment and smoke checks passed as non-root deploy user.'
+        run: echo 'Validated RU VDS deployment and smoke checks passed through the restricted deploy account.'
