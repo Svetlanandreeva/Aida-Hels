@@ -1,5 +1,4 @@
 from pathlib import Path
-import re
 
 server = Path("backend/server.py")
 text = server.read_text()
@@ -25,7 +24,6 @@ if "profile-feature-links" not in text:
     if needle not in text:
         raise SystemExit("profile insertion point missing")
     text = text.replace(needle, insert + needle, 1)
-
 helper_needle = 'const EditField: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => ('
 if "const FeatureLink:" not in text:
     helper = '''const FeatureLink: React.FC<{ icon: any; title: string; subtitle: string; onPress: () => void }> = ({ icon, title, subtitle, onPress }) => (
@@ -40,7 +38,6 @@ if "const FeatureLink:" not in text:
     if helper_needle not in text:
         raise SystemExit("profile helper point missing")
     text = text.replace(helper_needle, helper + helper_needle, 1)
-
 style_needle = '  container: { flex: 1, backgroundColor: colors.surface },'
 if "featureLinks:" not in text:
     styles = '''
@@ -54,25 +51,14 @@ if "featureLinks:" not in text:
     text = text.replace(style_needle, style_needle + styles, 1)
 profile.write_text(text)
 
-# Keep the old Yandex deployment available only as an explicit manual fallback.
 yandex = Path(".github/workflows/deploy-yandex.yml")
 if yandex.exists():
     y = yandex.read_text()
     start = y.find("on:\n")
     jobs = y.find("\njobs:")
     if start >= 0 and jobs > start and "workflow_dispatch:" not in y[start:jobs]:
-        y = y[:start] + "on:\n  workflow_dispatch:\n" + y[jobs:]
-        yandex.write_text(y)
+        yandex.write_text(y[:start] + "on:\n  workflow_dispatch:\n" + y[jobs:])
 
-for name in (
-    "cleanup-dashboard-fake-data-once.yml",
-    "harden-source-security-once.yml",
-    "rebuild-appointments-once.yml",
-    "rebuild-labs-once.yml",
-    "redesign-reminders-once.yml",
-    "remove-demo-auth-source.yml",
-    "sync-aida2-into-hels-once.yml",
-):
+for name in ("cleanup-dashboard-fake-data-once.yml","harden-source-security-once.yml","rebuild-appointments-once.yml","rebuild-labs-once.yml","redesign-reminders-once.yml","remove-demo-auth-source.yml","sync-aida2-into-hels-once.yml"):
     p = Path(".github/workflows") / name
-    if p.exists():
-        p.unlink()
+    if p.exists(): p.unlink()
