@@ -1,0 +1,29 @@
+name: User testing patch once
+
+on:
+  push:
+    branches:
+      - feature/wearables-foundation
+    paths:
+      - scripts/user_testing_patch.py
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/wearables-foundation
+      - name: Apply patch
+        run: python scripts/user_testing_patch.py
+      - name: Commit patch
+        run: |
+          rm -f scripts/user_testing_patch.py .github/workflows/user-testing-patch-once.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Wire user testing feature routes and retire migrations"
+          git push origin HEAD:feature/wearables-foundation
