@@ -9,6 +9,8 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from puzzle_api import widgets_for_goals
+
 
 def _now():
     return datetime.now(timezone.utc)
@@ -20,6 +22,24 @@ def _default_privacy() -> Dict[str, Any]:
         "share_documents": False,
         "show_notification_details": False,
         "allow_wearable_ai": True,
+    }
+
+
+def _module_settings_for_goals(goals: List[str] | None) -> Dict[str, bool]:
+    selected = {str(goal) for goal in (goals or []) if goal}
+    if not selected:
+        return {}
+    women_selected = bool(selected & {"women", "cycle", "pregnancy_planning", "pregnancy"})
+    return {
+        "general": "general" in selected,
+        "labs": "labs" in selected,
+        "symptoms": "symptoms" in selected,
+        "pressure": "pressure" in selected,
+        "sleep": "sleep" in selected,
+        "mental": "mental" in selected,
+        "chronic": "chronic" in selected,
+        "meds": "meds" in selected,
+        "women": women_selected,
     }
 
 
@@ -196,8 +216,29 @@ def build_profile_router(db, auth) -> APIRouter:
             merged.update(current.get("privacy") or {})
             merged.update(patch["privacy"] or {})
             patch["privacy"] = merged
+
+        was_completed = bool(current.get("onboarding_completed"))
+        finishing_onboarding = patch.get("onboarding_completed") is True and not was_completed
+        effective_goals = list(patch.get("goals") if "goals" in patch else (current.get("goals") or []))
+
+        if finishing_onboarding and "module_settings" not in patch and not (current.get("module_settings") or {}):
+            patch["module_settings"] = _module_settings_for_goals(effective_goals)
+
         patch["updated_at"] = _now()
         await db.profiles.update_one({"id": profile_id}, {"$set": patch})
+
+        # Goal-based personalization is a one-time initializer only. A persisted
+        # Puzzle means the user has an explicit Home configuration; never replace it.
+        if finishing_onboarding:
+            existing_puzzle = await db.puzzle.find_one({"profile_id": profile_id}, {"_id": 0})
+            if not existing_puzzle:
+                await db.puzzle.insert_one({
+                    "profile_id": profile_id,
+                    "widgets": widgets_for_goals(effective_goals),
+                    "source": "onboarding_goals",
+                    "updated_at": _now(),
+                })
+
         doc = await db.profiles.find_one({"id": profile_id}, {"_id": 0})
         return _normalize(doc)
 
