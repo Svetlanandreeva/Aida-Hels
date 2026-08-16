@@ -8,6 +8,7 @@ import UIKit
 final class AidaHealthSyncCoordinator: ObservableObject {
     private let healthKit: HealthKitManager
     private let client: AppleHealthSyncClient
+    private let circadianClient: CircadianCandidateClient
     private let defaults: UserDefaults
 
     @Published private(set) var connected = false
@@ -22,6 +23,7 @@ final class AidaHealthSyncCoordinator: ObservableObject {
     ) {
         self.healthKit = healthKit
         self.client = AppleHealthSyncClient(baseURL: baseURL)
+        self.circadianClient = CircadianCandidateClient(baseURL: baseURL)
         self.defaults = defaults
     }
 
@@ -58,6 +60,12 @@ final class AidaHealthSyncCoordinator: ObservableObject {
                 deviceModel: UIDevice.current.model,
                 osVersion: UIDevice.current.systemVersion
             )
+            try await stageSleepCandidates(
+                profileId: profileId,
+                bearerToken: bearerToken,
+                samples: samples
+            )
+
             let now = Date()
             saveSuccessfulSync(now, profileId: profileId)
             lastSyncAt = now
@@ -71,6 +79,64 @@ final class AidaHealthSyncCoordinator: ObservableObject {
     func disconnect() {
         healthKit.stopObservingChanges()
         connected = false
+    }
+
+    /// HealthKit may expose one night as several sleep-stage samples. We group
+    /// adjacent stages into a single sleep session and stage only the session
+    /// boundaries. They are CandidateRecords until a user confirms/corrects them.
+    private func stageSleepCandidates(
+        profileId: String,
+        bearerToken: String,
+        samples: [AidaHealthSample]
+    ) async throws {
+        let sleep = samples
+            .filter { $0.metric == "sleep_stage" }
+            .sorted { $0.startAt < $1.startAt }
+        guard !sleep.isEmpty else { return }
+
+        var sessions: [[AidaHealthSample]] = []
+        var current: [AidaHealthSample] = []
+        let maxStageGap: TimeInterval = 2 * 60 * 60
+
+        for sample in sleep {
+            if let last = current.last, sample.startAt.timeIntervalSince(last.endAt) > maxStageGap {
+                sessions.append(current)
+                current = []
+            }
+            current.append(sample)
+        }
+        if !current.isEmpty { sessions.append(current) }
+
+        for session in sessions {
+            guard let first = session.first, let last = session.last else { continue }
+            let sourceBase = "\(first.externalId):\(last.externalId)"
+            let sourceNames = Array(Set(session.compactMap(\.sourceName))).sorted().joined(separator: ",")
+            let devices = Array(Set(session.compactMap(\.deviceName))).sorted().joined(separator: ",")
+            let metadata = [
+                "source_name": sourceNames,
+                "device_name": devices,
+                "stage_count": String(session.count),
+            ].filter { !$0.value.isEmpty }
+
+            try await circadianClient.stage(
+                profileId: profileId,
+                bearerToken: bearerToken,
+                provider: "apple_health",
+                sourceRecordId: "\(sourceBase):bedtime",
+                kind: "bedtime",
+                date: first.startAt,
+                metadata: metadata
+            )
+            try await circadianClient.stage(
+                profileId: profileId,
+                bearerToken: bearerToken,
+                provider: "apple_health",
+                sourceRecordId: "\(sourceBase):wake",
+                kind: "wake",
+                date: last.endAt,
+                metadata: metadata
+            )
+        }
     }
 
     private func syncKey(profileId: String) -> String {
