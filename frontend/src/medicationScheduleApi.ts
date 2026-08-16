@@ -39,7 +39,15 @@ export async function getMedicationDay(profileId: string, date: string): Promise
 
 export async function updateMedicationSchedule(
   medicationId: string,
-  data: { name?: string; dose?: string | null; times?: string[]; meal_relation?: string; active?: boolean; schedule?: string | null }
+  data: {
+    name?: string;
+    dose?: string | null;
+    times?: string[];
+    meal_relation?: string;
+    active?: boolean;
+    schedule?: string | null;
+    notification_ids?: string[];
+  }
 ) {
   return jsonReq(`/medications/${encodeURIComponent(medicationId)}`, {
     method: "PUT",
