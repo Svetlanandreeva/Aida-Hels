@@ -23,7 +23,38 @@ Aida is ready for the first user-testing round only when:
 
 The repository already contains the production Python backend, Google storage adapter, auth/profile isolation, Puzzle configuration, timeline, lab pipeline, document storage/import foundation, AI context/candidate records, medication/circadian logic, family profiles, wearable ingestion, HealthKit/Health Connect bridges, device UI, notification flows and responsive Expo UI.
 
-The cycle branch additionally contains personalized cycle tracking with uncertainty and no population-default cycle length.
+The cycle branch additionally contains personalized cycle tracking with uncertainty and no population-default cycle length, a profile-scoped calendar, soft reminder handling, evidence-based phase estimates and a separate pregnancy context that never infers pregnancy from cycle data.
+
+## Production runner and deployment state
+
+RU VDS now has a dedicated GitHub self-hosted runner labeled `aida-prod`. Production deployment is restricted to trusted `main` pushes and runs frontend lint/typecheck/web export plus backend compile/import/security tests before upload and restart.
+
+Automatic pull-request workflows that require GitHub-hosted minutes are temporarily manual-only while the private repository has no hosted minutes. This prevents false red checks caused by jobs that never receive a runner. Do not interpret this as a passed PR build: branch validation must still be distinguished from production-main validation.
+
+The production self-hosted runner must not be used for automatic execution of arbitrary pull-request code.
+
+## Cycle verification gate
+
+Code-level guards currently cover:
+
+- no hidden 28-day cycle default;
+- no hidden five-day menstrual default;
+- no universal day-14 ovulation inference;
+- ovulation window only from the selected profile's repeated positive ovulation-test history;
+- predicted phase labels remain explicitly derived/predicted;
+- calendar markers use actual period start/end events;
+- cycle reminder storage is profile-scoped, replaceable after forecast changes and privacy-aware.
+
+Still required on a physical app build before calling cycle UX verified:
+
+1. Open the cycle module with an empty profile and confirm no fake prediction/phase appears.
+2. Add period-start and period-end events from calendar-selected dates and confirm they persist after reload.
+3. Add enough personal history to produce a forecast and verify the displayed uncertainty window changes with the history.
+4. Add positive ovulation tests across separate cycles and verify the UI uses a predicted window, never a statement that ovulation occurred.
+5. Enable reminders, grant notification permission and verify one local reminder is scheduled for the profile.
+6. Change the forecast and verify the old reminder is replaced; disable reminders and verify it is cancelled.
+7. Disable notification details and verify lock-screen copy is neutral.
+8. Switch family profiles and confirm events/reminders never cross profile boundaries.
 
 ## External blockers that code cannot invent
 
@@ -53,22 +84,13 @@ Required production secrets are documented in `backend/.env.example`:
 
 Tokens must remain encrypted server-side. Vendor approval/partner access is an external dependency, not something to fake in development.
 
-### RU VDS deploy-key rotation
+### RU VDS credential hygiene
 
-The previously exposed deploy key must be replaced outside source control:
+The deploy path must keep using a restricted non-root account, pinned `known_hosts`, a dedicated deploy key and least-privilege `systemctl` sudo. Private keys must remain in GitHub Secrets/server configuration and never in repository source.
 
-1. Generate a new SSH keypair locally or in a secure admin environment.
-2. Install only the new public key for the restricted `aida` deploy user on RU VDS.
-3. Replace the GitHub Actions `RUVDS_SSH_KEY` secret with the new private key.
-4. Replace/update `RUVDS_SSH_KNOWN_HOSTS` from a trusted out-of-band host-key fingerprint.
-5. Revoke/remove the old public key from the server.
-6. Run the deploy workflow and verify restricted sudo + production smoke checks.
+### GitHub Actions native-build availability
 
-The repository cannot safely manufacture or rotate the server credential without access to the server and Actions secrets.
-
-### GitHub Actions native-build billing/runner availability
-
-If Android/iOS native workflows are rejected before a runner starts because of GitHub billing/spending limits, the build result remains externally blocked. The source configuration can still be validated, but a successful native artifact requires an available runner or a local/EAS build environment.
+Android/iOS native build workflows remain real release gates. While GitHub-hosted minutes are unavailable, those workflows are manual-only and cannot be called green until an actual runner executes them successfully. A local/EAS build can also satisfy the native-build gate if recorded explicitly.
 
 ## Integration routing
 
