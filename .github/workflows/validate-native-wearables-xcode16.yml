@@ -1,0 +1,49 @@
+name: Validate native wearables Xcode16
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'frontend/modules/aida-healthkit/**'
+      - 'frontend/app.json'
+      - '.github/workflows/validate-native-wearables-xcode16.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ios-healthkit:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify Xcode version
+        run: xcodebuild -version
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.19.5
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: |
+          corepack enable
+          corepack prepare yarn@1.22.22 --activate
+          yarn install --frozen-lockfile
+      - name: Prebuild iOS project
+        working-directory: frontend
+        run: npx expo prebuild --platform ios --clean --no-install
+      - name: Verify HealthKit autolinking
+        working-directory: frontend
+        run: |
+          npx expo-modules-autolinking resolve --platform apple > /tmp/expo-apple-modules.txt
+          grep -q 'AidaHealthKit' /tmp/expo-apple-modules.txt
+      - name: Install CocoaPods
+        working-directory: frontend
+        run: npx pod-install
+      - name: Compile iOS simulator build
+        working-directory: frontend
+        run: |
+          workspace="$(find ios -maxdepth 1 -name '*.xcworkspace' -print -quit)"
+          test -n "$workspace"
+          scheme="$(basename "$workspace" .xcworkspace)"
+          xcodebuild -workspace "$workspace" -scheme "$scheme" -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
