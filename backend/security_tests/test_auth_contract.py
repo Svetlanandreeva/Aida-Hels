@@ -44,14 +44,12 @@ def test_frontend_supports_session_restore_and_complete_reset_flow():
 
 def test_production_deploy_bootstraps_jwt_secret_without_rotating_valid_sessions():
     deploy = DEPLOY.read_text(encoding="utf-8")
-    assert "Ensure persistent auth configuration" in deploy
+    assert "Ensure persistent production auth secret" in deploy
     assert "JWT_SECRET" in deploy
-    assert "secrets.token_urlsafe" in deploy
-    assert "len(current) >= 32" in deploy
-    assert "chmod 600 /opt/aida/backend/.env" in deploy
-    # A deploy must not blindly replace an already valid signing key, otherwise all
-    # active sessions would be invalidated on every release.
-    assert "if len(current) >= 32:" in deploy
+    assert "secrets.token_hex(32)" in deploy
+    assert "if existing and len(existing) >= 32:" in deploy
+    assert "chmod 600 .env" in deploy
+    assert "preserving existing value" in deploy
 
 
 def test_auth_screen_distinguishes_server_configuration_and_network_failures():
