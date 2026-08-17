@@ -116,7 +116,7 @@ def _auth(token: str):
 
 def test_register_restore_onboarding_critical_api_login_logout_and_recovery(monkeypatch):
     client, db = _client(monkeypatch)
-    email = "runtime-e2e@aida.test"
+    email = "runtime-e2e@example.com"
     password = "Aida-runtime-2026!"
 
     register = client.post(
@@ -249,7 +249,7 @@ def test_register_restore_onboarding_critical_api_login_logout_and_recovery(monk
     assert bad_login.status_code == 401
 
     forgot_known = client.post("/api/auth/forgot-password", json={"email": email})
-    forgot_unknown = client.post("/api/auth/forgot-password", json={"email": "missing@aida.test"})
+    forgot_unknown = client.post("/api/auth/forgot-password", json={"email": "missing@example.com"})
     assert forgot_known.status_code == 200
     assert forgot_unknown.status_code == 200
     assert forgot_known.json() == forgot_unknown.json() == {"ok": True}
