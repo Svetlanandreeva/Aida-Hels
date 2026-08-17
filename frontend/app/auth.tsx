@@ -70,7 +70,11 @@ export default function AuthScreen() {
         ? (ru ? "Аккаунт с таким email уже существует" : "An account with this email already exists")
         : raw.includes("Invalid email or password")
           ? (ru ? "Неверный email или пароль" : "Incorrect email or password")
-          : (ru ? "Не удалось выполнить запрос. Попробуйте ещё раз." : "Could not complete the request. Please try again.");
+          : raw.includes("Authentication is not configured") || raw.includes("Request failed (503)")
+            ? (ru ? "Сервис входа и регистрации ещё настраивается на сервере. Попробуйте через несколько минут." : "Sign-in and registration are still being configured on the server. Please try again in a few minutes.")
+            : raw.includes("Failed to fetch") || raw.includes("Network request failed")
+              ? (ru ? "Нет связи с сервером. Проверьте подключение и попробуйте ещё раз." : "Could not reach the server. Check your connection and try again.")
+              : (ru ? "Не удалось выполнить запрос. Попробуйте ещё раз." : "Could not complete the request. Please try again.");
       setError(friendly);
     } finally {
       setBusy(false);

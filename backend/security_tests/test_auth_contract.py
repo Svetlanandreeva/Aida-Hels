@@ -2,8 +2,11 @@ from pathlib import Path
 
 
 AUTH = Path(__file__).resolve().parents[1] / "auth_api.py"
+MAIN = Path(__file__).resolve().parents[1] / "main.py"
 FRONTEND_AUTH = Path(__file__).resolve().parents[2] / "frontend" / "src" / "auth.tsx"
+AUTH_SCREEN = Path(__file__).resolve().parents[2] / "frontend" / "app" / "auth.tsx"
 RESET_SCREEN = Path(__file__).resolve().parents[2] / "frontend" / "app" / "reset-password.tsx"
+DEPLOY = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "deploy-ruvds.yml"
 
 
 def test_passwords_and_reset_tokens_are_not_stored_in_plaintext():
@@ -38,3 +41,32 @@ def test_frontend_supports_session_restore_and_complete_reset_flow():
     assert "secureRemove(AUTH_TOKEN_KEY" in auth
     assert "useLocalSearchParams" in reset
     assert "resetPassword(token, password)" in reset
+
+
+def test_production_deploy_bootstraps_jwt_secret_without_rotating_valid_sessions():
+    deploy = DEPLOY.read_text(encoding="utf-8")
+    assert "Ensure persistent production auth secret" in deploy
+    assert "JWT_SECRET" in deploy
+    assert "secrets.token_hex(32)" in deploy
+    assert "if existing and len(existing) >= 32:" in deploy
+    assert "chmod 600 .env" in deploy
+    assert "preserving existing value" in deploy
+
+
+def test_production_entrypoint_loads_env_before_storage_and_fails_fast_without_auth_secret():
+    main = MAIN.read_text(encoding="utf-8")
+    load_pos = main.index('load_dotenv(ROOT_DIR / ".env")')
+    storage_pos = main.index("_google_db = build_storage_from_env()")
+    assert load_pos < storage_pos
+    assert "async def _validate_auth_configuration" in main
+    assert "auth_service._require_secret()" in main
+
+
+def test_auth_screen_distinguishes_server_configuration_and_network_failures():
+    screen = AUTH_SCREEN.read_text(encoding="utf-8")
+    assert "Authentication is not configured" in screen
+    assert "Request failed (503)" in screen
+    assert "Failed to fetch" in screen
+    assert "Network request failed" in screen
+    assert "Сервис входа и регистрации ещё настраивается на сервере" in screen
+    assert "Нет связи с сервером" in screen

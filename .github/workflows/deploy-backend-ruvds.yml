@@ -1,27 +1,24 @@
-name: Deploy to RU VDS
+name: Deploy backend to RU VDS
 
 on:
   push:
     branches: [main]
     paths:
-      - 'frontend/**'
       - 'backend/**'
-      - 'ios/**'
-      - 'android/**'
-      - '.github/workflows/deploy-ruvds.yml'
+      - '.github/workflows/deploy-backend-ruvds.yml'
   workflow_dispatch:
 
 concurrency:
-  group: deploy-ruvds-production
+  group: deploy-ruvds-backend-production
   cancel-in-progress: false
 
 permissions:
   contents: read
 
 jobs:
-  build-and-deploy:
+  validate-and-deploy-backend:
     runs-on: [self-hosted, linux, x64, aida-prod]
-    timeout-minutes: 60
+    timeout-minutes: 25
     env:
       RUVDS_HOST: ${{ secrets.RUVDS_HOST }}
       RUVDS_USER: ${{ secrets.RUVDS_USER }}
@@ -42,52 +39,6 @@ jobs:
           test -n "$RUVDS_SSH_KNOWN_HOSTS" || (echo 'RUVDS_SSH_KNOWN_HOSTS secret is missing' && exit 1)
           test -n "$RUVDS_PORT" || (echo 'RUVDS_PORT secret is missing' && exit 1)
 
-      - name: Setup Node 20
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20.19.5
-
-      - name: Prepare Yarn
-        timeout-minutes: 2
-        run: |
-          corepack enable
-          corepack prepare yarn@1.22.22 --activate
-          yarn --version
-          node --version
-
-      - name: Install frontend dependencies
-        timeout-minutes: 12
-        working-directory: frontend
-        env:
-          YARN_NETWORK_CONCURRENCY: '1'
-        run: yarn install --frozen-lockfile --non-interactive --prefer-offline --network-timeout 60000
-
-      - name: Lint frontend
-        timeout-minutes: 5
-        working-directory: frontend
-        run: yarn lint
-
-      - name: Type-check frontend
-        timeout-minutes: 5
-        working-directory: frontend
-        run: npx --no-install tsc --noEmit
-
-      - name: Report runner memory before Expo export
-        run: |
-          free -h || true
-          swapon --show || true
-
-      - name: Export Expo web frontend in low-memory mode
-        timeout-minutes: 20
-        working-directory: frontend
-        env:
-          EXPO_NO_TELEMETRY: '1'
-          NODE_OPTIONS: '--max-old-space-size=640'
-        run: |
-          npx --no-install expo export -p web --max-workers 1
-          test -f dist/index.html
-          test -d dist/_expo
-
       - name: Setup Python 3.12
         uses: actions/setup-python@v5
         with:
@@ -95,7 +46,7 @@ jobs:
           cache: pip
           cache-dependency-path: backend/requirements.txt
 
-      - name: Validate backend before deployment
+      - name: Validate backend
         timeout-minutes: 10
         working-directory: backend
         env:
@@ -144,22 +95,19 @@ jobs:
         timeout-minutes: 2
         run: |
           ssh -p "$RUVDS_PORT" -i ~/.ssh/ruvds -o ConnectTimeout=10 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes "$RUVDS_USER@$RUVDS_HOST" \
-            'set -e; test -w /opt/aida/backend; test -w /opt/aida/frontend; sudo -n /usr/bin/systemctl status aida-backend >/dev/null'
+            'set -e; test -w /opt/aida/backend; sudo -n /usr/bin/systemctl status aida-backend >/dev/null'
 
-      - name: Upload application sources
+      - name: Upload backend sources
         timeout-minutes: 5
         run: |
           SSH="ssh -p $RUVDS_PORT -i ~/.ssh/ruvds -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes"
           $SSH "$RUVDS_USER@$RUVDS_HOST" <<'EOF'
           set -euo pipefail
           find /opt/aida/backend -mindepth 1 -maxdepth 1 ! -name '.env' ! -name '.venv' -exec rm -rf -- {} +
-          find /opt/aida/frontend -mindepth 1 -maxdepth 1 ! -name 'node_modules' -exec rm -rf -- {} +
           EOF
 
           tar -C backend --exclude='.env' --exclude='.venv' --exclude='node_modules' --exclude='.git' -czf - . | \
             $SSH "$RUVDS_USER@$RUVDS_HOST" 'tar -xzf - -C /opt/aida/backend'
-          tar -C frontend --exclude='node_modules' --exclude='.git' -czf - . | \
-            $SSH "$RUVDS_USER@$RUVDS_HOST" 'tar -xzf - -C /opt/aida/frontend'
 
       - name: Ensure persistent production auth secret
         timeout-minutes: 2
@@ -205,7 +153,7 @@ jobs:
           EOF
 
       - name: Restart backend and verify production
-        timeout-minutes: 5
+        timeout-minutes: 7
         run: |
           ssh -p "$RUVDS_PORT" -i ~/.ssh/ruvds -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes "$RUVDS_USER@$RUVDS_HOST" <<'EOF'
           set -euo pipefail
@@ -216,20 +164,21 @@ jobs:
           .venv/bin/python -m pip install -q -r requirements.txt
           sudo -n /usr/bin/systemctl restart aida-backend
 
-          for attempt in 1 2 3 4 5 6; do
+          for attempt in 1 2 3 4 5 6 7 8; do
             sleep 2
             if curl --fail --silent http://127.0.0.1:8000/api/ | grep -q '"status":"ok"'; then
               break
             fi
-            if [ "$attempt" -eq 6 ]; then
+            if [ "$attempt" -eq 8 ]; then
               echo 'Backend health check failed after restart.'
               sudo -n /usr/bin/systemctl status aida-backend --no-pager || true
               exit 1
             fi
           done
 
-          curl --fail --silent --head --resolve aidaassistent.ru:443:127.0.0.1 https://aidaassistent.ru/ >/dev/null
+          AUTH_STATUS="$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:8000/api/auth/me)"
+          test "$AUTH_STATUS" = '401' || (echo "Unexpected /api/auth/me status: $AUTH_STATUS" && exit 1)
           EOF
 
-      - name: Deployment summary
-        run: echo 'Aida production validated and deployed through the self-hosted aida-prod runner in low-memory mode.'
+      - name: Backend deployment summary
+        run: echo 'Aida backend validated and deployed independently of the frontend build.'
