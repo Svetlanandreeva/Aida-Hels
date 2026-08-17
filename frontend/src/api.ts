@@ -42,6 +42,7 @@ export type Profile = {
   goals?: string[];
   onboarding_completed?: boolean;
   women_health?: Record<string, any>;
+  lifestyle?: Record<string, any>;
   emergency_contacts?: Array<{ name?: string; relation?: string; phone?: string; note?: string }>;
   preferred_locale?: string | null;
   timezone?: string | null;
