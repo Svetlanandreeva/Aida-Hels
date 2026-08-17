@@ -21,6 +21,7 @@ import { useApp } from "@/src/store";
 import { useI18n } from "@/src/i18n";
 import { useResponsiveLayout } from "@/src/hooks/use-responsive-layout";
 import { api, Medication, Symptom, LabTest, Task } from "@/src/api";
+import { getHome } from "@/src/homeApi";
 import { getMedicationDay, markMedicationIntake, MedicationSlot } from "@/src/medicationScheduleApi";
 import { colors, spacing, radius, fontSize, fonts, gradients, statusColor } from "@/src/theme";
 
@@ -109,49 +110,51 @@ export default function HomeScreen() {
       }))
       .sort((a, b) => a.order - b.order);
 
+  const clearHome = useCallback(() => {
+    setReadiness(null);
+    setGame(null);
+    setMeds([]);
+    setSymptoms([]);
+    setLabs([]);
+    setTasks([]);
+    setMedicationSlots([]);
+    setTasksAvailable(false);
+    setMedScheduleAvailable(false);
+    setWidgets([]);
+    setOverview(null);
+  }, []);
+
   const load = useCallback(async () => {
     if (!activeId) {
-      setReadiness(null);
-      setGame(null);
-      setMeds([]);
-      setSymptoms([]);
-      setLabs([]);
-      setTasks([]);
-      setMedicationSlots([]);
-      setTasksAvailable(false);
-      setMedScheduleAvailable(false);
-      setWidgets([]);
-      setOverview(null);
+      clearHome();
       setLoading(false);
       return;
     }
 
     const today = localDateString();
-    const [r, g, m, s, l, p, o, taskResult, medDayResult] = await Promise.allSettled([
-      api.readiness(activeId),
-      api.gamification(activeId),
-      api.listMeds(activeId),
-      api.listSymptoms(activeId),
-      api.listLabs(activeId),
-      api.getPuzzle(activeId),
-      api.overview(activeId, lang),
-      api.listTasks(activeId),
-      getMedicationDay(activeId, today),
-    ]);
-
-    setReadiness(r.status === "fulfilled" ? r.value : null);
-    setGame(g.status === "fulfilled" ? g.value : null);
-    setMeds(m.status === "fulfilled" ? m.value : []);
-    setSymptoms(s.status === "fulfilled" ? s.value : []);
-    setLabs(l.status === "fulfilled" ? l.value : []);
-    setWidgets(p.status === "fulfilled" ? normalizeWidgets(p.value.widgets || []) : []);
-    setOverview(o.status === "fulfilled" ? o.value : null);
-    setTasks(taskResult.status === "fulfilled" ? taskResult.value : []);
-    setTasksAvailable(taskResult.status === "fulfilled");
-    setMedicationSlots(medDayResult.status === "fulfilled" ? medDayResult.value.slots || [] : []);
-    setMedScheduleAvailable(medDayResult.status === "fulfilled");
-    setLoading(false);
-  }, [activeId, lang]);
+    try {
+      const home = await getHome(activeId, today, lang);
+      setReadiness(home.readiness.state === "data" && home.readiness.value !== null
+        ? { overall: home.readiness.value, scores: home.readiness.scores || {} }
+        : null);
+      setGame(home.gamification.state === "data" ? (home.gamification.value ?? null) : null);
+      setMeds(home.medications.items || []);
+      setSymptoms(home.symptoms.items || []);
+      setLabs(home.labs.items || []);
+      setWidgets(home.puzzle.state !== "error" ? normalizeWidgets(home.puzzle.value?.widgets || []) : []);
+      setOverview(home.overview.state !== "error"
+        ? { attention: home.overview.attention || [], ai_summary: home.overview.ai_summary || null }
+        : null);
+      setTasks(home.tasks.items || []);
+      setTasksAvailable(home.tasks.state !== "error");
+      setMedicationSlots(home.medication_day.slots || []);
+      setMedScheduleAvailable(home.medication_day.state !== "error");
+    } catch (_) {
+      clearHome();
+    } finally {
+      setLoading(false);
+    }
+  }, [activeId, lang, clearHome]);
 
   useFocusEffect(
     useCallback(() => {
