@@ -5,7 +5,9 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from auth_api import build_auth_router
+from medication_api import build_medication_router
 from profile_api import build_profile_router
+from task_api import build_task_router
 
 
 class _Cursor:
@@ -103,6 +105,8 @@ def _client(monkeypatch):
     app = FastAPI()
     app.include_router(auth_router)
     app.include_router(build_profile_router(db, auth_service))
+    app.include_router(build_medication_router(db, auth_service))
+    app.include_router(build_task_router(db, auth_service))
     return TestClient(app), db
 
 
@@ -110,7 +114,7 @@ def _auth(token: str):
     return {"Authorization": f"Bearer {token}"}
 
 
-def test_register_restore_onboarding_login_logout_and_recovery(monkeypatch):
+def test_register_restore_onboarding_critical_api_login_logout_and_recovery(monkeypatch):
     client, db = _client(monkeypatch)
     email = "runtime-e2e@aida.test"
     password = "Aida-runtime-2026!"
@@ -162,6 +166,71 @@ def test_register_restore_onboarding_login_logout_and_recovery(monkeypatch):
     assert onboarded["is_owner"] is True
     assert any(row.get("profile_id") == profile_id for row in db.puzzle.rows)
 
+    # Critical WEB API smoke after onboarding: medication create/list/intake and task create/toggle.
+    medication = client.post(
+        "/api/medications",
+        headers=_auth(first_token),
+        json={
+            "profile_id": profile_id,
+            "name": "Runtime Medication",
+            "dose": "10 mg",
+            "times": ["09:00", "21:00"],
+            "meal_relation": "after",
+            "active": True,
+        },
+    )
+    assert medication.status_code == 200, medication.text
+    medication_id = medication.json()["id"]
+    assert medication.json()["times"] == ["09:00", "21:00"]
+    assert medication.json()["meal_relation"] == "after"
+
+    medications = client.get(f"/api/medications?profile_id={profile_id}", headers=_auth(first_token))
+    assert medications.status_code == 200, medications.text
+    assert [item["id"] for item in medications.json()] == [medication_id]
+
+    intake = client.post(
+        f"/api/medications/{medication_id}/events",
+        headers=_auth(first_token),
+        json={"scheduled_at": "2026-08-17T09:00:00+05:00", "status": "taken"},
+    )
+    assert intake.status_code == 200, intake.text
+    assert intake.json()["status"] == "taken"
+
+    events = client.get(
+        f"/api/medications/events/list?profile_id={profile_id}&date=2026-08-17",
+        headers=_auth(first_token),
+    )
+    assert events.status_code == 200, events.text
+    assert len(events.json()) == 1
+    assert events.json()[0]["medication_id"] == medication_id
+
+    task = client.post(
+        "/api/tasks",
+        headers=_auth(first_token),
+        json={
+            "profile_id": profile_id,
+            "title": "Принять лекарство",
+            "kind": "medication",
+            "source_type": "medication",
+            "source_id": medication_id,
+        },
+    )
+    assert task.status_code == 200, task.text
+    task_id = task.json()["id"]
+    assert task.json()["done"] is False
+    assert task.json()["action_route"] == "/medications"
+
+    toggled = client.put(f"/api/tasks/{task_id}/toggle", headers=_auth(first_token))
+    assert toggled.status_code == 200, toggled.text
+    assert toggled.json()["done"] is True
+    assert toggled.json()["status"] == "done"
+
+    tasks = client.get(f"/api/tasks?profile_id={profile_id}", headers=_auth(first_token))
+    assert tasks.status_code == 200, tasks.text
+    assert len(tasks.json()) == 1
+    assert tasks.json()[0]["id"] == task_id
+    assert tasks.json()[0]["done"] is True
+
     relaunch_restore = client.get("/api/auth/me", headers=_auth(first_token))
     assert relaunch_restore.status_code == 200
 
@@ -169,6 +238,14 @@ def test_register_restore_onboarding_login_logout_and_recovery(monkeypatch):
     assert login.status_code == 200, login.text
     second_token = login.json()["access_token"]
     assert second_token != first_token
+
+    # A second authenticated session must see the same persisted critical data.
+    second_session_meds = client.get(f"/api/medications?profile_id={profile_id}", headers=_auth(second_token))
+    second_session_tasks = client.get(f"/api/tasks?profile_id={profile_id}", headers=_auth(second_token))
+    assert second_session_meds.status_code == 200
+    assert second_session_tasks.status_code == 200
+    assert second_session_meds.json()[0]["id"] == medication_id
+    assert second_session_tasks.json()[0]["id"] == task_id
 
     bad_login = client.post("/api/auth/login", json={"email": email, "password": "wrong-password"})
     assert bad_login.status_code == 401
@@ -185,6 +262,8 @@ def test_register_restore_onboarding_login_logout_and_recovery(monkeypatch):
     logout = client.post("/api/auth/logout", headers=_auth(first_token))
     assert logout.status_code == 200, logout.text
     assert client.get("/api/auth/me", headers=_auth(first_token)).status_code == 401
+    assert client.get(f"/api/medications?profile_id={profile_id}", headers=_auth(first_token)).status_code == 401
+    assert client.get(f"/api/tasks?profile_id={profile_id}", headers=_auth(first_token)).status_code == 401
 
     still_active = client.get("/api/auth/me", headers=_auth(second_token))
     assert still_active.status_code == 200, still_active.text
