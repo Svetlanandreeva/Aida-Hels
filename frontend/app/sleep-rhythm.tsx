@@ -10,6 +10,7 @@ import { getCircadianDay, recordRhythmEvent, saveBedtimePlan, CircadianDay } fro
 import { updateMedicationSchedule } from "@/src/medicationScheduleApi";
 import { cancelNotificationIds, scheduleBedtimeReminder } from "@/src/notifications";
 import { SleepInsightCard } from "@/src/components/SleepInsightCard";
+import { CircadianCandidateReview } from "@/src/components/CircadianCandidateReview";
 import { colors, fontSize, fonts, radius, spacing } from "@/src/theme";
 
 const TIME_RE = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
@@ -114,6 +115,15 @@ export default function SleepRhythmScreen() {
       </View>
 
       <SleepInsightCard />
+
+      <CircadianCandidateReview
+        profileId={activeId}
+        ru={ru}
+        onCommitted={async () => {
+          await load();
+          bumpRefresh();
+        }}
+      />
 
       <View style={[styles.card, { marginBottom: spacing.md }]}>
         <Ionicons name="medkit-outline" size={24} color={colors.onSurface} />
