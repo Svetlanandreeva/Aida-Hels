@@ -9,7 +9,7 @@ export const AUTH_TOKEN_KEY = "aida.auth.accessToken";
 // available only when it is deliberately enabled at build time.
 const WEB_PREVIEW_DEFAULT = process.env.EXPO_PUBLIC_AIDA_WEB_PREVIEW === "true";
 
-export type SocialProvider = "vk";
+export type SocialProvider = "yandex" | "vk";
 
 type Account = {
   id: string;
