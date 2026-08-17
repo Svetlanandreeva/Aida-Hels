@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   KeyboardAvoidingView,
   Linking,
   Platform,
@@ -11,7 +12,6 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -169,8 +169,7 @@ export default function AuthScreen() {
           <Image
             source={{ uri: "/aida-logo.svg" }}
             style={[styles.brandLogo, headerCompact && styles.brandLogoCompact]}
-            contentFit="contain"
-            contentPosition="left center"
+            resizeMode="contain"
             accessibilityLabel="Aida — ваше здоровье, единая система"
           />
         ) : (
