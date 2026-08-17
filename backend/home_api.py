@@ -8,7 +8,7 @@ does not make the entire Home request fail.
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import date as date_cls, datetime, timezone
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends
@@ -49,6 +49,30 @@ def _lab_status_state(labs) -> Dict[str, Any]:
     if normal + outside == 0:
         return {"state": "no_data", "in_range": None, "out_of_range": None}
     return {"state": "data", "in_range": normal, "out_of_range": outside}
+
+
+async def _cycle_summary(db, profile_id: str, local_date: str) -> Dict[str, Any]:
+    """Return only profile-confirmed cycle facts for Home, never a population default."""
+    profile = await db.profiles.find_one({"id": profile_id}, {"_id": 0}) or {}
+    if str(profile.get("sex") or "").lower() != "female":
+        return {"state": "not_applicable", "cycle_day": None, "last_period_start": None}
+
+    starts = await db.cycle_events.find(
+        {"profile_id": profile_id, "event_type": "period_start"}, {"_id": 0}
+    ).sort("observed_at", -1).to_list(1)
+    if not starts or not starts[0].get("observed_at"):
+        return {"state": "no_data", "cycle_day": None, "last_period_start": None}
+
+    try:
+        start = date_cls.fromisoformat(str(starts[0]["observed_at"])[:10])
+        today = date_cls.fromisoformat(local_date[:10])
+    except ValueError:
+        return {"state": "error", "cycle_day": None, "last_period_start": None}
+
+    cycle_day = (today - start).days + 1 if today >= start else None
+    if cycle_day is None:
+        return {"state": "insufficient_data", "cycle_day": None, "last_period_start": start.isoformat()}
+    return {"state": "data", "cycle_day": cycle_day, "last_period_start": start.isoformat()}
 
 
 async def _medication_day(db, profile_id: str, date: str, now_local: Optional[str]) -> Dict[str, Any]:
@@ -127,9 +151,10 @@ def build_home_router(db, auth, legacy) -> APIRouter:
             legacy.overview(profile_id, language),
             tasks(),
             _medication_day(db, profile_id, local_date, now_local),
+            _cycle_summary(db, profile_id, local_date),
             return_exceptions=True,
         )
-        readiness, game, meds, symptoms, labs, puzzle_value, overview, task_rows, medication_day = results
+        readiness, game, meds, symptoms, labs, puzzle_value, overview, task_rows, medication_day, cycle_summary = results
 
         def safe_list(value):
             return _error_state(value) if isinstance(value, BaseException) else _list_state(value)
@@ -154,6 +179,7 @@ def build_home_router(db, auth, legacy) -> APIRouter:
             },
             "tasks": safe_list(task_rows),
             "medication_day": _error_state(medication_day) if isinstance(medication_day, BaseException) else medication_day,
+            "cycle": _error_state(cycle_summary) if isinstance(cycle_summary, BaseException) else cycle_summary,
         }
 
     return router
