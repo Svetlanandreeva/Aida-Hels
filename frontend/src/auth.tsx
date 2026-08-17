@@ -9,6 +9,8 @@ export const AUTH_TOKEN_KEY = "aida.auth.accessToken";
 // available only when it is deliberately enabled at build time.
 const WEB_PREVIEW_DEFAULT = process.env.EXPO_PUBLIC_AIDA_WEB_PREVIEW === "true";
 
+export type SocialProvider = "yandex" | "vk";
+
 type Account = {
   id: string;
   email: string;
@@ -35,6 +37,8 @@ type AuthContextValue = {
   logout: () => Promise<void>;
   forgotPassword: (email: string) => Promise<void>;
   resetPassword: (token: string, newPassword: string) => Promise<void>;
+  startSocialLogin: (provider: SocialProvider, returnUri: string) => Promise<string>;
+  completeSocialLogin: (ticket: string) => Promise<void>;
   restore: () => Promise<void>;
 };
 
@@ -175,6 +179,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [applySession]);
 
+  const startSocialLogin = useCallback(async (provider: SocialProvider, returnUri: string) => {
+    setError(null);
+    try {
+      const result = await authRequest(`/auth/oauth/${provider}/start`, { return_uri: returnUri });
+      if (!result?.authorization_url) throw new Error("Social login URL was not returned");
+      return String(result.authorization_url);
+    } catch (e: any) {
+      setError(e?.message || "Social login failed");
+      throw e;
+    }
+  }, []);
+
+  const completeSocialLogin = useCallback(async (ticket: string) => {
+    setError(null);
+    try {
+      const session = await authRequest("/auth/oauth/complete", { ticket });
+      await applySession(session);
+    } catch (e: any) {
+      setError(e?.message || "Social login failed");
+      throw e;
+    }
+  }, [applySession]);
+
   const value = useMemo<AuthContextValue>(() => ({
     account,
     token,
@@ -186,8 +213,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     logout,
     forgotPassword,
     resetPassword,
+    startSocialLogin,
+    completeSocialLogin,
     restore,
-  }), [account, token, preview, loading, error, login, register, logout, forgotPassword, resetPassword, restore]);
+  }), [account, token, preview, loading, error, login, register, logout, forgotPassword, resetPassword, startSocialLogin, completeSocialLogin, restore]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
