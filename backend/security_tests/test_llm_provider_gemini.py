@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 
 import pytest
@@ -33,8 +34,7 @@ class FakeClient:
         return FakeResponse()
 
 
-@pytest.mark.asyncio
-async def test_gemini_provider_sends_inline_document(monkeypatch, tmp_path: Path):
+def test_gemini_provider_sends_inline_document(monkeypatch, tmp_path: Path):
     sample = tmp_path / "lab.pdf"
     sample.write_bytes(b"%PDF-test")
     monkeypatch.setenv("GEMINI_API_KEY", "test-key")
@@ -44,10 +44,12 @@ async def test_gemini_provider_sends_inline_document(monkeypatch, tmp_path: Path
     chat = llm_provider.LlmChat("legacy-key", "session", "system").with_model(
         "gemini", "gemini-3-flash-preview"
     )
-    result = await chat.send_message(
-        llm_provider.UserMessage(
-            text="extract",
-            file_contents=[llm_provider.FileContentWithMimeType(str(sample), "application/pdf")],
+    result = asyncio.run(
+        chat.send_message(
+            llm_provider.UserMessage(
+                text="extract",
+                file_contents=[llm_provider.FileContentWithMimeType(str(sample), "application/pdf")],
+            )
         )
     )
 
@@ -61,9 +63,8 @@ async def test_gemini_provider_sends_inline_document(monkeypatch, tmp_path: Path
     assert FakeClient.last_json["generationConfig"]["responseMimeType"] == "application/json"
 
 
-@pytest.mark.asyncio
-async def test_gemini_provider_rejects_missing_key(monkeypatch):
+def test_gemini_provider_rejects_missing_key(monkeypatch):
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     chat = llm_provider.LlmChat("", "session", "system").with_model("gemini", "gemini-3.6-flash")
     with pytest.raises(llm_provider.ProviderUnavailableError, match="GEMINI_API_KEY"):
-        await chat.send_message(llm_provider.UserMessage(text="hello"))
+        asyncio.run(chat.send_message(llm_provider.UserMessage(text="hello")))
