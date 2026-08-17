@@ -39,7 +39,7 @@ export default function OnboardingMedicalScreen() {
   const canSave = useMemo(() => !!activeId, [activeId]);
   const numberOrNull = (value: string) => value.trim() ? Number(value.replace(",", ".")) : null;
 
-  const save = async () => {
+  const continueToLifestyle = async () => {
     if (!activeId || !activeProfile) return;
     setBusy(true);
     setError(null);
@@ -66,10 +66,10 @@ export default function OnboardingMedicalScreen() {
           pregnant,
           gestational_weeks: pregnant ? numberOrNull(weeks) : null,
         } : currentWomen,
-        onboarding_completed: true,
+        onboarding_completed: false,
       });
       await reload();
-      router.replace("/(tabs)" as any);
+      router.push("/onboarding-lifestyle" as any);
     } catch {
       setError(ru ? "Не удалось сохранить медицинскую карту" : "Could not save medical card");
     } finally {
@@ -80,10 +80,13 @@ export default function OnboardingMedicalScreen() {
   const skip = async () => {
     if (!activeId) return;
     setBusy(true);
+    setError(null);
     try {
-      await api.updateProfile(activeId, { onboarding_completed: true });
+      await api.updateProfile(activeId, { onboarding_completed: false });
       await reload();
-      router.replace("/(tabs)" as any);
+      router.push("/onboarding-lifestyle" as any);
+    } catch {
+      setError(ru ? "Не удалось продолжить настройку" : "Could not continue setup");
     } finally {
       setBusy(false);
     }
@@ -125,7 +128,7 @@ export default function OnboardingMedicalScreen() {
       {error ? <Text style={s.error}>{error}</Text> : null}
       <View style={s.actions}>
         <Pressable style={s.secondary} onPress={() => router.back()} disabled={busy}><Text style={s.secondaryText}>{ru ? "Назад" : "Back"}</Text></Pressable>
-        <Pressable style={[s.primary, (!canSave || busy) && { opacity: .55 }]} onPress={save} disabled={!canSave || busy} testID="save-medical-onboarding">{busy ? <ActivityIndicator color={colors.onSurfaceInverse} /> : <Text style={s.primaryText}>{ru ? "Сохранить и завершить" : "Save and finish"}</Text>}</Pressable>
+        <Pressable style={[s.primary, (!canSave || busy) && { opacity: .55 }]} onPress={continueToLifestyle} disabled={!canSave || busy} testID="continue-medical-onboarding">{busy ? <ActivityIndicator color={colors.onSurfaceInverse} /> : <Text style={s.primaryText}>{ru ? "Продолжить" : "Continue"}</Text>}</Pressable>
       </View>
       <Pressable style={s.skip} onPress={skip} disabled={busy}><Text style={s.skipText}>{ru ? "Заполнить позже" : "Complete later"}</Text></Pressable>
     </ScrollView>
