@@ -9,7 +9,8 @@ LAYOUT = ROOT / "frontend" / "app" / "_layout.tsx"
 
 def test_web_preview_never_mints_or_sets_a_fake_bearer_token():
     auth = AUTH.read_text(encoding="utf-8")
-    assert 'const WEB_PREVIEW_DEFAULT = Platform.OS === "web"' in auth
+    assert 'const WEB_PREVIEW_DEFAULT = process.env.EXPO_PUBLIC_AIDA_WEB_PREVIEW === "true";' in auth
+    assert 'Platform.OS === "web"' not in auth
     assert "setPreview(WEB_PREVIEW_DEFAULT)" in auth
     assert 'setApiToken("preview' not in auth
     assert 'setToken("preview' not in auth
