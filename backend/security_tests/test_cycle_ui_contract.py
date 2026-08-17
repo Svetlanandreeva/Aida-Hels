@@ -3,6 +3,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 CYCLE_UI = (ROOT / "frontend" / "app" / "cycle.tsx").read_text(encoding="utf-8")
 NOTIFICATIONS = (ROOT / "frontend" / "src" / "notifications.ts").read_text(encoding="utf-8")
+CYCLE_API = (ROOT / "backend" / "cycle_api.py").read_text(encoding="utf-8")
 
 
 def test_cycle_ui_keeps_personalized_calendar_and_insufficient_data_copy():
@@ -18,7 +19,10 @@ def test_cycle_ui_keeps_personalized_calendar_and_insufficient_data_copy():
 def test_cycle_ui_records_ovulation_test_as_evidence_not_as_fact():
     assert 'add("ovulation_test","positive")' in CYCLE_UI
     assert 'Положительный тест на овуляцию' in CYCLE_UI
-    assert 'Окно возможной овуляции' in CYCLE_UI
+    assert '"label": "Окно возможной овуляции"' in CYCLE_API
+    assert 'ru?p.label' in CYCLE_UI
+    assert 'ovulation?.state==="insufficient_data"' in CYCLE_UI
+    assert 'ovulation?.state==="predicted"' in CYCLE_UI
     assert 'расчёт' in CYCLE_UI
 
 
