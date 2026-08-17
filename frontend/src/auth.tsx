@@ -44,6 +44,19 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+function errorDetail(body: any): string | null {
+  const detail = body?.detail;
+  if (typeof detail === "string" && detail.trim()) return detail.trim();
+  if (Array.isArray(detail)) {
+    const messages = detail
+      .map((item) => item?.msg || item?.message)
+      .filter((value): value is string => typeof value === "string" && Boolean(value.trim()));
+    if (messages.length) return messages.join("; ");
+  }
+  const safeMessage = body?.safe_user_message || body?.message;
+  return typeof safeMessage === "string" && safeMessage.trim() ? safeMessage.trim() : null;
+}
+
 async function readJson(res: Response) {
   const text = await res.text();
   let body: any = null;
@@ -53,8 +66,9 @@ async function readJson(res: Response) {
     body = null;
   }
   if (!res.ok) {
-    const detail = body?.detail;
-    throw new Error(typeof detail === "string" ? detail : `Request failed (${res.status})`);
+    const detail = errorDetail(body);
+    const requestId = body?.request_id ? ` [request ${String(body.request_id)}]` : "";
+    throw new Error(detail ? `${detail}${requestId}` : `Request failed (${res.status})${requestId}`);
   }
   return body;
 }
