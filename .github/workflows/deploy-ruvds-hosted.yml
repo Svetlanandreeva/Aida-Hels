@@ -50,19 +50,14 @@ jobs:
           host = os.environ['RUVDS_HOST'].strip()
           user = os.environ['RUVDS_USER'].strip()
           port = os.environ['RUVDS_PORT'].strip()
-
           if not re.fullmatch(r'[A-Za-z0-9._-]+', user):
               raise SystemExit('RUVDS_USER must contain only letters, digits, dot, underscore or hyphen')
           if not host or any(ch.isspace() for ch in host) or '@' in host:
               raise SystemExit('RUVDS_HOST contains invalid whitespace or @')
           if not port.isdigit() or not (1 <= int(port) <= 65535):
               raise SystemExit('RUVDS_PORT must be a valid TCP port')
-
-          env_file = Path(os.environ['GITHUB_ENV'])
-          with env_file.open('a', encoding='utf-8') as handle:
-              handle.write(f'RUVDS_HOST={host}\n')
-              handle.write(f'RUVDS_USER={user}\n')
-              handle.write(f'RUVDS_PORT={port}\n')
+          with Path(os.environ['GITHUB_ENV']).open('a', encoding='utf-8') as handle:
+              handle.write(f'RUVDS_HOST={host}\nRUVDS_USER={user}\nRUVDS_PORT={port}\n')
           PY
 
       - name: Setup Node 20
@@ -126,19 +121,12 @@ jobs:
           import base64
           import os
           from pathlib import Path
-
           raw = os.environ['RUVDS_SSH_KEY'].strip()
-          try:
-              key_bytes = base64.b64decode(raw, validate=True)
-              if b'-----BEGIN ' not in key_bytes:
-                  raise ValueError('decoded payload is not an OpenSSH/PEM private key')
-          except Exception as exc:
-              raise SystemExit(f'RUVDS_SSH_KEY must be base64 of the private key bytes: {exc}')
-
+          key_bytes = base64.b64decode(raw, validate=True)
+          if b'-----BEGIN ' not in key_bytes:
+              raise SystemExit('Decoded RUVDS_SSH_KEY is not a private key')
           Path.home().joinpath('.ssh/ruvds').write_bytes(key_bytes)
-          Path.home().joinpath('.ssh/known_hosts').write_text(
-              os.environ['RUVDS_SSH_KNOWN_HOSTS'].strip() + '\n', encoding='utf-8'
-          )
+          Path.home().joinpath('.ssh/known_hosts').write_text(os.environ['RUVDS_SSH_KNOWN_HOSTS'].strip() + '\n', encoding='utf-8')
           PY
           chmod 600 ~/.ssh/ruvds ~/.ssh/known_hosts
           ssh-keygen -y -f ~/.ssh/ruvds >/dev/null
@@ -165,7 +153,6 @@ jobs:
           set -euo pipefail
           cd /opt/aida/backend
           touch .env
-          chmod 600 .env
           python3 - <<'PY'
           from pathlib import Path
           import secrets
@@ -180,6 +167,11 @@ jobs:
               updated.append(f'JWT_SECRET={generated}')
               path.write_text('\n'.join(updated).rstrip() + '\n')
           PY
+          SERVICE_USER="$(sudo -n /usr/bin/systemctl show aida-backend -p User --value)"
+          if [ -z "$SERVICE_USER" ]; then SERVICE_USER=root; fi
+          SERVICE_GROUP="$(id -gn "$SERVICE_USER")"
+          chown root:"$SERVICE_GROUP" .env
+          chmod 640 .env
           if [ ! -x .venv/bin/python ]; then python3 -m venv .venv; fi
           .venv/bin/python -m pip install -q -r requirements.txt
           sudo -n /usr/bin/systemctl restart aida-backend
