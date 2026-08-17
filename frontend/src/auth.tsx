@@ -1,9 +1,12 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { Platform } from "react-native";
 
 import { apiFetch, setApiToken } from "@/src/api";
 import { storage } from "@/src/utils/storage";
 
 export const AUTH_TOKEN_KEY = "aida.auth.accessToken";
+
+const WEB_PREVIEW_DEFAULT = Platform.OS === "web";
 
 type Account = {
   id: string;
@@ -23,6 +26,7 @@ type SessionPayload = {
 type AuthContextValue = {
   account: Account | null;
   token: string | null;
+  preview: boolean;
   loading: boolean;
   error: string | null;
   login: (email: string, password: string) => Promise<void>;
@@ -62,10 +66,12 @@ async function authRequest(path: string, body?: any, method = "POST") {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [account, setAccount] = useState<Account | null>(null);
   const [token, setToken] = useState<string | null>(null);
+  const [preview, setPreview] = useState(WEB_PREVIEW_DEFAULT);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const applySession = useCallback(async (session: SessionPayload) => {
+    setPreview(false);
     setApiToken(session.access_token);
     setToken(session.access_token);
     setAccount(session.account);
@@ -76,6 +82,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setApiToken(null);
     setToken(null);
     setAccount(null);
+    setPreview(WEB_PREVIEW_DEFAULT);
     await storage.secureRemove(AUTH_TOKEN_KEY);
   }, []);
 
@@ -93,6 +100,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const res = await apiFetch("/auth/me", { method: "GET" });
       const body = await readJson(res);
+      setPreview(false);
       setToken(stored);
       setAccount(body.account || null);
     } catch (_) {
@@ -169,6 +177,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<AuthContextValue>(() => ({
     account,
     token,
+    preview,
     loading,
     error,
     login,
@@ -177,7 +186,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     forgotPassword,
     resetPassword,
     restore,
-  }), [account, token, loading, error, login, register, logout, forgotPassword, resetPassword, restore]);
+  }), [account, token, preview, loading, error, login, register, logout, forgotPassword, resetPassword, restore]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
