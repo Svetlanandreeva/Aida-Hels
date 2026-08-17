@@ -6,12 +6,19 @@ import logging
 import os
 import sys
 import types
+from pathlib import Path
 
+from dotenv import load_dotenv
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
 from starlette.middleware.cors import CORSMiddleware
 
-from google_storage import build_storage_from_env
+# Production auth/storage configuration must be loaded by the production
+# entrypoint itself. Do not rely on legacy server.py import side effects.
+ROOT_DIR = Path(__file__).resolve().parent
+load_dotenv(ROOT_DIR / ".env")
+
+from google_storage import build_storage_from_env  # noqa: E402
 
 _google_db = build_storage_from_env()
 
@@ -134,6 +141,13 @@ app.include_router(build_healthkit_router(_google_db, auth_service))
 app.include_router(build_wearables_router(_google_db, auth_service))
 app.include_router(build_wearable_cloud_oauth_router(_google_db, auth_service))
 app.include_router(build_user_testing_router(_google_db, auth_service))
+
+
+@app.on_event("startup")
+async def _validate_auth_configuration() -> None:
+    # Fail the backend startup instead of serving a deceptively healthy API with
+    # broken registration/login session creation.
+    auth_service._require_secret()
 
 
 @app.on_event("startup")
