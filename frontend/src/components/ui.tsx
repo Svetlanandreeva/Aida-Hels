@@ -24,6 +24,7 @@ export const Card: React.FC<{
       <Pressable
         testID={testID}
         onPress={onPress}
+        accessibilityRole="button"
         style={({ pressed }) => [styles.card, style, pressed && { opacity: 0.9 }]}
       >
         {children}
@@ -56,14 +57,17 @@ export const GradientCard: React.FC<{
   );
   if (onPress) {
     return (
-      <Pressable testID={testID} onPress={onPress} style={({ pressed }) => pressed && { opacity: 0.92 }}>
+      <Pressable
+        testID={testID}
+        onPress={onPress}
+        accessibilityRole="button"
+        style={({ pressed }) => pressed && { opacity: 0.92 }}
+      >
         {content}
       </Pressable>
     );
   }
-  return (
-    <View testID={testID}>{content}</View>
-  );
+  return <View testID={testID}>{content}</View>;
 };
 
 export const Display: React.FC<{ children: React.ReactNode; style?: StyleProp<TextStyle> }> = ({
@@ -114,15 +118,19 @@ export const PrimaryButton: React.FC<{
   const isSecondary = variant === "secondary";
   const isAccent = variant === "accent";
   const fg = isSecondary ? colors.onSurface : isAccent ? colors.onAccent : colors.onBrandPrimary;
+  const unavailable = disabled || loading;
   return (
     <Pressable
       testID={testID}
       onPress={onPress}
-      disabled={disabled || loading}
+      disabled={unavailable}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled: unavailable, busy: !!loading }}
       style={({ pressed }) => [
         styles.btn,
         isSecondary ? styles.btnSecondary : isAccent ? styles.btnAccent : styles.btnPrimary,
-        (disabled || loading) && { opacity: 0.5 },
+        unavailable && { opacity: 0.5 },
         pressed && { opacity: 0.9 },
         style,
       ]}
@@ -149,7 +157,15 @@ export const Chip: React.FC<{
   <Pressable
     testID={testID}
     onPress={onPress}
-    style={[styles.chip, active ? styles.chipActive : styles.chipInactive]}
+    disabled={!onPress}
+    accessibilityRole={onPress ? "button" : undefined}
+    accessibilityLabel={onPress ? label : undefined}
+    accessibilityState={onPress ? { selected: !!active } : undefined}
+    style={({ pressed }) => [
+      styles.chip,
+      active ? styles.chipActive : styles.chipInactive,
+      pressed && onPress && styles.pressed,
+    ]}
   >
     {icon && (
       <Ionicons
@@ -268,7 +284,7 @@ const styles = StyleSheet.create({
   chip: {
     flexDirection: "row",
     alignItems: "center",
-    height: 40,
+    minHeight: 44,
     paddingHorizontal: spacing.lg,
     borderRadius: radius.pill,
     flexShrink: 0,
@@ -285,6 +301,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     fontFamily: fonts.text,
   },
+  pressed: { opacity: 0.88 },
   progressTrack: {
     width: "100%",
     backgroundColor: colors.surfaceTertiary,
