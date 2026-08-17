@@ -1,12 +1,13 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { Platform } from "react-native";
 
 import { apiFetch, setApiToken } from "@/src/api";
 import { storage } from "@/src/utils/storage";
 
 export const AUTH_TOKEN_KEY = "aida.auth.accessToken";
 
-const WEB_PREVIEW_DEFAULT = Platform.OS === "web";
+// Production web must never silently bypass authentication. Preview mode is
+// available only when it is deliberately enabled at build time.
+const WEB_PREVIEW_DEFAULT = process.env.EXPO_PUBLIC_AIDA_WEB_PREVIEW === "true";
 
 type Account = {
   id: string;
