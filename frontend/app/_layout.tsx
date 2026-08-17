@@ -69,18 +69,19 @@ function ProfileGate({ children }: { children: React.ReactNode }) {
 }
 
 function RoutedApp() {
-  const { token, loading } = useAuth();
+  const { token, preview, loading } = useAuth();
   const segments = useSegments();
   useNotificationNavigation();
   useDeferredNotificationSetup();
+  const hasAppAccess = Boolean(token) || preview;
 
   useEffect(() => {
     if (loading) return;
     const route = String(segments[0] || "");
     const publicRoute = route === "" || route === "auth" || route === "reset-password";
-    if (!token && !publicRoute) router.replace("/auth" as any);
-    if (token && (route === "auth" || route === "reset-password")) router.replace("/(tabs)" as any);
-  }, [token, loading, segments]);
+    if (!hasAppAccess && !publicRoute) router.replace("/auth" as any);
+    if (hasAppAccess && (route === "auth" || route === "reset-password")) router.replace("/(tabs)" as any);
+  }, [hasAppAccess, loading, segments]);
 
   if (loading) return <StartupPreview />;
 
@@ -98,7 +99,7 @@ function RoutedApp() {
     </View>
   );
 
-  if (!token) return stack;
+  if (!hasAppAccess) return stack;
   return <AppProvider><ProfileGate><LogProvider>{stack}</LogProvider></ProfileGate></AppProvider>;
 }
 
