@@ -10,6 +10,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -94,10 +95,22 @@ export default function AuthScreen() {
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={[styles.content, { paddingTop: insets.top + 48, paddingBottom: insets.bottom + 32 }]}
       >
-        <View style={styles.brandMark}>
-          <Ionicons name="sparkles" size={24} color={colors.onSurfaceInverse} />
-        </View>
-        <Text style={styles.brand}>AIDA</Text>
+        {Platform.OS === "web" ? (
+          <Image
+            source={{ uri: "/aida-logo.svg" }}
+            style={styles.brandLogo}
+            contentFit="contain"
+            contentPosition="left center"
+            accessibilityLabel="Aida — ваше здоровье, единая система"
+          />
+        ) : (
+          <>
+            <View style={styles.brandMark}>
+              <Ionicons name="sparkles" size={24} color={colors.onSurfaceInverse} />
+            </View>
+            <Text style={styles.brand}>AIDA</Text>
+          </>
+        )}
         <Text style={styles.heroTitle}>
           {mode === "login"
             ? (ru ? "С возвращением" : "Welcome back")
@@ -214,6 +227,7 @@ function Field({ label, icon, children }: { label: string; icon: any; children: 
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: colors.surface },
   content: { flexGrow: 1, paddingHorizontal: spacing.xl, maxWidth: 520, width: "100%", alignSelf: "center" },
+  brandLogo: { width: "100%", maxWidth: 360, height: 132, marginBottom: spacing.sm },
   brandMark: { width: 50, height: 50, borderRadius: 25, backgroundColor: colors.onSurface, alignItems: "center", justifyContent: "center" },
   brand: { marginTop: spacing.md, fontSize: fontSize.sm, fontWeight: "800", letterSpacing: 2.4, color: colors.onSurfaceSecondary, fontFamily: fonts.text },
   heroTitle: { marginTop: spacing.lg, fontSize: 34, lineHeight: 40, fontWeight: "800", letterSpacing: -0.8, color: colors.onSurface, fontFamily: fonts.display },
