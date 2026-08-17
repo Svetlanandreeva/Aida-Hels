@@ -1,4 +1,4 @@
-"""Social sign-in for Aida via VK ID.
+"""Social sign-in for Aida via Yandex ID and VK ID.
 
 The browser never receives provider client secrets or Aida access tokens in the
 redirect URL. OAuth state/PKCE data and one-time completion tickets are stored
@@ -48,7 +48,7 @@ class SocialCompleteRequest(BaseModel):
 
 
 class SocialAuthService:
-    providers = ("vk",)
+    providers = ("yandex", "vk")
 
     def __init__(self, db, auth_service):
         self.db = db
@@ -58,13 +58,19 @@ class SocialAuthService:
 
     @staticmethod
     def _config(provider: str) -> Dict[str, str]:
-        if provider != "vk":
-            raise HTTPException(404, "Unknown social provider")
-        return {
-            "client_id": os.environ.get("VK_CLIENT_ID", "").strip(),
-            "client_secret": os.environ.get("VK_CLIENT_SECRET", "").strip(),
-            "callback": os.environ.get("VK_REDIRECT_URI", "").strip(),
-        }
+        if provider == "yandex":
+            return {
+                "client_id": os.environ.get("YANDEX_CLIENT_ID", "").strip(),
+                "client_secret": os.environ.get("YANDEX_CLIENT_SECRET", "").strip(),
+                "callback": os.environ.get("YANDEX_REDIRECT_URI", "").strip(),
+            }
+        if provider == "vk":
+            return {
+                "client_id": os.environ.get("VK_CLIENT_ID", "").strip(),
+                "client_secret": os.environ.get("VK_CLIENT_SECRET", "").strip(),
+                "callback": os.environ.get("VK_REDIRECT_URI", "").strip(),
+            }
+        raise HTTPException(404, "Unknown social provider")
 
     def configured(self, provider: str) -> bool:
         cfg = self._config(provider)
@@ -87,7 +93,8 @@ class SocialAuthService:
             raise HTTPException(404, "Unknown social provider")
         cfg = self._config(provider)
         if not self.configured(provider):
-            raise HTTPException(503, "VK login is not configured")
+            label = "Yandex ID" if provider == "yandex" else "VK ID"
+            raise HTTPException(503, f"{label} login is not configured")
 
         state = secrets.token_urlsafe(32)
         verifier = secrets.token_urlsafe(64)
@@ -103,16 +110,29 @@ class SocialAuthService:
             "used_at": None,
         })
 
-        params = {
-            "response_type": "code",
-            "client_id": cfg["client_id"],
-            "redirect_uri": cfg["callback"],
-            "state": state,
-            "code_challenge": _pkce_challenge(verifier),
-            "code_challenge_method": "S256",
-            "scope": "email",
-        }
-        return {"authorization_url": "https://id.vk.ru/authorize?" + urlencode(params)}
+        if provider == "yandex":
+            params = {
+                "response_type": "code",
+                "client_id": cfg["client_id"],
+                "redirect_uri": cfg["callback"],
+                "state": state,
+                "code_challenge": _pkce_challenge(verifier),
+                "code_challenge_method": "S256",
+                "force_confirm": "no",
+            }
+            url = "https://oauth.yandex.ru/authorize?" + urlencode(params)
+        else:
+            params = {
+                "response_type": "code",
+                "client_id": cfg["client_id"],
+                "redirect_uri": cfg["callback"],
+                "state": state,
+                "code_challenge": _pkce_challenge(verifier),
+                "code_challenge_method": "S256",
+                "scope": "email",
+            }
+            url = "https://id.vk.ru/authorize?" + urlencode(params)
+        return {"authorization_url": url}
 
     async def _consume_state(self, provider: str, state: str) -> Dict[str, Any]:
         record = await self.db.oauth_states.find_one(
@@ -127,6 +147,42 @@ class SocialAuthService:
             {"$set": {"used_at": now}},
         )
         return record
+
+    async def _exchange_yandex(self, code: str, state_record: Dict[str, Any]) -> Dict[str, str]:
+        cfg = self._config("yandex")
+        async with httpx.AsyncClient(timeout=20) as client:
+            token_res = await client.post(
+                "https://oauth.yandex.ru/token",
+                data={
+                    "grant_type": "authorization_code",
+                    "code": code,
+                    "client_id": cfg["client_id"],
+                    "client_secret": cfg["client_secret"],
+                    "redirect_uri": cfg["callback"],
+                    "code_verifier": state_record["code_verifier"],
+                },
+            )
+            if token_res.status_code >= 400:
+                raise HTTPException(502, "Yandex ID token exchange failed")
+            access_token = str(token_res.json().get("access_token") or "")
+            if not access_token:
+                raise HTTPException(502, "Yandex ID returned no access token")
+
+            info_res = await client.get(
+                "https://login.yandex.ru/info",
+                params={"format": "json"},
+                headers={"Authorization": f"OAuth {access_token}"},
+            )
+            if info_res.status_code >= 400:
+                raise HTTPException(502, "Yandex ID profile request failed")
+            info = info_res.json()
+
+        email = str(info.get("default_email") or "").strip().lower()
+        return {
+            "provider_user_id": str(info.get("id") or ""),
+            "email": email,
+            "name": str(info.get("real_name") or info.get("display_name") or email.split("@")[0] or "Yandex user"),
+        }
 
     async def _exchange_vk(self, code: str, state_record: Dict[str, Any], device_id: str) -> Dict[str, str]:
         cfg = self._config("vk")
@@ -182,7 +238,10 @@ class SocialAuthService:
         if provider not in self.providers:
             raise HTTPException(404, "Unknown social provider")
         record = await self._consume_state(provider, state)
-        identity_data = await self._exchange_vk(code, record, device_id)
+        if provider == "yandex":
+            identity_data = await self._exchange_yandex(code, record)
+        else:
+            identity_data = await self._exchange_vk(code, record, device_id)
         if not identity_data["provider_user_id"] or not identity_data["email"]:
             raise HTTPException(502, "Social provider did not return required account data")
 
