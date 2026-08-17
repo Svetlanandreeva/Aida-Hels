@@ -133,7 +133,7 @@ export default function OnboardingScreen() {
     saveDraft({ goals: next });
   };
 
-  const finish = async (skipDetails = false) => {
+  const continueFlow = async (skipDetails = false) => {
     if (!activeId || !name.trim()) return setError(ru ? "Укажите имя" : "Enter your name");
     const validationError = validateOptionalFields();
     if (!skipDetails && validationError) return setError(validationError);
@@ -149,12 +149,13 @@ export default function OnboardingScreen() {
         height_cm: skipDetails ? activeProfile?.height_cm : numericOrNull(height),
         weight_kg: skipDetails ? activeProfile?.weight_kg : numericOrNull(weight),
         goals: skipDetails ? (activeProfile?.goals || goals) : goals,
-        onboarding_completed: true,
+        onboarding_completed: skipDetails,
         preferred_locale: lang,
         timezone: tz,
       });
       await reload();
-      router.replace("/(tabs)" as any);
+      if (skipDetails) router.replace("/(tabs)" as any);
+      else router.push("/onboarding-medical" as any);
     } catch {
       setError(ru ? "Не удалось сохранить профиль" : "Could not save profile");
     } finally {
@@ -163,8 +164,8 @@ export default function OnboardingScreen() {
   };
 
   return <ScrollView style={styles.page} contentContainerStyle={[styles.content, { paddingTop: insets.top + 28, paddingBottom: insets.bottom + 36 }]} keyboardShouldPersistTaps="handled">
+    <View style={styles.progressWrap}><Text style={styles.eyebrow}>AIDA · 1/3</Text><View style={styles.progress}><View style={styles.progressFill} /></View></View>
     <View style={styles.brand}><Ionicons name="sparkles" size={20} color={colors.onSurfaceInverse} /></View>
-    <Text style={styles.eyebrow}>AIDA</Text>
     <Text style={styles.title}>{ru ? "Настроим Аиду под вас" : "Set up Aida for you"}</Text>
     <Text style={styles.subtitle}>{ru ? "Медицинские поля можно пропустить и заполнить позже. Никаких выдуманных значений Аида не подставит." : "Medical fields are optional and can be completed later. Aida never invents missing values."}</Text>
     <View style={styles.draftState}>
@@ -205,8 +206,8 @@ export default function OnboardingScreen() {
     </Section>
 
     {error ? <Text style={styles.error}>{error}</Text> : null}
-    <Pressable disabled={!canSave || busy} style={[styles.primary, (!canSave || busy) && { opacity: .55 }]} onPress={() => finish(false)}>{busy ? <ActivityIndicator color={colors.onSurfaceInverse} /> : <Text style={styles.primaryText}>{ru ? "Продолжить" : "Continue"}</Text>}</Pressable>
-    <Pressable disabled={busy} style={styles.skip} onPress={() => finish(true)}><Text style={styles.skipText}>{ru ? "Заполнить остальное позже" : "Complete the rest later"}</Text></Pressable>
+    <Pressable disabled={!canSave || busy} style={[styles.primary, (!canSave || busy) && { opacity: .55 }]} onPress={() => continueFlow(false)}>{busy ? <ActivityIndicator color={colors.onSurfaceInverse} /> : <Text style={styles.primaryText}>{ru ? "Продолжить" : "Continue"}</Text>}</Pressable>
+    <Pressable disabled={busy} style={styles.skip} onPress={() => continueFlow(true)}><Text style={styles.skipText}>{ru ? "Заполнить остальное позже" : "Complete the rest later"}</Text></Pressable>
   </ScrollView>;
 }
 
@@ -215,7 +216,8 @@ function Input(props: any) { const { label, ...rest } = props; return <View styl
 
 const styles = StyleSheet.create({
   page:{flex:1,backgroundColor:colors.surface}, content:{width:"100%",maxWidth:720,alignSelf:"center",paddingHorizontal:spacing.xl},
-  brand:{width:44,height:44,borderRadius:22,backgroundColor:colors.onSurface,alignItems:"center",justifyContent:"center"}, eyebrow:{marginTop:8,fontSize:12,fontWeight:"800",letterSpacing:2,color:colors.onSurfaceSecondary},
+  progressWrap:{gap:8},progress:{height:4,borderRadius:2,backgroundColor:colors.surfaceSecondary,overflow:"hidden"},progressFill:{height:4,width:"33%",backgroundColor:colors.onSurface},
+  brand:{marginTop:spacing.lg,width:44,height:44,borderRadius:22,backgroundColor:colors.onSurface,alignItems:"center",justifyContent:"center"}, eyebrow:{fontSize:12,fontWeight:"800",letterSpacing:2,color:colors.onSurfaceSecondary},
   title:{marginTop:spacing.lg,fontSize:34,lineHeight:40,fontWeight:"800",fontFamily:fonts.display,color:colors.onSurface}, subtitle:{marginTop:spacing.sm,fontSize:fontSize.base,lineHeight:22,color:colors.onSurfaceSecondary,fontFamily:fonts.text},
   draftState:{marginTop:spacing.sm,flexDirection:"row",alignItems:"center",gap:6},draftText:{fontSize:fontSize.sm,color:colors.onSurfaceSecondary,fontFamily:fonts.text},
   section:{marginTop:spacing.xl,backgroundColor:colors.surfaceSecondary,borderRadius:radius.lg,borderWidth:1,borderColor:colors.border,padding:spacing.lg}, sectionTitle:{fontSize:fontSize.lg,fontWeight:"800",color:colors.onSurface,marginBottom:spacing.lg,fontFamily:fonts.display},
