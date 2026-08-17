@@ -427,7 +427,7 @@ export default function HomeScreen() {
                 return (
                   <Pressable
                     key={value}
-                    onPress={() => setCheckinVals((prev) => ({ ...prev, [metric.key]: value }))
+                    onPress={() => setCheckinVals((prev) => ({ ...prev, [metric.key]: value }))}
                     style={[styles.scaleButton, active && { backgroundColor: activeColor, borderColor: activeColor }]}
                     testID={`home-checkin-${metric.key}-${value}`}
                   >
