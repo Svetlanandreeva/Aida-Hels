@@ -22,4 +22,4 @@ def test_email_registration_requires_verification_before_session():
     assert 'resendVerification' in frontend_auth
     assert 'type Mode = "login" | "register" | "forgot" | "verify"' in screen
     assert 'src: "/aida-logo.svg"' in screen
-    assert 'Продолжить с Яндекс ID' not in screen
+    assert 'Продолжить с Яндекс ID' in screen
