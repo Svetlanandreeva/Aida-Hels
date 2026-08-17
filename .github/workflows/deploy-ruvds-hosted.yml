@@ -192,5 +192,37 @@ jobs:
           curl --fail --silent --head --resolve aidaassistent.ru:443:127.0.0.1 https://aidaassistent.ru/ >/dev/null
           EOF
 
+      - name: Report production auth readiness
+        run: |
+          ssh -p "$RUVDS_PORT" -i ~/.ssh/ruvds -o ConnectTimeout=10 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes "$RUVDS_USER@$RUVDS_HOST" <<'EOF'
+          set -euo pipefail
+          cd /opt/aida/backend
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          values = {}
+          for raw in Path('.env').read_text().splitlines():
+              line = raw.strip()
+              if not line or line.startswith('#') or '=' not in line:
+                  continue
+              key, value = line.split('=', 1)
+              values[key.strip()] = value.strip()
+          groups = {
+              'yandex_id': ('YANDEX_CLIENT_ID', 'YANDEX_CLIENT_SECRET', 'YANDEX_REDIRECT_URI'),
+              'vk_id': ('VK_CLIENT_ID', 'VK_CLIENT_SECRET', 'VK_REDIRECT_URI'),
+              'email_verification': ('SMTP_HOST', 'SMTP_USERNAME', 'SMTP_PASSWORD', 'SMTP_FROM', 'EMAIL_VERIFY_BASE_URL'),
+          }
+          readiness = {name: all(values.get(key) for key in keys) for name, keys in groups.items()}
+          print('AUTH_READINESS=' + json.dumps(readiness, sort_keys=True))
+          PY
+          PROVIDERS="$(curl --fail --silent http://127.0.0.1:8000/api/auth/oauth/providers)"
+          python3 - "$PROVIDERS" <<'PY'
+          import json, sys
+          data = json.loads(sys.argv[1])
+          safe = {name: bool((item or {}).get('configured')) for name, item in data.items()}
+          print('OAUTH_PROVIDERS=' + json.dumps(safe, sort_keys=True))
+          PY
+          EOF
+
       - name: Deployment summary
         run: echo 'Aida production validated and deployed through GitHub-hosted fallback runner.'
