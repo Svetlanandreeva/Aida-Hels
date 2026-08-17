@@ -2,7 +2,7 @@ import { apiFetch } from "@/src/api";
 import type { LabTest, Medication, Symptom, Task } from "@/src/api";
 import type { MedicationSlot } from "@/src/medicationScheduleApi";
 
-export type DataState = "data" | "no_data" | "insufficient_data" | "error" | "stale" | "syncing" | "not_connected" | "permission_denied";
+export type DataState = "data" | "no_data" | "insufficient_data" | "error" | "stale" | "syncing" | "not_connected" | "permission_denied" | "not_applicable";
 
 type ListSection<T> = {
   state: DataState;
@@ -50,6 +50,12 @@ export type HomePayload = {
     date?: string;
     wake_time?: string | null;
     slots?: MedicationSlot[];
+    error?: string;
+  };
+  cycle: {
+    state: DataState;
+    cycle_day?: number | null;
+    last_period_start?: string | null;
     error?: string;
   };
 };
