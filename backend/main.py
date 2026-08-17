@@ -55,6 +55,7 @@ from candidate_records import build_candidate_router  # noqa: E402
 from circadian_api import build_circadian_router  # noqa: E402
 from cycle_api import build_cycle_router  # noqa: E402
 from documents import build_documents_router  # noqa: E402
+from email_signup import build_email_signup_router  # noqa: E402
 from family_api import build_family_router  # noqa: E402
 from healthkit_api import build_healthkit_router  # noqa: E402
 from home_api import build_home_router  # noqa: E402
@@ -92,13 +93,24 @@ legacy_server.app.user_middleware = [middleware for middleware in legacy_server.
 legacy_server.app.middleware_stack = None
 
 auth_router, auth_service = build_auth_router(_google_db)
+# The legacy auth router used to create a live session immediately after signup.
+# Remove only that route and replace it with the email-verified registration flow.
+auth_router.routes = [route for route in auth_router.routes if str(getattr(route, "path", "")) != "/api/auth/register"]
 app = legacy_server.app
 
 cors_origins = [origin.strip() for origin in os.environ.get("AIDA_CORS_ORIGINS", "").split(",") if origin.strip()]
 if cors_origins:
     app.add_middleware(CORSMiddleware, allow_credentials=True, allow_origins=cors_origins, allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"], allow_headers=["Authorization", "Content-Type"])
 
-_PUBLIC_API_PATHS = {"/api/", "/api/auth/register", "/api/auth/login", "/api/auth/forgot-password", "/api/auth/reset-password"}
+_PUBLIC_API_PATHS = {
+    "/api/",
+    "/api/auth/register",
+    "/api/auth/login",
+    "/api/auth/forgot-password",
+    "/api/auth/reset-password",
+    "/api/auth/resend-verification",
+    "/api/auth/verify-email",
+}
 _PUBLIC_API_PREFIXES = ("/api/auth/oauth/",)
 
 
@@ -126,6 +138,7 @@ async def require_authenticated_api(request: Request, call_next):
 
 
 app.include_router(auth_router)
+app.include_router(build_email_signup_router(_google_db))
 app.include_router(build_social_auth_router(_google_db, auth_service))
 app.include_router(build_account_session_router(_google_db, auth_service))
 app.include_router(build_profile_router(_google_db, auth_service))

@@ -26,6 +26,11 @@ type SessionPayload = {
   profile_id?: string | null;
 };
 
+export type RegistrationResult = {
+  verification_required: boolean;
+  email: string;
+};
+
 type AuthContextValue = {
   account: Account | null;
   token: string | null;
@@ -33,7 +38,8 @@ type AuthContextValue = {
   loading: boolean;
   error: string | null;
   login: (email: string, password: string) => Promise<void>;
-  register: (name: string, email: string, password: string) => Promise<void>;
+  register: (name: string, email: string, password: string) => Promise<RegistrationResult>;
+  resendVerification: (email: string) => Promise<void>;
   logout: () => Promise<void>;
   forgotPassword: (email: string) => Promise<void>;
   resetPassword: (token: string, newPassword: string) => Promise<void>;
@@ -145,17 +151,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [applySession]);
 
-  const register = useCallback(async (name: string, email: string, password: string) => {
+  const register = useCallback(async (name: string, email: string, password: string): Promise<RegistrationResult> => {
     setError(null);
     try {
-      const session = await authRequest("/auth/register", { name: name.trim(), email: email.trim(), password });
-      await applySession(session);
+      const result = await authRequest("/auth/register", { name: name.trim(), email: email.trim(), password });
+      if (!result?.verification_required || !result?.email) {
+        throw new Error("Email verification was not requested")
+      }
+      return result as RegistrationResult;
     } catch (e: any) {
       const message = e?.message || "Registration failed";
       setError(message);
       throw e;
     }
-  }, [applySession]);
+  }, []);
+
+  const resendVerification = useCallback(async (email: string) => {
+    setError(null);
+    try {
+      await authRequest("/auth/resend-verification", { email: email.trim() });
+    } catch (e: any) {
+      const message = e?.message || "Verification email resend failed";
+      setError(message);
+      throw e;
+    }
+  }, []);
 
   const logout = useCallback(async () => {
     try {
@@ -224,13 +244,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     error,
     login,
     register,
+    resendVerification,
     logout,
     forgotPassword,
     resetPassword,
     startSocialLogin,
     completeSocialLogin,
     restore,
-  }), [account, token, preview, loading, error, login, register, logout, forgotPassword, resetPassword, startSocialLogin, completeSocialLogin, restore]);
+  }), [account, token, preview, loading, error, login, register, resendVerification, logout, forgotPassword, resetPassword, startSocialLogin, completeSocialLogin, restore]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
