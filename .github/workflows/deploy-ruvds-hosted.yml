@@ -40,6 +40,31 @@ jobs:
           test -n "$RUVDS_SSH_KNOWN_HOSTS" || (echo 'RUVDS_SSH_KNOWN_HOSTS secret is missing' && exit 1)
           test -n "$RUVDS_PORT" || (echo 'RUVDS_PORT secret is missing' && exit 1)
 
+      - name: Normalize SSH endpoint secrets
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          host = os.environ['RUVDS_HOST'].strip()
+          user = os.environ['RUVDS_USER'].strip()
+          port = os.environ['RUVDS_PORT'].strip()
+
+          if not re.fullmatch(r'[A-Za-z0-9._-]+', user):
+              raise SystemExit('RUVDS_USER must contain only letters, digits, dot, underscore or hyphen')
+          if not host or any(ch.isspace() for ch in host) or '@' in host:
+              raise SystemExit('RUVDS_HOST contains invalid whitespace or @')
+          if not port.isdigit() or not (1 <= int(port) <= 65535):
+              raise SystemExit('RUVDS_PORT must be a valid TCP port')
+
+          env_file = Path(os.environ['GITHUB_ENV'])
+          with env_file.open('a', encoding='utf-8') as handle:
+              handle.write(f'RUVDS_HOST={host}\n')
+              handle.write(f'RUVDS_USER={user}\n')
+              handle.write(f'RUVDS_PORT={port}\n')
+          PY
+
       - name: Setup Node 20
         uses: actions/setup-node@v4
         with:
