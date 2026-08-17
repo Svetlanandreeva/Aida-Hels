@@ -30,8 +30,8 @@ def test_sleep_engine_can_learn_late_personal_window_without_population_target()
     for i in range(35):
         d = (start + timedelta(days=i)).isoformat()
         late = i % 2 == 0
-        bedtime = "02:00" if late else "23:00"
-        wake = "12:00" if late else "08:00"
+        bedtime = "02:00" if late else "00:30"
+        wake = "12:00" if late else "08:30"
         events += [{"kind": "bedtime", "local_date": d, "local_time": bedtime}, {"kind": "wake", "local_date": d, "local_time": wake}]
         checkins.append({"date": d, "energy": 5 if late else 2, "mood": 5 if late else 3, "sleep": 5 if late else 3, "stress": 1 if late else 3, "anxiety": 1 if late else 3})
     insight = build_sleep_insight(events, checkins, [])
