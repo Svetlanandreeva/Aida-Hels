@@ -1,25 +1,33 @@
-"""Explicit LLM provider contract for Aida's legacy-compatible AI/OCR routes.
+"""Production LLM provider adapter for Aida AI/OCR routes.
 
-This module is the only backend surface allowed to define the legacy
-LlmChat/UserMessage/FileContentWithMimeType contract. It deliberately has no
-runtime dependency on the private ``emergentintegrations`` package.
-
-Until a supported provider adapter is configured, chat/OCR calls fail with a
-clear ProviderUnavailableError while the rest of the production backend can
-start and serve non-AI routes normally.
+The public contract intentionally stays compatible with the historical
+LlmChat/UserMessage/FileContentWithMimeType API, while runtime calls go directly
+to the supported Gemini REST API. This keeps medical/business routes independent
+from a provider SDK and removes the old always-failing placeholder.
 """
 from __future__ import annotations
 
+import base64
+import os
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
-PROVIDER_CONTRACT_VERSION = "aida-llm-v1"
+import httpx
+
+PROVIDER_CONTRACT_VERSION = "aida-llm-v2"
 DEFAULT_PROVIDER = "gemini"
-DEFAULT_MODEL = "gemini-3-flash-preview"
+DEFAULT_MODEL = "gemini-3.6-flash"
+_GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
+_MODEL_ALIASES = {
+    # Historical Aida configuration. Keep old deploys working after the preview
+    # model was retired instead of forcing every route to know provider churn.
+    "gemini-3-flash-preview": DEFAULT_MODEL,
+}
 
 
 class ProviderUnavailableError(RuntimeError):
-    """Raised when an AI/OCR route is called without a supported provider."""
+    """Raised when an AI/OCR provider cannot be used safely."""
 
 
 @dataclass(slots=True)
@@ -34,13 +42,23 @@ class UserMessage:
     file_contents: list[FileContentWithMimeType] = field(default_factory=list)
 
 
-class LlmChat:
-    """Stable legacy-compatible facade used by existing Aida routes.
+def _gemini_text(payload: dict[str, Any]) -> str:
+    candidates = payload.get("candidates") or []
+    if not candidates:
+        prompt_feedback = payload.get("promptFeedback") or {}
+        raise ProviderUnavailableError(
+            "Gemini returned no candidates"
+            + (f": {prompt_feedback}" if prompt_feedback else "")
+        )
+    parts = ((candidates[0].get("content") or {}).get("parts") or [])
+    text = "".join(str(part.get("text") or "") for part in parts).strip()
+    if not text:
+        raise ProviderUnavailableError("Gemini returned an empty response")
+    return text
 
-    The facade keeps route code provider-agnostic. A supported production
-    adapter can replace ``send_message`` behind this contract without requiring
-    medical/business endpoints to import a provider-specific SDK.
-    """
+
+class LlmChat:
+    """Small provider-agnostic facade backed by Gemini REST in production."""
 
     def __init__(self, api_key: str, session_id: str, system_message: str):
         self.api_key = api_key
@@ -55,13 +73,69 @@ class LlmChat:
         return self
 
     async def send_message(self, message: UserMessage) -> Any:
-        provider = self.provider or DEFAULT_PROVIDER
-        model = self.model or DEFAULT_MODEL
-        raise ProviderUnavailableError(
-            "Aida LLM provider is not configured for runtime use. "
-            f"Requested provider={provider!r}, model={model!r}. "
-            "Configure a supported provider adapter before using chat/OCR endpoints."
-        )
+        provider = (self.provider or DEFAULT_PROVIDER).lower().strip()
+        if provider != "gemini":
+            raise ProviderUnavailableError(f"Unsupported Aida LLM provider: {provider}")
+
+        api_key = (os.environ.get("GEMINI_API_KEY") or self.api_key or "").strip()
+        if not api_key:
+            raise ProviderUnavailableError("GEMINI_API_KEY is not configured")
+
+        requested_model = (os.environ.get("GEMINI_MODEL") or self.model or DEFAULT_MODEL).strip()
+        model = _MODEL_ALIASES.get(requested_model, requested_model)
+        parts: list[dict[str, Any]] = [{"text": message.text}]
+
+        for attachment in message.file_contents:
+            path = Path(attachment.file_path)
+            if not path.is_file():
+                raise ProviderUnavailableError(f"Attachment not found: {path.name}")
+            raw = path.read_bytes()
+            if not raw:
+                raise ProviderUnavailableError(f"Attachment is empty: {path.name}")
+            parts.append(
+                {
+                    "inlineData": {
+                        "mimeType": attachment.mime_type or "application/octet-stream",
+                        "data": base64.b64encode(raw).decode("ascii"),
+                    }
+                }
+            )
+
+        body: dict[str, Any] = {
+            "contents": [{"role": "user", "parts": parts}],
+            "generationConfig": {
+                "temperature": 0.0,
+                "responseMimeType": "application/json",
+            },
+        }
+        if self.system_message.strip():
+            body["systemInstruction"] = {"parts": [{"text": self.system_message.strip()}]}
+
+        url = f"{_GEMINI_BASE_URL}/models/{model}:generateContent"
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(90.0, connect=10.0)) as client:
+                response = await client.post(
+                    url,
+                    headers={"x-goog-api-key": api_key, "Content-Type": "application/json"},
+                    json=body,
+                )
+        except httpx.HTTPError as exc:
+            raise ProviderUnavailableError(f"Gemini request failed: {exc}") from exc
+
+        if response.status_code >= 400:
+            try:
+                error_payload = response.json()
+                detail = ((error_payload.get("error") or {}).get("message") or "").strip()
+            except Exception:
+                detail = ""
+            suffix = f": {detail}" if detail else ""
+            raise ProviderUnavailableError(f"Gemini API returned HTTP {response.status_code}{suffix}")
+
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise ProviderUnavailableError("Gemini returned invalid JSON") from exc
+        return _gemini_text(payload)
 
 
 __all__ = [
