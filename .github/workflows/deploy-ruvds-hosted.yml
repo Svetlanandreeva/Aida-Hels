@@ -22,7 +22,7 @@ jobs:
     timeout-minutes: 45
     env:
       RUVDS_HOST: ${{ secrets.RUVDS_HOST }}
-      RUVDS_USER: ${{ secrets.RUVDS_USER }}
+      RUVDS_USER: root
       RUVDS_PORT: ${{ secrets.RUVDS_PORT }}
       CI: '1'
     steps:
@@ -35,7 +35,7 @@ jobs:
           RUVDS_SSH_KNOWN_HOSTS: ${{ secrets.RUVDS_SSH_KNOWN_HOSTS }}
         run: |
           test -n "$RUVDS_HOST" || (echo 'RUVDS_HOST secret is missing' && exit 1)
-          test -n "$RUVDS_USER" || (echo 'RUVDS_USER secret is missing' && exit 1)
+          test -n "$RUVDS_USER" || (echo 'RUVDS_USER is missing' && exit 1)
           test -n "$RUVDS_SSH_KEY" || (echo 'RUVDS_SSH_KEY secret is missing' && exit 1)
           test -n "$RUVDS_SSH_KNOWN_HOSTS" || (echo 'RUVDS_SSH_KNOWN_HOSTS secret is missing' && exit 1)
           test -n "$RUVDS_PORT" || (echo 'RUVDS_PORT secret is missing' && exit 1)
