@@ -34,7 +34,7 @@ def _score_checkin(doc: Dict[str, Any]) -> Optional[float]:
 
 def _clock_minutes(dt: datetime) -> int:
     # Treat post-midnight bedtimes as the continuation of the previous evening,
-    # so 02:00 sorts after 23:00 rather than before it.
+    # so early-morning clock values sort after late-evening values.
     minutes = dt.hour * 60 + dt.minute
     return minutes + (24 * 60 if dt.hour < 6 else 0)
 
