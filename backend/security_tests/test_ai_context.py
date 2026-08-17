@@ -77,8 +77,9 @@ def test_context_never_mixes_profiles_and_keeps_provenance():
     assert context["profile_id"] == "p1"
     assert [item["name"] for item in context["active_medications"]] == ["A"]
     assert [item["name"] for item in context["recent_symptoms"]] == ["headache"]
+    assert [item["evidence_id"] for item in context["recent_measurements"]] == ["vital:v1"]
+    assert [item["value"] for item in context["recent_measurements"]] == [72]
     measurement = context["recent_measurements"][0]
-    assert measurement["value"] == 72
     assert measurement["source"] == "apple_health"
     assert measurement["evidence_id"] == "vital:v1"
     assert measurement["verification_status"] == "source_verified"
@@ -88,7 +89,7 @@ def test_context_never_mixes_profiles_and_keeps_provenance():
     serialized = str(context)
     assert "Bob" not in serialized
     assert "fever" not in serialized
-    assert "99" not in serialized
+    assert "android_health_connect" not in serialized
 
 
 def test_context_marks_missing_timestamp_freshness_unknown():
