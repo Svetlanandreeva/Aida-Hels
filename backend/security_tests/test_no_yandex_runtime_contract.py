@@ -24,6 +24,6 @@ def test_vk_remains_the_only_social_auth_provider():
 
     assert 'export type SocialProvider = "vk";' in client
     assert 'provider="vk"' in screen
-    assert 'testID={`auth-social-${provider}`}' in screen
+    assert 'onPress={() => socialLogin("vk")}' in screen
     assert 'providers = ("vk",)' in backend
     assert 'https://id.vk.ru/authorize?' in backend
