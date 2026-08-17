@@ -65,6 +65,7 @@ from pregnancy_api import build_pregnancy_router  # noqa: E402
 from profile_api import build_profile_router  # noqa: E402
 from puzzle_api import build_puzzle_router  # noqa: E402
 from secure_legacy_api import build_secure_legacy_router  # noqa: E402
+from social_auth import build_social_auth_router  # noqa: E402
 from task_api import build_task_router  # noqa: E402
 from test_account_seed import seed_test_account  # noqa: E402
 from timeline_api import build_timeline_router  # noqa: E402
@@ -98,12 +99,13 @@ if cors_origins:
     app.add_middleware(CORSMiddleware, allow_credentials=True, allow_origins=cors_origins, allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"], allow_headers=["Authorization", "Content-Type"])
 
 _PUBLIC_API_PATHS = {"/api/", "/api/auth/register", "/api/auth/login", "/api/auth/forgot-password", "/api/auth/reset-password"}
+_PUBLIC_API_PREFIXES = ("/api/auth/oauth/",)
 
 
 @app.middleware("http")
 async def require_authenticated_api(request: Request, call_next):
     path = request.url.path
-    if request.method == "OPTIONS" or not path.startswith("/api") or path in _PUBLIC_API_PATHS:
+    if request.method == "OPTIONS" or not path.startswith("/api") or path in _PUBLIC_API_PATHS or path.startswith(_PUBLIC_API_PREFIXES):
         return await call_next(request)
     header = request.headers.get("authorization", "")
     scheme, _, token = header.partition(" ")
@@ -124,6 +126,7 @@ async def require_authenticated_api(request: Request, call_next):
 
 
 app.include_router(auth_router)
+app.include_router(build_social_auth_router(_google_db, auth_service))
 app.include_router(build_account_session_router(_google_db, auth_service))
 app.include_router(build_profile_router(_google_db, auth_service))
 app.include_router(build_family_router(_google_db, auth_service))
