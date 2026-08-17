@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAuth } from "@/src/auth";
@@ -22,8 +23,9 @@ type Mode = "login" | "register" | "forgot";
 
 export default function AuthScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const { lang } = useI18n();
-  const { login, register, forgotPassword } = useAuth();
+  const { login, register, forgotPassword, preview } = useAuth();
   const [mode, setMode] = useState<Mode>("login");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -209,6 +211,20 @@ export default function AuthScreen() {
               <Text style={styles.textButtonLabel}>{ru ? "Вернуться ко входу" : "Back to sign in"}</Text>
             </Pressable>
           )}
+
+          {Platform.OS === "web" && preview && mode !== "forgot" ? (
+            <Pressable
+              onPress={() => router.replace("/")}
+              style={styles.previewButton}
+              testID="auth-preview-entry"
+              accessibilityRole="button"
+              accessibilityLabel={ru ? "Посмотреть приложение без входа" : "Preview the app without signing in"}
+            >
+              <Ionicons name="eye-outline" size={17} color={colors.onSurfaceSecondary} />
+              <Text style={styles.previewButtonLabel}>{ru ? "Посмотреть приложение без входа" : "Preview app without signing in"}</Text>
+              <Ionicons name="arrow-forward" size={16} color={colors.onSurfaceSecondary} />
+            </Pressable>
+          ) : null}
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -246,6 +262,8 @@ const styles = StyleSheet.create({
   submitText: { fontSize: fontSize.base, fontWeight: "800", color: colors.onSurfaceInverse, fontFamily: fonts.text },
   textButton: { minHeight: 48, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, marginTop: spacing.sm },
   textButtonLabel: { fontSize: fontSize.base, fontWeight: "700", color: colors.onSurface, fontFamily: fonts.text },
+  previewButton: { minHeight: 48, marginTop: spacing.sm, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceSecondary, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, paddingHorizontal: spacing.lg },
+  previewButtonLabel: { flexShrink: 1, fontSize: fontSize.sm, fontWeight: "700", color: colors.onSurfaceSecondary, fontFamily: fonts.text },
   noticeError: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, backgroundColor: "#F8E5E0", marginBottom: spacing.md },
   errorText: { flex: 1, fontSize: fontSize.sm, lineHeight: 18, color: colors.error, fontFamily: fonts.text },
   noticeSuccess: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, backgroundColor: "#E6F0E8", marginBottom: spacing.md },

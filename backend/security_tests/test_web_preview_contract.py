@@ -2,6 +2,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 AUTH = ROOT / "frontend" / "src" / "auth.tsx"
+AUTH_SCREEN = ROOT / "frontend" / "app" / "auth.tsx"
 STORE = ROOT / "frontend" / "src" / "store.tsx"
 LAYOUT = ROOT / "frontend" / "app" / "_layout.tsx"
 
@@ -28,3 +29,12 @@ def test_router_can_render_internal_shell_without_treating_preview_as_authentica
     assert "const hasAppAccess = Boolean(token) || preview" in layout
     assert "if (!hasAppAccess) return stack" in layout
     assert "<AppProvider><ProfileGate><LogProvider>" in layout
+
+
+def test_auth_screen_exposes_explicit_web_preview_entry_without_fake_login():
+    screen = AUTH_SCREEN.read_text(encoding="utf-8")
+    assert 'Platform.OS === "web" && preview' in screen
+    assert 'testID="auth-preview-entry"' in screen
+    assert 'router.replace("/")' in screen
+    assert "Посмотреть приложение без входа" in screen
+    assert "await login" not in screen.split('testID="auth-preview-entry"', 1)[1].split("</Pressable>", 1)[0]
