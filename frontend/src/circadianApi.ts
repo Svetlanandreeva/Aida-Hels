@@ -104,6 +104,20 @@ export function listPendingCircadianCandidates(profileId: string): Promise<Weara
   );
 }
 
+export function correctCircadianCandidate(
+  candidateId: string,
+  correction: { kind: "wake" | "bedtime"; localDate: string; localTime: string }
+): Promise<WearableCircadianCandidate> {
+  return req(`/candidates/${encodeURIComponent(candidateId)}/circadian`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      kind: correction.kind,
+      local_date: correction.localDate,
+      local_time: correction.localTime,
+    }),
+  });
+}
+
 export function approveCircadianCandidate(candidateId: string) {
   return req(`/candidates/${encodeURIComponent(candidateId)}/approve`, { method: "POST", body: JSON.stringify({}) });
 }
