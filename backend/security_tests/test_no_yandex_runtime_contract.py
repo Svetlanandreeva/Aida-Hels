@@ -9,21 +9,24 @@ ENV_EXAMPLE = ROOT / "backend" / ".env.example"
 YANDEX_DEPLOY = ROOT / ".github" / "workflows" / "deploy-yandex.yml"
 
 
-def test_yandex_cloud_and_id_are_not_runtime_paths_anymore():
+def test_yandex_cloud_deploy_stays_removed():
     assert not YANDEX_DEPLOY.exists()
-    for path in (AUTH_CLIENT, AUTH_SCREEN, SOCIAL_AUTH, ENV_EXAMPLE):
-        text = path.read_text(encoding="utf-8").lower()
-        assert "yandex" not in text
-        assert "яндекс" not in text
 
 
-def test_vk_remains_the_only_social_auth_provider():
+def test_yandex_id_and_vk_are_supported_social_auth_providers():
     client = AUTH_CLIENT.read_text(encoding="utf-8")
     screen = AUTH_SCREEN.read_text(encoding="utf-8")
     backend = SOCIAL_AUTH.read_text(encoding="utf-8")
+    env_example = ENV_EXAMPLE.read_text(encoding="utf-8")
 
-    assert 'export type SocialProvider = "vk";' in client
+    assert 'export type SocialProvider = "yandex" | "vk";' in client
+    assert 'provider="yandex"' in screen
     assert 'provider="vk"' in screen
-    assert 'SocialButton provider="vk"' in screen
-    assert 'providers = ("vk",)' in backend
+    assert 'providers = ("yandex", "vk")' in backend
+    assert 'https://oauth.yandex.ru/authorize?' in backend
+    assert 'https://oauth.yandex.ru/token' in backend
+    assert 'https://login.yandex.ru/info' in backend
     assert 'https://id.vk.ru/authorize?' in backend
+    assert 'YANDEX_CLIENT_ID=' in env_example
+    assert 'YANDEX_CLIENT_SECRET=' in env_example
+    assert 'YANDEX_REDIRECT_URI=https://aidaassistent.ru/api/auth/oauth/yandex/callback' in env_example
