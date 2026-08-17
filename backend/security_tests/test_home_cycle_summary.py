@@ -1,4 +1,4 @@
-import pytest
+import asyncio
 
 from home_api import _cycle_summary
 
@@ -32,24 +32,23 @@ class _Db:
         self.cycle_events = _Collection(rows=starts)
 
 
-@pytest.mark.asyncio
-async def test_cycle_summary_is_not_applicable_for_non_female_profile():
-    state = await _cycle_summary(_Db({"id": "p1", "sex": "male"}, []), "p1", "2026-08-17")
+def test_cycle_summary_is_not_applicable_for_non_female_profile():
+    state = asyncio.run(_cycle_summary(_Db({"id": "p1", "sex": "male"}, []), "p1", "2026-08-17"))
     assert state == {"state": "not_applicable", "cycle_day": None, "last_period_start": None}
 
 
-@pytest.mark.asyncio
-async def test_cycle_summary_has_no_fake_cycle_day_without_period_start():
-    state = await _cycle_summary(_Db({"id": "p1", "sex": "female"}, []), "p1", "2026-08-17")
+def test_cycle_summary_has_no_fake_cycle_day_without_period_start():
+    state = asyncio.run(_cycle_summary(_Db({"id": "p1", "sex": "female"}, []), "p1", "2026-08-17"))
     assert state == {"state": "no_data", "cycle_day": None, "last_period_start": None}
 
 
-@pytest.mark.asyncio
-async def test_cycle_summary_uses_confirmed_period_start_only():
-    state = await _cycle_summary(
-        _Db({"id": "p1", "sex": "female"}, [{"observed_at": "2026-08-14T08:00:00+05:00"}]),
-        "p1",
-        "2026-08-17",
+def test_cycle_summary_uses_confirmed_period_start_only():
+    state = asyncio.run(
+        _cycle_summary(
+            _Db({"id": "p1", "sex": "female"}, [{"observed_at": "2026-08-14T08:00:00+05:00"}]),
+            "p1",
+            "2026-08-17",
+        )
     )
     assert state["state"] == "data"
     assert state["cycle_day"] == 4
