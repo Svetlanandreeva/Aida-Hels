@@ -27,15 +27,16 @@ def test_legacy_message_shape_is_preserved():
         DEFAULT_PROVIDER, DEFAULT_MODEL
     )
 
-    assert PROVIDER_CONTRACT_VERSION == "aida-llm-v1"
+    assert PROVIDER_CONTRACT_VERSION == "aida-llm-v2"
     assert message.text == "parse"
     assert message.file_contents[0].mime_type == "application/pdf"
     assert chat.provider == DEFAULT_PROVIDER
     assert chat.model == DEFAULT_MODEL
 
 
-def test_unconfigured_provider_fails_closed_with_clear_error():
-    chat = LlmChat(api_key="test", session_id="session", system_message="system")
+def test_unconfigured_provider_fails_closed_with_clear_error(monkeypatch):
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    chat = LlmChat(api_key="", session_id="session", system_message="system")
 
-    with pytest.raises(ProviderUnavailableError, match="not configured"):
+    with pytest.raises(ProviderUnavailableError, match="GEMINI_API_KEY is not configured"):
         asyncio.run(chat.send_message(UserMessage(text="hello")))
