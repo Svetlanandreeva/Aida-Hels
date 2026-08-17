@@ -36,10 +36,11 @@ def test_production_entrypoint_mounts_account_session_router():
 def test_frontend_uses_account_session_contract_and_keeps_current_device_signed_in():
     api_source = SESSION_API.read_text(encoding="utf-8")
     screen_source = PRIVACY_SCREEN.read_text(encoding="utf-8")
+    compact_screen_source = "".join(screen_source.split())
     assert 'apiFetch("/account/sessions"' in api_source
     assert '/account/sessions/${encodeURIComponent(sessionId)}' in api_source
     assert 'apiFetch("/account/sessions/revoke-others"' in api_source
-    assert 'x.active&&!x.is_current' in screen_source
+    assert 'x.active&&!x.is_current' in compact_screen_source
     assert 'accountSessionsApi.revokeOthers()' in screen_source
     assert 'logout()' not in screen_source
     assert 'router.replace("/auth"' not in screen_source
