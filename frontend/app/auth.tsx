@@ -319,7 +319,6 @@ export default function AuthScreen() {
             <>
               <View style={styles.dividerRow}><View style={styles.dividerLine} /><Text style={styles.dividerText}>{ru ? "или" : "or"}</Text><View style={styles.dividerLine} /></View>
               <View style={styles.socialStack}>
-                <SocialButton provider="yandex" label={ru ? "Продолжить с Яндекс ID" : "Continue with Yandex ID"} busy={socialBusy === "yandex"} disabled={busy || socialBusy !== null} onPress={() => socialLogin("yandex")} />
                 <SocialButton provider="vk" label={ru ? "Продолжить с VK ID" : "Continue with VK ID"} busy={socialBusy === "vk"} disabled={busy || socialBusy !== null} onPress={() => socialLogin("vk")} />
               </View>
             </>
@@ -371,7 +370,6 @@ export default function AuthScreen() {
 function friendlyError(raw: string, ru: boolean) {
   if (raw.includes("Account already exists")) return ru ? "Аккаунт с таким email уже существует" : "An account with this email already exists";
   if (raw.includes("Invalid email or password")) return ru ? "Неверный email или пароль" : "Incorrect email or password";
-  if (raw.includes("YANDEX login is not configured")) return ru ? "Вход через Яндекс ID ещё не подключён на сервере" : "Yandex ID is not configured on the server yet";
   if (raw.includes("VK login is not configured")) return ru ? "Вход через VK ID ещё не подключён на сервере" : "VK ID is not configured on the server yet";
   if (raw.includes("Authentication is not configured") || raw.includes("Request failed (503)")) return ru ? "Сервис авторизации временно недоступен. Попробуйте чуть позже." : "Authentication is temporarily unavailable. Please try again shortly.";
   if (raw.includes("Failed to fetch") || raw.includes("Network request failed")) return ru ? "Нет связи с сервером. Проверьте подключение и попробуйте ещё раз." : "Could not reach the server. Check your connection and try again.";
@@ -393,8 +391,8 @@ function SocialButton({ provider, label, busy, disabled, onPress }: { provider: 
     <Pressable style={[styles.socialButton, disabled && !busy && styles.socialButtonDisabled]} onPress={onPress} disabled={disabled} testID={`auth-social-${provider}`}>
       {busy ? <ActivityIndicator color={colors.onSurface} /> : (
         <>
-          <View style={[styles.socialIcon, provider === "vk" ? styles.socialIconVk : styles.socialIconYandex]}>
-            <Text style={styles.socialIconText}>{provider === "vk" ? "VK" : "Я"}</Text>
+          <View style={[styles.socialIcon, styles.socialIconVk]}>
+            <Text style={styles.socialIconText}>VK</Text>
           </View>
           <Text style={styles.socialLabel}>{label}</Text>
         </>
@@ -448,7 +446,6 @@ const styles = StyleSheet.create({
   socialButton: { minHeight: 52, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceSecondary, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, paddingHorizontal: spacing.lg },
   socialButtonDisabled: { opacity: 0.55 },
   socialIcon: { minWidth: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center", paddingHorizontal: 5 },
-  socialIconYandex: { backgroundColor: "#FC3F1D" },
   socialIconVk: { backgroundColor: "#0077FF" },
   socialIconText: { fontSize: 11, fontWeight: "900", color: "#FFFFFF", fontFamily: fonts.text },
   socialLabel: { fontSize: fontSize.sm, fontWeight: "800", color: colors.onSurface, fontFamily: fonts.text },
