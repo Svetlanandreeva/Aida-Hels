@@ -68,5 +68,5 @@ def test_auth_screen_distinguishes_server_configuration_and_network_failures():
     assert "Request failed (503)" in screen
     assert "Failed to fetch" in screen
     assert "Network request failed" in screen
-    assert "Сервис входа и регистрации ещё настраивается на сервере" in screen
+    assert "Сервис авторизации временно недоступен" in screen
     assert "Нет связи с сервером" in screen
