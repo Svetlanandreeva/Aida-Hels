@@ -15,6 +15,7 @@ from access_control import require_profile_access, require_record_access
 _TIME_RE = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
 _ALLOWED_MEAL = {"any", "before", "with", "after"}
 _ALLOWED_EVENT = {"taken", "skipped"}
+_ALLOWED_SOURCE = {"aida", "apple_health"}
 
 
 def _now():
@@ -39,6 +40,11 @@ def _notification_ids(values) -> List[str]:
     return out[:64]
 
 
+def _normalize_source(value: Any) -> str:
+    source = str(value or "aida").strip().lower()
+    return source if source in _ALLOWED_SOURCE else "aida"
+
+
 def _normalize_med(doc):
     if not doc:
         return doc
@@ -47,6 +53,9 @@ def _normalize_med(doc):
     result["notification_ids"] = _notification_ids(result.get("notification_ids"))
     meal = str(result.get("meal_relation") or "any").lower()
     result["meal_relation"] = meal if meal in _ALLOWED_MEAL else "any"
+    result["source"] = _normalize_source(result.get("source"))
+    result.setdefault("external_id", None)
+    result.setdefault("external_metadata", {})
     result.setdefault("active", True)
     result.setdefault("schedule", None)
     result.setdefault("dose", None)
@@ -70,6 +79,9 @@ class MedicationCreate(BaseModel):
     notification_ids: List[str] = Field(default_factory=list)
     first_dose_anchor: str = "clock"  # clock | wake
     wake_offset_minutes: int = 0
+    source: str = "aida"
+    external_id: Optional[str] = None
+    external_metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
 class MedicationUpdate(BaseModel):
@@ -140,6 +152,20 @@ def build_medication_router(db, auth) -> APIRouter:
         if meal not in _ALLOWED_MEAL:
             raise HTTPException(400, "Invalid meal relation")
         payload["meal_relation"] = meal
+        payload["source"] = _normalize_source(payload.get("source"))
+        external_id = str(payload.get("external_id") or "").strip() or None
+        payload["external_id"] = external_id
+        metadata = payload.get("external_metadata")
+        payload["external_metadata"] = metadata if isinstance(metadata, dict) else {}
+
+        if payload["source"] == "apple_health" and external_id:
+            existing = await db.medications.find_one(
+                {"profile_id": data.profile_id, "source": "apple_health", "external_id": external_id},
+                {"_id": 0},
+            )
+            if existing:
+                return _normalize_med(existing)
+
         payload.update({"id": str(uuid.uuid4()), "created_at": _now(), "updated_at": _now()})
         await db.medications.insert_one(payload)
         return _normalize_med(payload)

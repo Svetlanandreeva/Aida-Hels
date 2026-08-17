@@ -19,6 +19,11 @@ import { useApp } from "@/src/store";
 import { useI18n } from "@/src/i18n";
 import { api, Medication } from "@/src/api";
 import {
+  appleMedicationBridgeAvailable,
+  listAppleHealthMedications,
+  requestAppleMedicationAccess,
+} from "@/src/native-health";
+import {
   getMedicationDay,
   markMedicationIntake,
   MedicationSlot,
@@ -29,6 +34,8 @@ import { colors, spacing, radius, fontSize, fonts } from "@/src/theme";
 type RichMedication = Medication & {
   times?: string[];
   meal_relation?: string;
+  source?: "aida" | "apple_health" | string;
+  external_id?: string | null;
 };
 
 const TIME_RE = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
@@ -48,6 +55,10 @@ function parseTimes(value: string) {
   return [...new Set(found)].sort();
 }
 
+function medNameKey(value?: string | null) {
+  return String(value || "").trim().toLocaleLowerCase();
+}
+
 export default function MedicationsScreen() {
   const insets = useSafeAreaInsets();
   const { activeId, refreshTick, bumpRefresh } = useApp();
@@ -58,6 +69,9 @@ export default function MedicationsScreen() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [marking, setMarking] = useState<string | null>(null);
+  const [appleImporting, setAppleImporting] = useState(false);
+  const [appleImportMessage, setAppleImportMessage] = useState<string | null>(null);
+  const [appleImportError, setAppleImportError] = useState<string | null>(null);
 
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -68,6 +82,7 @@ export default function MedicationsScreen() {
   const [saving, setSaving] = useState(false);
 
   const today = localDateString();
+  const appleImportAvailable = appleMedicationBridgeAvailable();
 
   const load = useCallback(async () => {
     if (!activeId) {
@@ -119,6 +134,73 @@ export default function MedicationsScreen() {
     setEditorOpen(true);
   };
 
+  const importAppleHealth = async () => {
+    if (!activeId) return;
+    setAppleImporting(true);
+    setAppleImportMessage(null);
+    setAppleImportError(null);
+    try {
+      await requestAppleMedicationAccess();
+      const healthMeds = await listAppleHealthMedications();
+      const existingExternalIds = new Set(
+        items.filter((item) => item.source === "apple_health" && item.external_id).map((item) => item.external_id as string)
+      );
+      const existingNames = new Set(items.map((item) => medNameKey(item.name)).filter(Boolean));
+      let imported = 0;
+      let alreadyPresent = 0;
+
+      for (const med of healthMeds) {
+        const displayName = String(med.nickname || med.display_text || "").trim();
+        if (!displayName || !med.external_id) continue;
+        if (existingExternalIds.has(med.external_id) || existingNames.has(medNameKey(displayName))) {
+          alreadyPresent += 1;
+          continue;
+        }
+        await api.createMed({
+          profile_id: activeId,
+          name: displayName,
+          dose: null,
+          schedule: null,
+          times: [],
+          meal_relation: "any",
+          active: !med.is_archived,
+          start_date: today,
+          source: "apple_health",
+          external_id: med.external_id,
+          external_metadata: {
+            display_text: med.display_text,
+            nickname: med.nickname || null,
+            has_schedule: med.has_schedule,
+            general_form: med.general_form || null,
+            rxnorm_code: med.rxnorm_code || null,
+            codings: med.codings || [],
+          },
+        });
+        existingExternalIds.add(med.external_id);
+        existingNames.add(medNameKey(displayName));
+        imported += 1;
+      }
+
+      await load();
+      bumpRefresh();
+      setAppleImportMessage(
+        lang === "ru"
+          ? `Импортировано из Apple Health: ${imported}. Уже были в Аиде: ${alreadyPresent}.`
+          : `Imported from Apple Health: ${imported}. Already in Aida: ${alreadyPresent}.`
+      );
+    } catch (e: any) {
+      const raw = String(e?.message || e || "");
+      const requiresNewIos = raw.includes("iOS 26") || raw.includes("medications_api_unavailable");
+      setAppleImportError(
+        requiresNewIos
+          ? (lang === "ru" ? "Импорт лекарств из Apple Health требует iOS 26 или новее." : "Apple Health medication import requires iOS 26 or newer.")
+          : (lang === "ru" ? "Не удалось получить лекарства из Apple Health. Проверьте разрешение доступа." : "Could not read medications from Apple Health. Check Health permissions.")
+      );
+    } finally {
+      setAppleImporting(false);
+    }
+  };
+
   const saveMedication = async () => {
     if (!activeId || !name.trim()) return;
     const times = parseTimes(timesText);
@@ -141,6 +223,7 @@ export default function MedicationsScreen() {
           ...payload,
           active: true,
           start_date: today,
+          source: "aida",
         });
       }
       setEditorOpen(false);
@@ -199,7 +282,10 @@ export default function MedicationsScreen() {
           <Title>{m.name}</Title>
           <Muted style={{ marginTop: 2 }}>{m.dose || (lang === "ru" ? "Дозировка не указана" : "No dose")}</Muted>
         </View>
-        {m.active && <Tag label={t("active")} />}
+        <View style={styles.tagStack}>
+          {m.source === "apple_health" && <Tag label="Apple Health" />}
+          {m.active && <Tag label={t("active")} />}
+        </View>
       </View>
 
       <View style={styles.medMeta}>
@@ -250,6 +336,25 @@ export default function MedicationsScreen() {
             </View>
             <Ionicons name="chevron-forward" size={19} color={colors.onSurfaceInverse} />
           </Pressable>
+
+          {appleImportAvailable && (
+            <View style={styles.appleCard} testID="apple-health-medications-card">
+              <View style={styles.appleIcon}><Ionicons name="heart" size={20} color={colors.onSurface} /></View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.appleTitle}>{lang === "ru" ? "Лекарства из Apple Health" : "Medications from Apple Health"}</Text>
+                <Text style={styles.appleText}>
+                  {lang === "ru"
+                    ? "Импортируем препараты, которыми вы разрешили поделиться. Записи, созданные в Аиде, остаются в Аиде: Apple пока даёт сторонним приложениям чтение лекарств и событий приёма, но не создание системных записей лекарств."
+                    : "Import medications you choose to share. Medications created in Aida stay in Aida: Apple currently exposes medication and dose data to third-party apps for reading, not for creating Health medication records."}
+                </Text>
+                {appleImportMessage ? <Text style={styles.appleSuccess}>{appleImportMessage}</Text> : null}
+                {appleImportError ? <Text style={styles.appleError}>{appleImportError}</Text> : null}
+              </View>
+              <Pressable style={styles.appleButton} onPress={importAppleHealth} disabled={appleImporting} testID="import-apple-health-medications">
+                {appleImporting ? <ActivityIndicator color={colors.onSurfaceInverse} /> : <Ionicons name="download-outline" size={18} color={colors.onSurfaceInverse} />}
+              </Pressable>
+            </View>
+          )}
 
           {slots.length > 0 && (
             <View style={styles.todaySection}>
@@ -355,10 +460,17 @@ const styles = StyleSheet.create({
   stateText: { marginTop: spacing.sm, textAlign: "center" },
   retryBtn: { marginTop: spacing.lg, backgroundColor: colors.onSurface, borderRadius: radius.pill, paddingHorizontal: spacing.xl, paddingVertical: spacing.sm },
   retryText: { color: colors.surfaceSecondary, fontWeight: "700", fontFamily: fonts.text },
-  addCard: { minHeight: 82, flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.lg, borderRadius: radius.xl, backgroundColor: colors.onSurface, marginBottom: spacing.xl },
+  addCard: { minHeight: 82, flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.lg, borderRadius: radius.xl, backgroundColor: colors.onSurface, marginBottom: spacing.md },
   addIcon: { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.12)" },
   addTitle: { fontSize: fontSize.lg, fontWeight: "800", color: colors.onSurfaceInverse, fontFamily: fonts.text },
   addText: { marginTop: 2, fontSize: fontSize.sm, color: "rgba(255,255,255,0.65)", fontFamily: fonts.text },
+  appleCard: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md, padding: spacing.lg, borderRadius: radius.xl, backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.border, marginBottom: spacing.xl },
+  appleIcon: { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface },
+  appleTitle: { fontSize: fontSize.base, fontWeight: "800", color: colors.onSurface, fontFamily: fonts.text },
+  appleText: { marginTop: 4, fontSize: fontSize.sm, lineHeight: 18, color: colors.onSurfaceSecondary, fontFamily: fonts.text },
+  appleSuccess: { marginTop: spacing.sm, fontSize: fontSize.sm, color: colors.success, fontFamily: fonts.text },
+  appleError: { marginTop: spacing.sm, fontSize: fontSize.sm, color: colors.error, fontFamily: fonts.text },
+  appleButton: { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", backgroundColor: colors.onSurface },
   todaySection: { marginBottom: spacing.xl },
   sectionHead: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: spacing.md },
   sectionTitle: { fontSize: fontSize.xl, fontWeight: "800", color: colors.onSurface, fontFamily: fonts.display },
@@ -377,6 +489,7 @@ const styles = StyleSheet.create({
   doneText: { fontSize: fontSize.sm, fontWeight: "700", fontFamily: fonts.text },
   listTitle: { fontSize: fontSize.xl, fontWeight: "800", color: colors.onSurface, fontFamily: fonts.display, marginBottom: spacing.md },
   row: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  tagStack: { alignItems: "flex-end", gap: 5 },
   icon: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center" },
   medMeta: { gap: 7, marginTop: spacing.md, paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.divider },
   metaLine: { flexDirection: "row", alignItems: "center", gap: 7 },
