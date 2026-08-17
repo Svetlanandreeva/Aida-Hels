@@ -69,6 +69,7 @@ class ProfileFull(BaseModel):
     goals: List[str] = Field(default_factory=list)
     onboarding_completed: bool = False
     women_health: Dict[str, Any] = Field(default_factory=dict)
+    lifestyle: Dict[str, Any] = Field(default_factory=dict)
     emergency_contacts: List[Dict[str, Any]] = Field(default_factory=list)
     preferred_locale: Optional[str] = None
     timezone: Optional[str] = None
@@ -97,6 +98,7 @@ class ProfileCreate(BaseModel):
     goals: List[str] = Field(default_factory=list)
     onboarding_completed: bool = False
     women_health: Dict[str, Any] = Field(default_factory=dict)
+    lifestyle: Dict[str, Any] = Field(default_factory=dict)
     emergency_contacts: List[Dict[str, Any]] = Field(default_factory=list)
     preferred_locale: Optional[str] = None
     timezone: Optional[str] = None
@@ -120,6 +122,7 @@ class ProfileUpdate(BaseModel):
     goals: Optional[List[str]] = None
     onboarding_completed: Optional[bool] = None
     women_health: Optional[Dict[str, Any]] = None
+    lifestyle: Optional[Dict[str, Any]] = None
     emergency_contacts: Optional[List[Dict[str, Any]]] = None
     preferred_locale: Optional[str] = None
     timezone: Optional[str] = None
@@ -139,6 +142,7 @@ def _normalize(doc: Dict[str, Any], access_role: Optional[str] = None) -> Dict[s
     out.setdefault("goals", [])
     out.setdefault("onboarding_completed", False)
     out.setdefault("women_health", {})
+    out.setdefault("lifestyle", {})
     out.setdefault("emergency_contacts", [])
     out.setdefault("preferred_locale", None)
     out.setdefault("timezone", None)
