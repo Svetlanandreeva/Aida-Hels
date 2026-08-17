@@ -35,6 +35,7 @@ export default function TabsLayout() {
     >
       <Tabs.Screen name="index" options={{ title: lang === "ru" ? "Главная" : "Home" }} />
       <Tabs.Screen name="health" options={{ title: t("tab_health") }} />
+      <Tabs.Screen name="body" options={{ title: lang === "ru" ? "Организм" : "Body" }} />
       <Tabs.Screen name="chat" options={{ title: t("tab_chat") }} />
       <Tabs.Screen name="tasks" options={{ title: t("tab_tasks") }} />
       <Tabs.Screen name="profile" options={{ title: t("tab_profile") }} />
