@@ -33,12 +33,15 @@ jobs:
         env:
           RUVDS_SSH_KEY: ${{ secrets.RUVDS_SSH_KEY }}
           RUVDS_SSH_KNOWN_HOSTS: ${{ secrets.RUVDS_SSH_KNOWN_HOSTS }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          EMERGENT_LLM_KEY: ${{ secrets.EMERGENT_LLM_KEY }}
         run: |
           test -n "$RUVDS_HOST" || (echo 'RUVDS_HOST secret is missing' && exit 1)
           test -n "$RUVDS_USER" || (echo 'RUVDS_USER is missing' && exit 1)
           test -n "$RUVDS_SSH_KEY" || (echo 'RUVDS_SSH_KEY secret is missing' && exit 1)
           test -n "$RUVDS_SSH_KNOWN_HOSTS" || (echo 'RUVDS_SSH_KNOWN_HOSTS secret is missing' && exit 1)
           test -n "$RUVDS_PORT" || (echo 'RUVDS_PORT secret is missing' && exit 1)
+          test -n "${GEMINI_API_KEY}${EMERGENT_LLM_KEY}" || (echo 'GEMINI_API_KEY or legacy EMERGENT_LLM_KEY secret is missing' && exit 1)
 
       - name: Normalize SSH endpoint secrets
         run: |
@@ -149,8 +152,20 @@ jobs:
           tar -C backend --exclude='.env' --exclude='.venv' --exclude='node_modules' --exclude='.git' -czf - . | $SSH "$RUVDS_USER@$RUVDS_HOST" 'tar -xzf - -C /opt/aida/backend'
           tar -C frontend --exclude='node_modules' --exclude='.git' -czf - . | $SSH "$RUVDS_USER@$RUVDS_HOST" 'tar -xzf - -C /opt/aida/frontend'
 
-      - name: Ensure persistent auth secret and restart backend
+      - name: Sync Gemini secret and restart backend
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          EMERGENT_LLM_KEY: ${{ secrets.EMERGENT_LLM_KEY }}
+          GEMINI_MODEL: gemini-3.6-flash
         run: |
+          set -euo pipefail
+          AI_KEY="${GEMINI_API_KEY:-${EMERGENT_LLM_KEY:-}}"
+          test -n "$AI_KEY" || (echo 'Gemini API key is missing' && exit 1)
+          umask 077
+          printf 'GEMINI_API_KEY=%s\nGEMINI_MODEL=%s\n' "$AI_KEY" "$GEMINI_MODEL" > /tmp/aida-ai.env
+          scp -P "$RUVDS_PORT" -i ~/.ssh/ruvds -o ConnectTimeout=10 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            /tmp/aida-ai.env "$RUVDS_USER@$RUVDS_HOST:/tmp/aida-ai.env"
+          rm -f /tmp/aida-ai.env
           ssh -p "$RUVDS_PORT" -i ~/.ssh/ruvds -o ConnectTimeout=10 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes "$RUVDS_USER@$RUVDS_HOST" <<'EOF'
           set -euo pipefail
           cd /opt/aida/backend
@@ -158,16 +173,37 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           import secrets
-          path = Path('.env')
-          lines = path.read_text().splitlines()
-          existing = next((line.split('=', 1)[1].strip() for line in lines if line.startswith('JWT_SECRET=')), None)
-          if not existing or len(existing) < 32:
-              generated = secrets.token_hex(32)
-              updated = [line for line in lines if not line.startswith('JWT_SECRET=')]
-              if updated and updated[-1] != '':
-                  updated.append('')
-              updated.append(f'JWT_SECRET={generated}')
-              path.write_text('\n'.join(updated).rstrip() + '\n')
+
+          env_path = Path('.env')
+          incoming_path = Path('/tmp/aida-ai.env')
+          lines = env_path.read_text().splitlines()
+
+          incoming = {}
+          for raw in incoming_path.read_text().splitlines():
+              if '=' not in raw:
+                  continue
+              key, value = raw.split('=', 1)
+              incoming[key.strip()] = value.strip()
+          incoming_path.unlink(missing_ok=True)
+
+          def upsert(items, key, value):
+              filtered = [line for line in items if not line.startswith(f'{key}=')]
+              if filtered and filtered[-1] != '':
+                  filtered.append('')
+              filtered.append(f'{key}={value}')
+              return filtered
+
+          for key in ('GEMINI_API_KEY', 'GEMINI_MODEL'):
+              value = incoming.get(key, '')
+              if not value:
+                  raise SystemExit(f'{key} is missing from deploy payload')
+              lines = upsert(lines, key, value)
+
+          existing_jwt = next((line.split('=', 1)[1].strip() for line in lines if line.startswith('JWT_SECRET=')), None)
+          if not existing_jwt or len(existing_jwt) < 32:
+              lines = upsert(lines, 'JWT_SECRET', secrets.token_hex(32))
+
+          env_path.write_text('\n'.join(lines).rstrip() + '\n')
           PY
           SERVICE_USER="$(sudo -n /usr/bin/systemctl show aida-backend -p User --value)"
           if [ -z "$SERVICE_USER" ]; then SERVICE_USER=root; fi
@@ -211,6 +247,7 @@ jobs:
               'yandex_id': ('YANDEX_CLIENT_ID', 'YANDEX_CLIENT_SECRET', 'YANDEX_REDIRECT_URI'),
               'vk_id': ('VK_CLIENT_ID', 'VK_CLIENT_SECRET', 'VK_REDIRECT_URI'),
               'email_verification': ('SMTP_HOST', 'SMTP_USERNAME', 'SMTP_PASSWORD', 'SMTP_FROM', 'EMAIL_VERIFY_BASE_URL'),
+              'gemini_ocr': ('GEMINI_API_KEY', 'GEMINI_MODEL'),
           }
           readiness = {name: all(values.get(key) for key in keys) for name, keys in groups.items()}
           print('AUTH_READINESS=' + json.dumps(readiness, sort_keys=True))
