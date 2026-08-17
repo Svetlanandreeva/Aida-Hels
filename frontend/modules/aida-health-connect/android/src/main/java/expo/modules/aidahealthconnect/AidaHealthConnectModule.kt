@@ -78,12 +78,21 @@ class AidaHealthConnectModule : Module() {
       }
       val granted = manager.hasAllPermissions()
       if (!granted) {
-        return@Coroutine mapOf("granted" to false, "samples" to emptyList<Map<String, Any?>>())
+        return@Coroutine mapOf(
+          "granted" to false,
+          "samples" to emptyList<Map<String, Any?>>(),
+          "sleep_sessions" to emptyList<Map<String, Any?>>(),
+        )
       }
       val safeDays = (days ?: 30).coerceIn(1, 90)
       val start = Instant.now().minus(safeDays.toLong(), ChronoUnit.DAYS)
       val samples = manager.readRecentSamples(start)
-      return@Coroutine mapOf("granted" to true, "samples" to samples)
+      val sleepSessions = manager.readSleepSessions(start)
+      return@Coroutine mapOf(
+        "granted" to true,
+        "samples" to samples,
+        "sleep_sessions" to sleepSessions,
+      )
     }
 
     OnDestroy {

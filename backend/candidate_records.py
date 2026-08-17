@@ -1,12 +1,13 @@
-"""Safe AI-to-data workflow for Aida 2.0.
+"""Safe AI/import-to-data workflow for Aida 2.0.
 
-AI suggestions are stored as pending CandidateRecords. They do not become
-medical facts until an explicit approve action materializes them into a
-canonical collection. Rejections remain auditable.
+Suggestions and imported observations are stored as pending CandidateRecords.
+They do not become medical facts until an explicit approve action materializes
+them into a canonical collection. Rejections remain auditable.
 """
 
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Literal, Optional
@@ -22,20 +23,25 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+_TIME_RE = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+
 ALLOWED_TARGETS = {
     "symptom": "symptoms",
     "medication": "medications",
     "vital": "vitals",
     "checkin": "checkins",
     "task": "tasks",
+    "circadian_event": "circadian_events",
 }
+
+EntityType = Literal["symptom", "medication", "vital", "checkin", "task", "circadian_event"]
 
 
 class CandidateRecord(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     profile_id: str
     proposed_by: Literal["ai", "user", "import"] = "ai"
-    entity_type: Literal["symptom", "medication", "vital", "checkin", "task"]
+    entity_type: EntityType
     payload: Dict[str, Any]
     rationale: Optional[str] = None
     status: Literal["pending", "approved", "rejected"] = "pending"
@@ -49,7 +55,7 @@ class CandidateRecord(BaseModel):
 class CandidateCreate(BaseModel):
     profile_id: str
     proposed_by: Literal["ai", "user", "import"] = "ai"
-    entity_type: Literal["symptom", "medication", "vital", "checkin", "task"]
+    entity_type: EntityType
     payload: Dict[str, Any]
     rationale: Optional[str] = None
 
@@ -57,6 +63,35 @@ class CandidateCreate(BaseModel):
 class ReviewRequest(BaseModel):
     # Backward-compatible field; server derives the reviewer from auth.
     reviewer_account_id: Optional[str] = None
+
+
+def _validated_payload(candidate: Dict[str, Any]) -> Dict[str, Any]:
+    payload = dict(candidate.get("payload") or {})
+    payload.pop("profile_id", None)
+    payload.pop("id", None)
+
+    if candidate.get("entity_type") == "circadian_event":
+        kind = str(payload.get("kind") or "").strip().lower()
+        local_date = str(payload.get("local_date") or "").strip()
+        local_time = str(payload.get("local_time") or "").strip()
+        if kind not in {"wake", "bedtime"}:
+            raise HTTPException(400, "Circadian candidate kind must be wake or bedtime")
+        try:
+            datetime.strptime(local_date, "%Y-%m-%d")
+        except ValueError as exc:
+            raise HTTPException(400, "Circadian candidate local_date must be YYYY-MM-DD") from exc
+        if not _TIME_RE.match(local_time):
+            raise HTTPException(400, "Circadian candidate local_time must be HH:MM")
+        # Imported wearable observations become canonical only after this
+        # explicit user review. Never preserve an arbitrary caller-supplied
+        # source that could make an unreviewed observation look canonical.
+        payload["kind"] = kind
+        payload["local_date"] = local_date
+        payload["local_time"] = local_time
+        payload["source"] = "wearable_confirmed" if candidate.get("proposed_by") == "import" else "user_confirmed"
+        payload["verification_status"] = "user_confirmed"
+
+    return payload
 
 
 def build_candidate_router(db, auth) -> APIRouter:
@@ -111,7 +146,7 @@ def build_candidate_router(db, auth) -> APIRouter:
         if not target_name:
             raise HTTPException(400, "Unsupported candidate target")
 
-        payload = dict(candidate.get("payload") or {})
+        payload = _validated_payload(candidate)
         entity_id = str(uuid.uuid4())
         payload["id"] = entity_id
         payload["profile_id"] = candidate["profile_id"]

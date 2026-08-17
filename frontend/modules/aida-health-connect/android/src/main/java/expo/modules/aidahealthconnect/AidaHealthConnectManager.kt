@@ -37,6 +37,22 @@ internal class AidaHealthConnectManager(context: Context) {
 
   suspend fun hasAllPermissions(): Boolean = grantedPermissions().containsAll(readPermissions)
 
+  suspend fun readSleepSessions(start: Instant, end: Instant = Instant.now()): List<Map<String, Any?>> {
+    val filter = TimeRangeFilter.between(start, end)
+    return readAll<SleepSessionRecord>(filter)
+      .map { record ->
+        mapOf(
+          "external_id" to record.metadata.id,
+          "start_at" to record.startTime.toString(),
+          "end_at" to record.endTime.toString(),
+          "source_name" to record.metadata.dataOrigin.packageName,
+          "recording_method" to record.metadata.recordingMethod.toString(),
+          "stage_count" to record.stages.size,
+        )
+      }
+      .sortedBy { it["start_at"] as String }
+  }
+
   suspend fun readRecentSamples(start: Instant, end: Instant = Instant.now()): List<Map<String, Any?>> {
     val filter = TimeRangeFilter.between(start, end)
     val out = mutableListOf<Map<String, Any?>>()

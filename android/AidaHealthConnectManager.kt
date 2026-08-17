@@ -36,6 +36,22 @@ class AidaHealthConnectManager(context: Context) {
     suspend fun grantedPermissions(): Set<String> = client.permissionController.getGrantedPermissions()
     suspend fun hasAllPermissions(): Boolean = grantedPermissions().containsAll(readPermissions)
 
+    suspend fun readSleepSessions(start: Instant, end: Instant = Instant.now()): List<AidaHealthConnectSleepSession> {
+        val filter = TimeRangeFilter.between(start, end)
+        return readAll<SleepSessionRecord>(filter)
+            .map { record ->
+                AidaHealthConnectSleepSession(
+                    externalId = record.metadata.id,
+                    startAt = record.startTime,
+                    endAt = record.endTime,
+                    sourceName = record.metadata.dataOrigin.packageName,
+                    recordingMethod = record.metadata.recordingMethod.toString(),
+                    stageCount = record.stages.size,
+                )
+            }
+            .sortedBy { it.startAt }
+    }
+
     suspend fun readRecentSamples(start: Instant, end: Instant = Instant.now()): List<AidaHealthConnectSample> {
         val filter = TimeRangeFilter.between(start, end)
         val out = mutableListOf<AidaHealthConnectSample>()
@@ -95,6 +111,15 @@ class AidaHealthConnectManager(context: Context) {
     private fun sample(id: String, metric: String, value: Double, unit: String, start: Instant, end: Instant, source: String, recordingMethod: String) =
         AidaHealthConnectSample(id, metric, value, unit, start.toString(), end.toString(), source, recordingMethod)
 }
+
+data class AidaHealthConnectSleepSession(
+    val externalId: String,
+    val startAt: Instant,
+    val endAt: Instant,
+    val sourceName: String,
+    val recordingMethod: String,
+    val stageCount: Int,
+)
 
 data class AidaHealthConnectSample(
     val externalId: String,
