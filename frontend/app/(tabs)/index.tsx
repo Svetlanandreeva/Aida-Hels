@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { TopBar } from "@/src/components/TopBar";
 import { Card, GradientCard, Title, Muted, Tag, PrimaryButton } from "@/src/components/ui";
 import { Sheet } from "@/src/components/Sheet";
+import { ReadinessProgressCard } from "@/src/components/ReadinessProgressCard";
 import { useLog } from "@/src/components/LogProvider";
 import { useApp } from "@/src/store";
 import { useI18n } from "@/src/i18n";
@@ -338,7 +339,7 @@ export default function HomeScreen() {
       {loading ? <View style={styles.center}><ActivityIndicator size="large" color={colors.onSurface} /></View> : (
         <ScrollView contentContainerStyle={{ paddingHorizontal: responsive.contentPadding, paddingTop: spacing.lg, paddingBottom: (responsive.isDesktop ? 40 : 96) + insets.bottom }} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.onSurface} />}>
           <View style={styles.statStrip}><View style={styles.statPill}><Text style={styles.statNum}>{hasLabStatusData ? inRange : "—"}</Text><View style={[styles.statTag, { backgroundColor: colors.accent }]}><Text style={styles.statTagText}>{lang === "ru" ? "В норме" : "In range"}</Text></View></View><View style={styles.statPill}><Text style={styles.statNum}>{hasLabStatusData ? outRange : "—"}</Text><View style={[styles.statTag, { backgroundColor: "#F6D8CE" }]}><Text style={[styles.statTagText, { color: colors.error }]}>{lang === "ru" ? "Вне нормы" : "Out of range"}</Text></View></View></View>
-          {readinessOn && <GradientCard gradient={gradients.warm} style={styles.hero} testID="hero-readiness"><Text style={styles.heroLabel}>{t("readiness")}</Text>{hasReadinessData ? <><Text style={styles.heroNum}>{readiness!.overall}%</Text><Text style={styles.heroSub}>{t("readiness_hint")}</Text><View style={styles.heroBar}><View style={{ width: `${Math.max(0, Math.min(100, readiness!.overall))}%`, height: "100%", backgroundColor: colors.onSurface, borderRadius: 3 }} /></View></> : <><Text style={styles.heroNum}>—</Text><Text style={styles.heroSub}>{t("not_enough_data")}</Text></>}</GradientCard>}
+          {readinessOn && <ReadinessProgressCard activeId={activeId} profile={activeProfile} readiness={readiness} hasReadinessData={hasReadinessData} labs={labs} symptoms={symptoms} onOpenLab={openLab} onOpenCheckin={() => setCheckinOpen(true)} onNavigate={(route) => router.push(route as any)} />}
           {aiAnalyticsOn && overview?.ai_summary ? <GradientCard gradient={gradients.lime} style={{ marginBottom: spacing.md }} testID="ai-day-card"><View style={styles.aiHead}><Ionicons name="sparkles" size={16} color={colors.onSurface} /><Text style={styles.aiHeadText}>{t("ai_day")}</Text></View><Text style={styles.aiText}>{overview.ai_summary}</Text></GradientCard> : null}
           <Card style={{ marginBottom: spacing.md }} testID="attention-card"><WidgetHeader icon="alert-circle-outline" label={t("needs_attention")} />{overview?.attention?.length ? overview.attention.map((a, i) => <Pressable key={i} style={styles.attnRow} testID={`attention-${i}`} onPress={() => router.push((a.type === "bp" ? "/pressure" : a.type === "symptom" ? "/history" : "/labs") as any)}><View style={[styles.attnDot, { backgroundColor: a.severity === "error" ? colors.error : colors.warning }]} /><View style={{ flex: 1 }}><Text style={styles.attnTitle}>{a.title}</Text>{a.subtitle ? <Muted>{a.subtitle}</Muted> : null}</View><Ionicons name="chevron-forward" size={16} color={colors.onSurfaceSecondary} /></Pressable>) : hasHealthEvidence && overview ? <View style={styles.allGood}><Ionicons name="checkmark-circle" size={20} color={colors.success} /><Muted style={{ flex: 1 }}>{t("all_good")}</Muted></View> : <View style={styles.neutralState}><Ionicons name="information-circle-outline" size={20} color={colors.onSurfaceSecondary} /><Muted style={{ flex: 1 }}>{t("not_enough_data")}</Muted></View>}</Card>
 
@@ -426,7 +427,7 @@ export default function HomeScreen() {
                 return (
                   <Pressable
                     key={value}
-                    onPress={() => setCheckinVals((prev) => ({ ...prev, [metric.key]: value }))}
+                    onPress={() => setCheckinVals((prev) => ({ ...prev, [metric.key]: value }))
                     style={[styles.scaleButton, active && { backgroundColor: activeColor, borderColor: activeColor }]}
                     testID={`home-checkin-${metric.key}-${value}`}
                   >
