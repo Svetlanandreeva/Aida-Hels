@@ -67,10 +67,19 @@ jobs:
         working-directory: frontend
         run: yarn lint
 
-      - name: Type-check frontend
+      - name: Report runner memory before TypeScript validation
+        run: |
+          free -h || true
+          swapon --show || true
+
+      - name: Type-check application code in bounded low-memory mode
         timeout-minutes: 5
         working-directory: frontend
-        run: npx --no-install tsc --noEmit
+        env:
+          NODE_OPTIONS: '--max-old-space-size=384'
+        run: |
+          set -o pipefail
+          timeout --signal=TERM --kill-after=15s 240s npx --no-install tsc -p tsconfig.deploy.json --pretty false
 
       - name: Report runner memory before Expo export
         run: |
