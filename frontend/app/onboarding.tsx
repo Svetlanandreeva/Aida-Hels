@@ -26,7 +26,10 @@ const WOMEN_BRANCH = [
   ["pregnancy", "Беременность", "Pregnancy"],
 ];
 
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const splitStoredDob = (value?: string | null) => {
+  const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return match ? { day: match[3], month: match[2], year: match[1] } : { day: "", month: "", year: "" };
+};
 
 export default function OnboardingScreen() {
   const { activeId, activeProfile, reload } = useApp();
@@ -34,9 +37,12 @@ export default function OnboardingScreen() {
   const ru = lang === "ru";
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const initialDob = splitStoredDob(activeProfile?.dob);
 
   const [name, setName] = useState(activeProfile?.name === "Мой профиль" ? "" : activeProfile?.name || "");
-  const [dob, setDob] = useState(activeProfile?.dob || "");
+  const [dobDay, setDobDay] = useState(initialDob.day);
+  const [dobMonth, setDobMonth] = useState(initialDob.month);
+  const [dobYear, setDobYear] = useState(initialDob.year);
   const [sex, setSex] = useState(activeProfile?.sex || "");
   const [height, setHeight] = useState(activeProfile?.height_cm ? String(activeProfile.height_cm) : "");
   const [weight, setWeight] = useState(activeProfile?.weight_kg ? String(activeProfile.weight_kg) : "");
@@ -50,10 +56,18 @@ export default function OnboardingScreen() {
   const womenRelevant = sex === "female" && goals.includes("women");
 
   const numericOrNull = (value: string) => value.trim() ? Number(value.replace(",", ".")) : null;
+  const normalizedDob = () => {
+    const day = dobDay.trim();
+    const month = dobMonth.trim();
+    const year = dobYear.trim();
+    if (!day && !month && !year) return null;
+    if (!day || !month || !year) return "";
+    return `${year.padStart(4, "0")}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  };
 
   const currentPayload = (overrides: Record<string, any> = {}) => ({
     name: name.trim() || activeProfile?.name || "",
-    dob: dob.trim() || null,
+    dob: normalizedDob() || null,
     sex: sex || null,
     height_cm: numericOrNull(height),
     weight_kg: numericOrNull(weight),
@@ -63,7 +77,20 @@ export default function OnboardingScreen() {
   });
 
   const validateOptionalFields = () => {
-    if (dob.trim() && !DATE_RE.test(dob.trim())) return ru ? "Дата рождения: используйте формат YYYY-MM-DD" : "Date of birth must use YYYY-MM-DD";
+    const day = Number(dobDay);
+    const month = Number(dobMonth);
+    const year = Number(dobYear);
+    const hasAnyDob = !!(dobDay.trim() || dobMonth.trim() || dobYear.trim());
+    const hasFullDob = !!(dobDay.trim() && dobMonth.trim() && dobYear.trim());
+    if (hasAnyDob && !hasFullDob) return ru ? "Заполните дату рождения полностью: день, месяц и год" : "Complete the full date of birth: day, month and year";
+    if (hasFullDob) {
+      const candidate = new Date(Date.UTC(year, month - 1, day));
+      const valid = Number.isInteger(day) && Number.isInteger(month) && Number.isInteger(year)
+        && year >= 1900 && year <= new Date().getUTCFullYear()
+        && month >= 1 && month <= 12 && day >= 1 && day <= 31
+        && candidate.getUTCFullYear() === year && candidate.getUTCMonth() === month - 1 && candidate.getUTCDate() === day;
+      if (!valid) return ru ? "Проверьте дату рождения" : "Check the date of birth";
+    }
     const h = numericOrNull(height);
     const w = numericOrNull(weight);
     if (h !== null && (!Number.isFinite(h) || h <= 0)) return ru ? "Проверьте рост" : "Check height";
@@ -117,7 +144,7 @@ export default function OnboardingScreen() {
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || null;
       await api.updateProfile(activeId, {
         name: name.trim(),
-        dob: skipDetails ? activeProfile?.dob : (dob.trim() || null),
+        dob: skipDetails ? activeProfile?.dob : normalizedDob(),
         sex: skipDetails ? activeProfile?.sex : (sex || null),
         height_cm: skipDetails ? activeProfile?.height_cm : numericOrNull(height),
         weight_kg: skipDetails ? activeProfile?.weight_kg : numericOrNull(weight),
@@ -147,7 +174,22 @@ export default function OnboardingScreen() {
 
     <Section title={ru ? "Основное" : "Basics"}>
       <Input label={ru ? "Имя *" : "Name *"} value={name} onChangeText={setName} onBlur={() => saveDraft()} placeholder={ru ? "Как к вам обращаться" : "Your name"} />
-      <Input label={ru ? "Дата рождения" : "Date of birth"} value={dob} onChangeText={setDob} onBlur={() => saveDraft()} placeholder="YYYY-MM-DD" />
+      <Text style={styles.label}>{ru ? "Дата рождения" : "Date of birth"}</Text>
+      <View style={styles.dateRow}>
+        <View style={styles.datePart}>
+          <Text style={styles.datePartLabel}>{ru ? "День" : "Day"}</Text>
+          <TextInput value={dobDay} onChangeText={(value) => setDobDay(value.replace(/\D/g, "").slice(0, 2))} onBlur={() => saveDraft()} placeholder="ДД" placeholderTextColor={colors.onSurfaceSecondary} style={[styles.input, styles.dateInput]} keyboardType="number-pad" maxLength={2} />
+        </View>
+        <View style={styles.datePart}>
+          <Text style={styles.datePartLabel}>{ru ? "Месяц" : "Month"}</Text>
+          <TextInput value={dobMonth} onChangeText={(value) => setDobMonth(value.replace(/\D/g, "").slice(0, 2))} onBlur={() => saveDraft()} placeholder="ММ" placeholderTextColor={colors.onSurfaceSecondary} style={[styles.input, styles.dateInput]} keyboardType="number-pad" maxLength={2} />
+        </View>
+        <View style={[styles.datePart, styles.dateYear]}>
+          <Text style={styles.datePartLabel}>{ru ? "Год" : "Year"}</Text>
+          <TextInput value={dobYear} onChangeText={(value) => setDobYear(value.replace(/\D/g, "").slice(0, 4))} onBlur={() => saveDraft()} placeholder="ГГГГ" placeholderTextColor={colors.onSurfaceSecondary} style={[styles.input, styles.dateInput]} keyboardType="number-pad" maxLength={4} />
+        </View>
+      </View>
+      <Text style={styles.dateHint}>{ru ? "День · месяц · год" : "Day · month · year"}</Text>
       <Text style={styles.label}>{ru ? "Пол / медицинский контекст" : "Sex / medical context"}</Text>
       <View style={styles.row}>{[["female", ru ? "Женский" : "Female"], ["male", ru ? "Мужской" : "Male"], ["", ru ? "Не указывать" : "Prefer not to say"]].map(([v,l]) => <Pressable key={l} style={[styles.chip, sex === v && styles.chipActive]} onPress={() => setSexAndPersist(v)}><Text style={[styles.chipText, sex === v && styles.chipTextActive]}>{l}</Text></Pressable>)}</View>
       <View style={styles.two}><View style={styles.half}><Input label={ru ? "Рост, см" : "Height, cm"} value={height} onChangeText={setHeight} onBlur={() => saveDraft()} placeholder="168" keyboardType="decimal-pad" /></View><View style={styles.half}><Input label={ru ? "Вес, кг" : "Weight, kg"} value={weight} onChangeText={setWeight} onBlur={() => saveDraft()} placeholder="65" keyboardType="decimal-pad" /></View></View>
@@ -178,6 +220,7 @@ const styles = StyleSheet.create({
   draftState:{marginTop:spacing.sm,flexDirection:"row",alignItems:"center",gap:6},draftText:{fontSize:fontSize.sm,color:colors.onSurfaceSecondary,fontFamily:fonts.text},
   section:{marginTop:spacing.xl,backgroundColor:colors.surfaceSecondary,borderRadius:radius.lg,borderWidth:1,borderColor:colors.border,padding:spacing.lg}, sectionTitle:{fontSize:fontSize.lg,fontWeight:"800",color:colors.onSurface,marginBottom:spacing.lg,fontFamily:fonts.display},
   label:{fontSize:fontSize.sm,fontWeight:"700",color:colors.onSurfaceSecondary,marginBottom:7,fontFamily:fonts.text}, input:{minHeight:50,borderRadius:radius.md,borderWidth:1,borderColor:colors.border,backgroundColor:colors.surface,paddingHorizontal:spacing.md,color:colors.onSurface,fontSize:fontSize.base},
+  dateRow:{flexDirection:"row",gap:spacing.sm,alignItems:"flex-end"},datePart:{flex:1,minWidth:92},dateYear:{flex:1.25},datePartLabel:{fontSize:12,fontWeight:"700",color:colors.onSurfaceSecondary,marginBottom:6,fontFamily:fonts.text},dateInput:{textAlign:"center",paddingHorizontal:10},dateHint:{fontSize:12,color:colors.onSurfaceSecondary,marginTop:6,marginBottom:spacing.md,fontFamily:fonts.text},
   row:{flexDirection:"row",flexWrap:"wrap",gap:8,marginBottom:spacing.md}, chip:{paddingHorizontal:14,paddingVertical:9,borderRadius:radius.pill,backgroundColor:colors.surface,borderWidth:1,borderColor:colors.border},chipActive:{backgroundColor:colors.onSurface},chipText:{color:colors.onSurface,fontWeight:"700"},chipTextActive:{color:colors.onSurfaceInverse},
   two:{flexDirection:"row",gap:spacing.md,flexWrap:"wrap"},half:{flex:1,minWidth:180},goals:{gap:8},goal:{flexDirection:"row",alignItems:"center",gap:10,minHeight:46,paddingHorizontal:spacing.md,borderRadius:radius.md,backgroundColor:colors.surface},goalActive:{borderWidth:1,borderColor:colors.onSurface},goalText:{fontSize:fontSize.base,color:colors.onSurface,fontFamily:fonts.text},
   branch:{marginTop:spacing.lg,paddingTop:spacing.lg,borderTopWidth:1,borderTopColor:colors.divider},branchTitle:{fontSize:fontSize.sm,fontWeight:"800",color:colors.onSurfaceSecondary,marginBottom:spacing.sm,fontFamily:fonts.text},
