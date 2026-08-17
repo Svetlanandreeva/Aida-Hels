@@ -125,27 +125,20 @@ jobs:
           python3 - <<'PY'
           import base64
           import os
-          import re
-          import textwrap
           from pathlib import Path
 
           raw = os.environ['RUVDS_SSH_KEY'].strip()
-          key = raw.replace('\\n', '\n').replace('\r\n', '\n').replace('\r', '\n').strip()
-          if '-----BEGIN ' not in key:
-              try:
-                  decoded = base64.b64decode(key, validate=True).decode('utf-8').strip()
-                  if '-----BEGIN ' in decoded:
-                      key = decoded
-              except Exception:
-                  pass
-          match = re.search(r'(-----BEGIN [^-]+-----)(.*?)(-----END [^-]+-----)', key, flags=re.S)
-          if match:
-              begin, body, end = match.groups()
-              compact = re.sub(r'\s+', '', body)
-              if compact:
-                  key = begin + '\n' + '\n'.join(textwrap.wrap(compact, 70)) + '\n' + end
-          Path.home().joinpath('.ssh/ruvds').write_text(key + '\n')
-          Path.home().joinpath('.ssh/known_hosts').write_text(os.environ['RUVDS_SSH_KNOWN_HOSTS'].strip() + '\n')
+          try:
+              key_bytes = base64.b64decode(raw, validate=True)
+              if b'-----BEGIN ' not in key_bytes:
+                  raise ValueError('decoded payload is not an OpenSSH/PEM private key')
+          except Exception as exc:
+              raise SystemExit(f'RUVDS_SSH_KEY must be base64 of the private key bytes: {exc}')
+
+          Path.home().joinpath('.ssh/ruvds').write_bytes(key_bytes)
+          Path.home().joinpath('.ssh/known_hosts').write_text(
+              os.environ['RUVDS_SSH_KNOWN_HOSTS'].strip() + '\n', encoding='utf-8'
+          )
           PY
           chmod 600 ~/.ssh/ruvds ~/.ssh/known_hosts
           ssh-keygen -y -f ~/.ssh/ruvds >/dev/null
