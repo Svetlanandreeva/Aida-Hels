@@ -94,8 +94,10 @@ jobs:
           NODE_OPTIONS: '--max-old-space-size=640'
         run: |
           npx --no-install expo export -p web --max-workers 1
+          cp public/aida-logo.svg dist/aida-logo.svg
           test -f dist/index.html
           test -d dist/_expo
+          test -s dist/aida-logo.svg
 
       - name: Setup Python 3.12
         uses: actions/setup-python@v5
