@@ -13,10 +13,10 @@ from pathlib import Path
 from typing import Any, Dict
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from emergentintegrations.llm.chat import FileContentWithMimeType, LlmChat, UserMessage
 
 from access_control import require_profile_access
 from google_drive_storage import build_drive_storage_from_env
+from llm_provider import FileContentWithMimeType, LlmChat, UserMessage
 from server import Biomarker, EMERGENT_LLM_KEY, GEMINI_MODEL, LabTest
 
 
@@ -43,6 +43,11 @@ def _extract_json(raw: str):
     return None
 
 
+def _ocr_key() -> str:
+    """Prefer the explicit Gemini key while keeping the legacy key as fallback."""
+    return (os.environ.get("GEMINI_API_KEY") or EMERGENT_LLM_KEY or "").strip()
+
+
 def build_lab_router(db, auth) -> APIRouter:
     router = APIRouter(prefix="/api", tags=["labs"])
     drive = build_drive_storage_from_env()
@@ -58,7 +63,8 @@ def build_lab_router(db, auth) -> APIRouter:
 
         if not drive:
             raise HTTPException(503, "Google Drive storage is not configured")
-        if not EMERGENT_LLM_KEY:
+        api_key = _ocr_key()
+        if not api_key:
             raise HTTPException(503, "OCR service is not configured")
 
         content = await file.read()
@@ -114,13 +120,13 @@ def build_lab_router(db, auth) -> APIRouter:
                 f'Язык summary: {"русский" if language.startswith("ru") else "английский"}.'
             )
             chat = LlmChat(
-                api_key=EMERGENT_LLM_KEY,
+                api_key=api_key,
                 session_id=f"lab-ocr-{uuid.uuid4()}",
                 system_message=(
                     "Ты медицинский OCR-парсер. Извлекай только явно видимые данные из документа. "
                     "Не угадывай значения, нормы, даты и названия. Возвращай только валидный JSON."
                 ),
-            ).with_model("gemini", GEMINI_MODEL)
+            ).with_model("gemini", os.environ.get("GEMINI_MODEL") or GEMINI_MODEL)
             attachment = FileContentWithMimeType(file_path=tmp_path, mime_type=mime)
             response = await chat.send_message(UserMessage(text=schema_hint, file_contents=[attachment]))
             parsed = _extract_json(response if isinstance(response, str) else str(response))
