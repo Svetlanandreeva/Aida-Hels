@@ -65,23 +65,42 @@ class ReviewRequest(BaseModel):
     reviewer_account_id: Optional[str] = None
 
 
+class CircadianCorrectionRequest(BaseModel):
+    """Fields the user is allowed to correct before approving wearable sleep.
+
+    Provider/source identifiers and ingestion metadata are intentionally not
+    accepted here: review can correct the observation, never rewrite provenance.
+    """
+
+    kind: Literal["wake", "bedtime"]
+    local_date: str
+    local_time: str
+
+
+def _validate_circadian_fields(kind: str, local_date: str, local_time: str) -> tuple[str, str, str]:
+    kind = str(kind or "").strip().lower()
+    local_date = str(local_date or "").strip()
+    local_time = str(local_time or "").strip()
+    if kind not in {"wake", "bedtime"}:
+        raise HTTPException(400, "Circadian candidate kind must be wake or bedtime")
+    try:
+        datetime.strptime(local_date, "%Y-%m-%d")
+    except ValueError as exc:
+        raise HTTPException(400, "Circadian candidate local_date must be YYYY-MM-DD") from exc
+    if not _TIME_RE.match(local_time):
+        raise HTTPException(400, "Circadian candidate local_time must be HH:MM")
+    return kind, local_date, local_time
+
+
 def _validated_payload(candidate: Dict[str, Any]) -> Dict[str, Any]:
     payload = dict(candidate.get("payload") or {})
     payload.pop("profile_id", None)
     payload.pop("id", None)
 
     if candidate.get("entity_type") == "circadian_event":
-        kind = str(payload.get("kind") or "").strip().lower()
-        local_date = str(payload.get("local_date") or "").strip()
-        local_time = str(payload.get("local_time") or "").strip()
-        if kind not in {"wake", "bedtime"}:
-            raise HTTPException(400, "Circadian candidate kind must be wake or bedtime")
-        try:
-            datetime.strptime(local_date, "%Y-%m-%d")
-        except ValueError as exc:
-            raise HTTPException(400, "Circadian candidate local_date must be YYYY-MM-DD") from exc
-        if not _TIME_RE.match(local_time):
-            raise HTTPException(400, "Circadian candidate local_time must be HH:MM")
+        kind, local_date, local_time = _validate_circadian_fields(
+            payload.get("kind"), payload.get("local_date"), payload.get("local_time")
+        )
         # Imported wearable observations become canonical only after this
         # explicit user review. Never preserve an arbitrary caller-supplied
         # source that could make an unreviewed observation look canonical.
@@ -130,6 +149,46 @@ def build_candidate_router(db, auth) -> APIRouter:
             source="ai" if candidate.proposed_by == "ai" else "user",
             metadata={"target_entity_type": candidate.entity_type},
         )
+        return candidate
+
+    @router.patch("/{candidate_id}/circadian", response_model=CandidateRecord)
+    async def correct_circadian_candidate(
+        candidate_id: str,
+        correction: CircadianCorrectionRequest,
+        account: Dict[str, Any] = Depends(auth.require_account),
+    ):
+        candidate = await require_record_access(db, auth, account, "candidates", candidate_id, write=True)
+        if candidate.get("status") != "pending":
+            raise HTTPException(409, "Only pending candidates can be corrected")
+        if candidate.get("entity_type") != "circadian_event":
+            raise HTTPException(400, "Candidate is not a circadian event")
+
+        kind, local_date, local_time = _validate_circadian_fields(
+            correction.kind, correction.local_date, correction.local_time
+        )
+        payload = dict(candidate.get("payload") or {})
+        # Keep provider, source_record_id, metadata and confidence untouched.
+        payload.update({"kind": kind, "local_date": local_date, "local_time": local_time})
+        updated_at = _now()
+        await db.candidates.update_one(
+            {"id": candidate_id, "status": "pending"},
+            {"$set": {"payload": payload, "updated_at": updated_at}},
+        )
+        await write_audit(
+            db,
+            action="candidate.corrected",
+            entity_type="candidate",
+            entity_id=candidate_id,
+            account_id=str(account["id"]),
+            profile_id=candidate["profile_id"],
+            source="user",
+            metadata={
+                "target_entity_type": "circadian_event",
+                "corrected_fields": ["kind", "local_date", "local_time"],
+            },
+        )
+        candidate["payload"] = payload
+        candidate["updated_at"] = updated_at
         return candidate
 
     @router.post("/{candidate_id}/approve")

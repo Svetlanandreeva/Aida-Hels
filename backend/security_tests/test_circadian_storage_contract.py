@@ -30,6 +30,22 @@ def test_wearable_sleep_anchor_requires_candidate_review():
     assert 'payload["verification_status"] = "user_confirmed"' in candidates
 
 
+def test_pending_circadian_candidate_can_be_corrected_without_rewriting_provenance():
+    candidates = (ROOT / "candidate_records.py").read_text(encoding="utf-8")
+    circadian_api = (REPO_ROOT / "frontend" / "src" / "circadianApi.ts").read_text(encoding="utf-8")
+
+    assert '@router.patch("/{candidate_id}/circadian"' in candidates
+    assert 'Only pending candidates can be corrected' in candidates
+    assert 'Candidate is not a circadian event' in candidates
+    assert 'payload.update({"kind": kind, "local_date": local_date, "local_time": local_time})' in candidates
+    assert 'Keep provider, source_record_id, metadata and confidence untouched.' in candidates
+    assert 'action="candidate.corrected"' in candidates
+    assert 'corrected_fields' in candidates
+    assert 'correctCircadianCandidate' in circadian_api
+    assert 'method: "PATCH"' in circadian_api
+    assert '/circadian`' in circadian_api
+
+
 def test_healthkit_sleep_is_staged_as_candidates_before_circadian_use():
     coordinator = (REPO_ROOT / "ios" / "AidaHealthSyncCoordinator.swift").read_text(encoding="utf-8")
     client = (REPO_ROOT / "ios" / "CircadianCandidateClient.swift").read_text(encoding="utf-8")
