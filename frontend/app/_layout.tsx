@@ -111,11 +111,10 @@ function RoutedApp() {
 }
 
 export default function RootLayout() {
-  const [loaded, error] = useIconFonts();
+  // Icon fonts can arrive after first paint. They are enhancement assets, not a
+  // reason to hold the whole app behind a splash screen (especially in Expo Go/CDN mode).
+  useIconFonts();
   useEffect(() => { SplashScreen.hideAsync().catch(() => undefined); }, []);
-  // Web should never hold the whole application behind remote icon-font loading.
-  // Native keeps the existing guard to avoid missing glyphs during app startup.
-  if (Platform.OS !== "web" && !loaded && !error) return <StartupPreview />;
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.surface }}>
       <KeyboardProvider>
