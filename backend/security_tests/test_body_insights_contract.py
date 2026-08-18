@@ -24,7 +24,7 @@ def test_body_ui_links_to_evidence_details():
     app_root = ROOT.parent / "frontend" / "app"
     body = (app_root / "body.tsx").read_text(encoding="utf-8")
     detail = (app_root / "body-system.tsx").read_text(encoding="utf-8")
-    assert 'pathname:"/body-system"' in body
-    assert "body-map-" in body
+    assert 'pathname: "/body-system"' in body
+    assert "body-system-tile-" in body
     assert "getBodySystem" in detail
     assert "provenance" in detail.lower()
