@@ -61,25 +61,71 @@ export type HomePayload = {
   };
 };
 
+const HOME_CACHE_TTL_MS = 30_000;
+const homeCache = new Map<string, { value: HomePayload; expiresAt: number }>();
+const homeInflight = new Map<string, Promise<HomePayload>>();
+
 function localTime() {
   const date = new Date();
   return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
 
-export async function getHome(profileId: string, date: string, language: string): Promise<HomePayload> {
-  const query = new URLSearchParams({
-    date,
-    now_local: localTime(),
-    language,
-  });
-  const response = await withTimeout(
-    apiFetch(`/home/${encodeURIComponent(profileId)}?${query.toString()}`),
-    5500,
-    "home",
-  );
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error(`${response.status}: ${text}`);
+function cacheKey(profileId: string, date: string, language: string) {
+  return `${profileId}:${date}:${language}`;
+}
+
+export function hasFreshHome(profileId: string, date: string, language: string) {
+  const cached = homeCache.get(cacheKey(profileId, date, language));
+  return Boolean(cached && cached.expiresAt > Date.now());
+}
+
+export function invalidateHome(profileId?: string) {
+  if (!profileId) {
+    homeCache.clear();
+    return;
   }
-  return withTimeout(response.json(), 1500, "home_json");
+  for (const key of homeCache.keys()) {
+    if (key.startsWith(`${profileId}:`)) homeCache.delete(key);
+  }
+}
+
+export async function getHome(
+  profileId: string,
+  date: string,
+  language: string,
+  options: { force?: boolean } = {},
+): Promise<HomePayload> {
+  const key = cacheKey(profileId, date, language);
+  const cached = homeCache.get(key);
+  if (!options.force && cached && cached.expiresAt > Date.now()) return cached.value;
+
+  const pending = homeInflight.get(key);
+  if (!options.force && pending) return pending;
+
+  const request = (async () => {
+    const query = new URLSearchParams({
+      date,
+      now_local: localTime(),
+      language,
+    });
+    const response = await withTimeout(
+      apiFetch(`/home/${encodeURIComponent(profileId)}?${query.toString()}`),
+      5500,
+      "home",
+    );
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error(`${response.status}: ${text}`);
+    }
+    const value = await withTimeout(response.json(), 1500, "home_json") as HomePayload;
+    homeCache.set(key, { value, expiresAt: Date.now() + HOME_CACHE_TTL_MS });
+    return value;
+  })();
+
+  homeInflight.set(key, request);
+  try {
+    return await request;
+  } finally {
+    if (homeInflight.get(key) === request) homeInflight.delete(key);
+  }
 }
