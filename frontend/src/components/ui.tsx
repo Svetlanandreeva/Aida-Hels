@@ -264,7 +264,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    height: 56,
+    minHeight: 56,
     borderRadius: radius.pill,
     paddingHorizontal: spacing.xl,
   },
@@ -276,6 +276,8 @@ const styles = StyleSheet.create({
     borderColor: colors.borderStrong,
   },
   btnText: {
+    flexShrink: 1,
+    textAlign: "center",
     fontSize: fontSize.lg,
     fontWeight: "700",
     fontFamily: fonts.text,
