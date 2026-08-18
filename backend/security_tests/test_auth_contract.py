@@ -22,7 +22,8 @@ def test_passwords_and_reset_tokens_are_not_stored_in_plaintext():
 
 def test_forgot_password_is_enumeration_safe_and_reset_revokes_sessions():
     source = AUTH.read_text(encoding="utf-8")
-    assert "Always return the same response to avoid email/account enumeration" in source
+    assert "Always return the same response to avoid account enumeration" in source
+    assert 'account = await _find_account_by_identifier(db, data.identifier)' in source
     assert 'return {"ok": True}' in source
     assert "revoke_all_sessions(account_id)" in source
     assert "used_at" in source
@@ -62,11 +63,11 @@ def test_production_entrypoint_loads_env_before_storage_and_fails_fast_without_a
     assert "auth_service._require_secret()" in main
 
 
-def test_auth_screen_distinguishes_server_configuration_and_network_failures():
+def test_auth_screen_has_safe_identifier_login_and_network_fallbacks():
     screen = AUTH_SCREEN.read_text(encoding="utf-8")
-    assert "Authentication is not configured" in screen
-    assert "Request failed (503)" in screen
-    assert "Failed to fetch" in screen
-    assert "Network request failed" in screen
-    assert "Сервис авторизации временно недоступен" in screen
-    assert "Нет связи с сервером" in screen
+    assert 'const [identifier, setIdentifier]' in screen
+    assert 'await withTimeout(login(value, password), 8000, "login")' in screen
+    assert 'raw.includes("invalid email/phone") || raw.includes("401")' in screen
+    assert 'raw.includes("timeout")' in screen
+    assert "Сервис отвечает слишком долго" in screen
+    assert "Не удалось выполнить запрос" in screen
