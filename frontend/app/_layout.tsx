@@ -17,6 +17,7 @@ import { AppProvider, useApp } from "@/src/store";
 import { LogProvider } from "@/src/components/LogProvider";
 import { StartupPreview } from "@/src/components/StartupPreview";
 import { colors } from "@/src/theme";
+import "@/src/lab-runtime-compat";
 
 LogBox.ignoreAllLogs(true);
 
