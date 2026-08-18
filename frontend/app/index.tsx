@@ -1,7 +1,7 @@
 import React from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { Image, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { colors, fontSize, fonts, radius, spacing } from "@/src/theme";
@@ -23,21 +23,25 @@ export default function LandingScreen() {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const desktop = width >= 900;
+  const compactHeader = width < 520;
 
   return (
     <ScrollView style={styles.page} contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 24) }}>
-      <View style={[styles.shell, { paddingTop: insets.top + 12 }]}>
-        <View style={styles.header}>
-          <Pressable style={styles.brandRow} onPress={() => router.replace("/")}>
-            <View style={styles.logo}><Ionicons name="sparkles" size={18} color={colors.onSurfaceInverse} /></View>
-            <Text style={styles.brand}>AIDA</Text>
+      <View style={[styles.shell, compactHeader && styles.shellCompact, { paddingTop: insets.top + 12 }]}>
+        <View style={[styles.header, compactHeader && styles.headerCompact]}>
+          <Pressable style={styles.brandRow} onPress={() => router.replace("/")} accessibilityRole="link" accessibilityLabel="Aida">
+            {Platform.OS === "web" ? (
+              <Image source={{ uri: "/aida-logo.svg" }} style={[styles.brandLogo, compactHeader && styles.brandLogoCompact]} resizeMode="contain" accessibilityLabel="Aida" />
+            ) : (
+              <><View style={styles.logo}><Ionicons name="sparkles" size={18} color={colors.onSurfaceInverse} /></View><Text style={styles.brand}>AIDA</Text></>
+            )}
           </Pressable>
-          <View style={styles.headerActions}>
-            <Pressable style={styles.loginButton} onPress={() => router.push("/auth")}>
-              <Text style={styles.loginText}>Войти</Text>
+          <View style={[styles.headerActions, compactHeader && styles.headerActionsCompact]}>
+            <Pressable style={[styles.loginButton, compactHeader && styles.loginButtonCompact]} onPress={() => router.push("/auth")}>
+              <Text style={[styles.loginText, compactHeader && styles.headerActionTextCompact]} numberOfLines={1}>Войти</Text>
             </Pressable>
-            <Pressable style={styles.primarySmall} onPress={() => router.push("/register")}>
-              <Text style={styles.primaryText}>Начать бесплатно</Text>
+            <Pressable style={[styles.primarySmall, compactHeader && styles.primarySmallCompact]} onPress={() => router.push("/register")}>
+              <Text style={[styles.primaryText, compactHeader && styles.headerActionTextCompact]} numberOfLines={1}>Начать бесплатно</Text>
             </Pressable>
           </View>
         </View>
@@ -137,14 +141,22 @@ function Section({ eyebrow, title, children }: { eyebrow: string; title: string;
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: colors.surface },
   shell: { width: "100%", maxWidth: 1180, alignSelf: "center", paddingHorizontal: spacing.xl },
+  shellCompact: { paddingHorizontal: 16 },
   header: { minHeight: 64, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md },
-  brandRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  headerCompact: { gap: 6 },
+  brandRow: { flexDirection: "row", alignItems: "center", gap: 10, flexShrink: 1 },
+  brandLogo: { width: 116, height: 48 },
+  brandLogoCompact: { width: 84, height: 40 },
   logo: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.onSurface, alignItems: "center", justifyContent: "center" },
   brand: { fontFamily: fonts.text, fontSize: 13, fontWeight: "900", letterSpacing: 2.4, color: colors.onSurface },
   headerActions: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  headerActionsCompact: { gap: 2, flexShrink: 0 },
   loginButton: { minHeight: 42, paddingHorizontal: spacing.lg, borderRadius: radius.pill, alignItems: "center", justifyContent: "center" },
+  loginButtonCompact: { minHeight: 40, paddingHorizontal: 8 },
   loginText: { color: colors.onSurface, fontFamily: fonts.text, fontWeight: "800", fontSize: fontSize.base },
   primarySmall: { minHeight: 42, paddingHorizontal: spacing.lg, borderRadius: radius.pill, backgroundColor: colors.onSurface, alignItems: "center", justifyContent: "center" },
+  primarySmallCompact: { minHeight: 40, paddingHorizontal: 11 },
+  headerActionTextCompact: { fontSize: 13 },
   primaryText: { color: colors.onSurfaceInverse, fontFamily: fonts.text, fontWeight: "800", fontSize: fontSize.base },
   hero: { paddingTop: 64, paddingBottom: 72, gap: 32 },
   heroDesktop: { flexDirection: "row", alignItems: "center", gap: 56, paddingTop: 88, paddingBottom: 96 },
