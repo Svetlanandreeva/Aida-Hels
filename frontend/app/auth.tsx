@@ -15,6 +15,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { withTimeout } from "@/src/async";
 import { SocialProvider, useAuth } from "@/src/auth";
 import { useI18n } from "@/src/i18n";
 import { colors, fontSize, fonts, radius, spacing } from "@/src/theme";
@@ -49,15 +50,16 @@ export default function AuthScreen() {
       window.history.replaceState({}, "", window.location.pathname);
     }
     if (!ticket) return;
+
     let active = true;
     setBusy(true);
-    completeSocialLogin(ticket)
+    withTimeout(completeSocialLogin(ticket), 8000, "social_callback")
       .then(() => {
         if (!active) return;
         window.history.replaceState({}, "", window.location.pathname);
         router.replace("/");
       })
-      .catch(() => active && setError(ru ? "Не удалось войти через внешний аккаунт." : "Social sign-in failed."))
+      .catch(() => active && setError(ru ? "Не удалось завершить вход через внешний аккаунт." : "Could not finish social sign-in."))
       .finally(() => active && setBusy(false));
     return () => { active = false; };
   }, [completeSocialLogin, router, ru]);
@@ -74,25 +76,24 @@ export default function AuthScreen() {
       setError(ru ? "Введите пароль." : "Enter your password.");
       return;
     }
+
     setBusy(true);
     try {
       if (mode === "login") {
-        await login(value, password);
+        await withTimeout(login(value, password), 8000, "login");
         router.replace("/");
       } else {
-        await forgotPassword(value);
-        setMessage(
-          ru
-            ? "Если аккаунт существует, ссылка для восстановления отправлена на привязанный email."
-            : "If the account exists, a recovery link was sent to its linked email."
-        );
+        await withTimeout(forgotPassword(value), 8000, "password_recovery");
+        setMessage(ru ? "Если аккаунт существует, ссылка для восстановления отправлена на привязанный email." : "If the account exists, a recovery link was sent to its linked email.");
       }
     } catch (e: any) {
       const raw = String(e?.message || "").toLowerCase();
       setError(
         raw.includes("invalid email/phone") || raw.includes("401")
           ? (ru ? "Неверный email/телефон или пароль." : "Invalid email/phone or password.")
-          : (ru ? "Не удалось выполнить запрос. Попробуйте ещё раз." : "Could not complete the request. Try again.")
+          : raw.includes("timeout")
+            ? (ru ? "Сервис отвечает слишком долго. Попробуйте ещё раз." : "The service is taking too long. Try again.")
+            : (ru ? "Не удалось выполнить запрос. Попробуйте ещё раз." : "Could not complete the request. Try again.")
       );
     } finally {
       setBusy(false);
@@ -106,33 +107,28 @@ export default function AuthScreen() {
       const returnUri = Platform.OS === "web" && typeof window !== "undefined"
         ? `${window.location.origin}/auth`
         : "https://aidaassistent.ru/auth";
-      const authorizationUrl = await startSocialLogin(provider, returnUri);
+      const authorizationUrl = await withTimeout(startSocialLogin(provider, returnUri), 6500, `social_${provider}`);
       if (Platform.OS === "web" && typeof window !== "undefined") window.location.assign(authorizationUrl);
       else await Linking.openURL(authorizationUrl);
-    } catch (_) {
-      setError(ru ? "Не удалось начать вход." : "Could not start sign-in.");
+    } catch (e: any) {
+      const slow = String(e?.message || "").includes("timeout");
+      setError(slow ? (ru ? "Сервис входа отвечает слишком долго. Попробуйте ещё раз." : "Sign-in provider is taking too long. Try again.") : (ru ? "Не удалось начать вход." : "Could not start sign-in."));
       setSocialBusy(null);
     }
   };
 
+  const switchToForgot = () => { setMode("forgot"); setError(null); setMessage(null); };
   const submitLabel = mode === "login" ? (ru ? "Войти" : "Sign in") : (ru ? "Отправить ссылку" : "Send reset link");
   const identifierLabel = ru ? "Email или телефон" : "Email or phone";
   const passwordLabel = ru ? "Пароль" : "Password";
 
   return (
     <KeyboardAvoidingView style={styles.page} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-      <ScrollView
-        keyboardShouldPersistTaps="handled"
-        contentContainerStyle={[styles.content, { paddingTop: insets.top + 42, paddingBottom: insets.bottom + 34 }]}
-      >
+      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.content, { paddingTop: insets.top + 36, paddingBottom: insets.bottom + 34 }]}>
         <View style={styles.brandIcon}><Ionicons name="sparkles" size={20} color={colors.onSurfaceInverse} /></View>
         <Text style={styles.eyebrow}>AIDA</Text>
         <Text style={styles.title}>{mode === "login" ? (ru ? "С возвращением" : "Welcome back") : (ru ? "Восстановление пароля" : "Reset password")}</Text>
-        <Text style={styles.subtitle}>
-          {mode === "login"
-            ? (ru ? "Войдите по email или номеру телефона." : "Sign in with your email or phone number.")
-            : (ru ? "Укажите email или телефон. Ссылку мы отправим на email, привязанный к аккаунту." : "Enter your email or phone. We will send the link to the email connected to the account.")}
-        </Text>
+        <Text style={styles.subtitle}>{mode === "login" ? (ru ? "Войдите по email или номеру телефона." : "Sign in with your email or phone number.") : (ru ? "Укажите email или телефон. Ссылку мы отправим на email, привязанный к аккаунту." : "Enter your email or phone. We will send the link to the email connected to the account.")}</Text>
 
         <View style={styles.form}>
           <View style={styles.field}>
@@ -155,81 +151,63 @@ export default function AuthScreen() {
           </View>
 
           {mode === "login" ? (
-            <View style={styles.field}>
-              <View style={styles.labelRow}><Ionicons name="lock-closed-outline" size={16} color={colors.onSurfaceSecondary} /><Text style={styles.label}>{passwordLabel}</Text></View>
-              <View style={styles.passwordWrap}>
-                <TextInput
-                  value={password}
-                  onChangeText={setPassword}
-                  style={[styles.input, styles.passwordInput]}
-                  placeholder="••••••••"
-                  placeholderTextColor={colors.onSurfaceSecondary}
-                  secureTextEntry={!showPassword}
-                  textContentType="password"
-                  autoComplete="current-password"
-                  accessibilityLabel={passwordLabel}
-                  returnKeyType="go"
-                  onSubmitEditing={submit}
-                  testID="auth-password"
-                />
-                <Pressable
-                  onPress={() => setShowPassword((value) => !value)}
-                  style={styles.eyeButton}
-                  accessibilityRole="button"
-                  accessibilityLabel={showPassword ? (ru ? "Скрыть пароль" : "Hide password") : (ru ? "Показать пароль" : "Show password")}
-                  accessibilityState={{ selected: showPassword }}
-                >
-                  <Ionicons name={showPassword ? "eye-off-outline" : "eye-outline"} size={21} color={colors.onSurfaceSecondary} />
-                </Pressable>
+            <>
+              <View style={styles.field}>
+                <View style={styles.labelRow}><Ionicons name="lock-closed-outline" size={16} color={colors.onSurfaceSecondary} /><Text style={styles.label}>{passwordLabel}</Text></View>
+                <View style={styles.passwordWrap}>
+                  <TextInput
+                    value={password}
+                    onChangeText={setPassword}
+                    style={[styles.input, styles.passwordInput]}
+                    placeholder="••••••••"
+                    placeholderTextColor={colors.onSurfaceSecondary}
+                    secureTextEntry={!showPassword}
+                    textContentType="password"
+                    autoComplete="current-password"
+                    accessibilityLabel={passwordLabel}
+                    returnKeyType="go"
+                    onSubmitEditing={submit}
+                    testID="auth-password"
+                  />
+                  <Pressable onPress={() => setShowPassword((value) => !value)} style={styles.eyeButton} accessibilityRole="button" accessibilityLabel={showPassword ? (ru ? "Скрыть пароль" : "Hide password") : (ru ? "Показать пароль" : "Show password")} accessibilityState={{ selected: showPassword }}>
+                    <Ionicons name={showPassword ? "eye-off-outline" : "eye-outline"} size={21} color={colors.onSurfaceSecondary} />
+                  </Pressable>
+                </View>
               </View>
-            </View>
+              <Pressable onPress={switchToForgot} style={styles.forgotButton} accessibilityRole="button" accessibilityLabel={ru ? "Забыли пароль?" : "Forgot password?"} testID="auth-forgot-link">
+                <Text style={styles.forgotText}>{ru ? "Забыли пароль?" : "Forgot password?"}</Text>
+              </Pressable>
+            </>
           ) : null}
 
           {error ? <Notice kind="error" text={error} /> : null}
           {message ? <Notice kind="success" text={message} /> : null}
 
-          <Pressable
-            style={[styles.primary, busy && styles.disabled]}
-            onPress={submit}
-            disabled={busy || socialBusy !== null}
-            accessibilityRole="button"
-            accessibilityLabel={submitLabel}
-            accessibilityState={{ disabled: busy || socialBusy !== null, busy }}
-            testID="auth-submit"
-          >
+          <Pressable style={[styles.primary, busy && styles.disabled]} onPress={submit} disabled={busy || socialBusy !== null} accessibilityRole="button" accessibilityLabel={submitLabel} accessibilityState={{ disabled: busy || socialBusy !== null, busy }} testID="auth-submit">
             {busy ? <ActivityIndicator color={colors.onSurfaceInverse} /> : <><Text style={styles.primaryText}>{submitLabel}</Text><Ionicons name="arrow-forward" size={18} color={colors.onSurfaceInverse} /></>}
           </Pressable>
 
           {mode === "login" ? (
             <>
-              <Pressable
-                onPress={() => { setMode("forgot"); setError(null); setMessage(null); }}
-                style={styles.textButton}
-                accessibilityRole="button"
-                accessibilityLabel={ru ? "Забыли пароль?" : "Forgot password?"}
-              >
-                <Text style={styles.textButtonText}>{ru ? "Забыли пароль?" : "Forgot password?"}</Text>
-              </Pressable>
               <View style={styles.dividerRow}><View style={styles.divider} /><Text style={styles.dividerText}>{ru ? "или" : "or"}</Text><View style={styles.divider} /></View>
-              <SocialButton label={ru ? "Продолжить с Яндекс ID" : "Continue with Yandex ID"} busy={socialBusy === "yandex"} onPress={() => socialLogin("yandex")} />
-              <SocialButton label={ru ? "Продолжить с VK ID" : "Continue with VK ID"} busy={socialBusy === "vk"} onPress={() => socialLogin("vk")} />
-              <Pressable
-                onPress={() => router.push("/register")}
-                style={styles.registerButton}
-                accessibilityRole="link"
-                accessibilityLabel={ru ? "Нет аккаунта? Создать" : "No account? Create one"}
-                testID="auth-register-link"
-              >
+              <SocialButton label={ru ? "Продолжить с Яндекс ID" : "Continue with Yandex ID"} busy={socialBusy === "yandex"} disabled={socialBusy !== null && socialBusy !== "yandex"} onPress={() => socialLogin("yandex")} />
+              <SocialButton label={ru ? "Продолжить с VK ID" : "Continue with VK ID"} busy={socialBusy === "vk"} disabled={socialBusy !== null && socialBusy !== "vk"} onPress={() => socialLogin("vk")} />
+
+              <View style={styles.legalBlock}>
+                <Text style={styles.legalText}>{ru ? "Продолжая, вы соглашаетесь с" : "By continuing, you agree to the"}</Text>
+                <View style={styles.legalLinks}>
+                  <Pressable onPress={() => router.push("/terms")} accessibilityRole="link"><Text style={styles.legalLink}>{ru ? "Условиями использования" : "Terms of Use"}</Text></Pressable>
+                  <Text style={styles.legalText}>{ru ? "и" : "and"}</Text>
+                  <Pressable onPress={() => router.push("/privacy-policy")} accessibilityRole="link"><Text style={styles.legalLink}>{ru ? "Политикой конфиденциальности" : "Privacy Policy"}</Text></Pressable>
+                </View>
+              </View>
+
+              <Pressable onPress={() => router.push("/register")} style={styles.registerButton} accessibilityRole="link" accessibilityLabel={ru ? "Нет аккаунта? Создать" : "No account? Create one"} testID="auth-register-link">
                 <Text style={styles.registerText}>{ru ? "Нет аккаунта? Создать" : "No account? Create one"}</Text>
               </Pressable>
             </>
           ) : (
-            <Pressable
-              onPress={() => { setMode("login"); setError(null); setMessage(null); }}
-              style={styles.textButton}
-              accessibilityRole="button"
-              accessibilityLabel={ru ? "Вернуться ко входу" : "Back to sign in"}
-            >
+            <Pressable onPress={() => { setMode("login"); setError(null); setMessage(null); }} style={styles.textButton} accessibilityRole="button" accessibilityLabel={ru ? "Вернуться ко входу" : "Back to sign in"}>
               <Ionicons name="arrow-back" size={16} color={colors.onSurface} /><Text style={styles.textButtonText}>{ru ? "Вернуться ко входу" : "Back to sign in"}</Text>
             </Pressable>
           )}
@@ -239,32 +217,16 @@ export default function AuthScreen() {
   );
 }
 
-function SocialButton({ label, busy, onPress }: { label: string; busy: boolean; onPress: () => void }) {
+function SocialButton({ label, busy, disabled, onPress }: { label: string; busy: boolean; disabled: boolean; onPress: () => void }) {
   return (
-    <Pressable
-      style={styles.socialButton}
-      onPress={onPress}
-      disabled={busy}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ disabled: busy, busy }}
-    >
+    <Pressable style={[styles.socialButton, disabled && styles.disabled]} onPress={onPress} disabled={busy || disabled} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled: busy || disabled, busy }}>
       {busy ? <ActivityIndicator color={colors.onSurface} /> : <><Ionicons name="log-in-outline" size={18} color={colors.onSurface} /><Text style={styles.socialText}>{label}</Text></>}
     </Pressable>
   );
 }
 
 function Notice({ kind, text }: { kind: "error" | "success"; text: string }) {
-  return (
-    <View
-      style={[styles.notice, kind === "error" ? styles.noticeError : styles.noticeSuccess]}
-      accessibilityRole="alert"
-      accessibilityLiveRegion="polite"
-    >
-      <Ionicons name={kind === "error" ? "alert-circle-outline" : "checkmark-circle-outline"} size={18} color={kind === "error" ? colors.error : colors.success} />
-      <Text style={styles.noticeText}>{text}</Text>
-    </View>
-  );
+  return <View style={[styles.notice, kind === "error" ? styles.noticeError : styles.noticeSuccess]} accessibilityRole="alert" accessibilityLiveRegion="polite"><Ionicons name={kind === "error" ? "alert-circle-outline" : "checkmark-circle-outline"} size={18} color={kind === "error" ? colors.error : colors.success} /><Text style={styles.noticeText}>{text}</Text></View>;
 }
 
 const styles = StyleSheet.create({
@@ -282,6 +244,8 @@ const styles = StyleSheet.create({
   passwordWrap: { position: "relative" },
   passwordInput: { paddingRight: 52 },
   eyeButton: { position: "absolute", right: 8, top: 6, width: 40, height: 40, alignItems: "center", justifyContent: "center" },
+  forgotButton: { minHeight: 40, alignSelf: "flex-end", justifyContent: "center", marginTop: -8, paddingHorizontal: 2 },
+  forgotText: { color: colors.onSurface, fontFamily: fonts.text, fontSize: fontSize.sm, fontWeight: "800" },
   primary: { minHeight: 52, borderRadius: radius.pill, backgroundColor: colors.onSurface, paddingHorizontal: spacing.xl, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: spacing.sm },
   primaryText: { color: colors.onSurfaceInverse, fontFamily: fonts.text, fontSize: fontSize.base, fontWeight: "800" },
   disabled: { opacity: 0.55 },
@@ -292,6 +256,10 @@ const styles = StyleSheet.create({
   dividerText: { color: colors.onSurfaceSecondary, fontFamily: fonts.text, fontSize: fontSize.sm },
   socialButton: { minHeight: 50, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceSecondary, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, paddingHorizontal: spacing.lg },
   socialText: { color: colors.onSurface, fontFamily: fonts.text, fontSize: fontSize.base, fontWeight: "700" },
+  legalBlock: { alignItems: "center", gap: 4, paddingHorizontal: spacing.md },
+  legalLinks: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", justifyContent: "center", gap: 5 },
+  legalText: { color: colors.onSurfaceSecondary, fontFamily: fonts.text, fontSize: 12, lineHeight: 18, textAlign: "center" },
+  legalLink: { color: colors.onSurface, fontFamily: fonts.text, fontSize: 12, lineHeight: 18, fontWeight: "800", textDecorationLine: "underline" },
   registerButton: { minHeight: 48, alignItems: "center", justifyContent: "center" },
   registerText: { color: colors.onSurface, fontFamily: fonts.text, fontSize: fontSize.base, fontWeight: "800" },
   notice: { borderRadius: radius.md, borderWidth: 1, padding: spacing.md, flexDirection: "row", alignItems: "center", gap: spacing.sm },
