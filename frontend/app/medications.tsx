@@ -18,6 +18,7 @@ import { Sheet } from "@/src/components/Sheet";
 import { useApp } from "@/src/store";
 import { useI18n } from "@/src/i18n";
 import { api, Medication } from "@/src/api";
+import { withTimeout } from "@/src/async";
 import {
   appleMedicationBridgeAvailable,
   listAppleHealthMedications,
@@ -39,6 +40,7 @@ type RichMedication = Medication & {
 };
 
 const TIME_RE = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
+const MEDICATION_LOAD_TIMEOUT_MS = 3500;
 
 function localDateString(date = new Date()) {
   const y = date.getFullYear();
@@ -48,10 +50,7 @@ function localDateString(date = new Date()) {
 }
 
 function parseTimes(value: string) {
-  const found = value
-    .split(/[;,\s]+/)
-    .map((item) => item.trim())
-    .filter(Boolean);
+  const found = value.split(/[;,\s]+/).map((item) => item.trim()).filter(Boolean);
   return [...new Set(found)].sort();
 }
 
@@ -92,24 +91,27 @@ export default function MedicationsScreen() {
       setLoading(false);
       return;
     }
+
     setLoadError(false);
-    try {
-      const [meds, day] = await Promise.all([
-        api.listMeds(activeId),
-        getMedicationDay(activeId, localDateString()),
-      ]);
-      setItems(meds as RichMedication[]);
-      setSlots(day.slots || []);
-    } catch (_) {
-      setLoadError(true);
-    } finally {
-      setLoading(false);
+    const [medicationsResult, dayResult] = await Promise.allSettled([
+      withTimeout(api.listMeds(activeId), MEDICATION_LOAD_TIMEOUT_MS, "medications_list"),
+      withTimeout(getMedicationDay(activeId, localDateString()), MEDICATION_LOAD_TIMEOUT_MS, "medications_day"),
+    ]);
+
+    if (medicationsResult.status === "fulfilled") {
+      setItems(medicationsResult.value as RichMedication[]);
     }
+    if (dayResult.status === "fulfilled") {
+      setSlots(dayResult.value.slots || []);
+    }
+
+    setLoadError(medicationsResult.status === "rejected" || dayResult.status === "rejected");
+    setLoading(false);
   }, [activeId]);
 
   useFocusEffect(useCallback(() => {
     setLoading(true);
-    load();
+    void load();
   }, [load, refreshTick]));
 
   const resetEditor = () => {
@@ -247,7 +249,7 @@ export default function MedicationsScreen() {
     try {
       await markMedicationIntake(slot.medication_id, slot.scheduled_at, status);
       if (activeId) {
-        const day = await getMedicationDay(activeId, today);
+        const day = await withTimeout(getMedicationDay(activeId, today), MEDICATION_LOAD_TIMEOUT_MS, "medications_day_refresh");
         setSlots(day.slots || []);
       }
       bumpRefresh();
@@ -314,18 +316,13 @@ export default function MedicationsScreen() {
     </Card>
   );
 
+  const hasAnyData = items.length > 0 || slots.length > 0;
+
   return (
     <View style={styles.container}>
       <ScreenHeader title={t("m_meds")} />
-      {loading ? (
-        <View style={styles.center}><ActivityIndicator size="large" color={colors.onSurface} /></View>
-      ) : !activeId ? (
+      {!activeId ? (
         <State title={lang === "ru" ? "Выберите профиль" : "Choose a profile"} text={lang === "ru" ? "Лекарства сохраняются отдельно для каждого профиля." : "Medications are stored separately for each profile."} icon="person-circle-outline" />
-      ) : loadError ? (
-        <View style={styles.center}>
-          <State title={lang === "ru" ? "Не удалось загрузить лекарства" : "Could not load medications"} text={lang === "ru" ? "Попробуйте повторить загрузку." : "Please try loading again."} icon="cloud-offline-outline" />
-          <Pressable onPress={load} style={styles.retryBtn}><Text style={styles.retryText}>{lang === "ru" ? "Повторить" : "Retry"}</Text></Pressable>
-        </View>
       ) : (
         <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 40 + insets.bottom }} showsVerticalScrollIndicator={false}>
           <Pressable style={styles.addCard} onPress={openAdd} testID="add-med-button">
@@ -337,78 +334,104 @@ export default function MedicationsScreen() {
             <Ionicons name="chevron-forward" size={19} color={colors.onSurfaceInverse} />
           </Pressable>
 
-          {appleImportAvailable && (
-            <View style={styles.appleCard} testID="apple-health-medications-card">
-              <View style={styles.appleIcon}><Ionicons name="heart" size={20} color={colors.onSurface} /></View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.appleTitle}>{lang === "ru" ? "Лекарства из Apple Health" : "Medications from Apple Health"}</Text>
-                <Text style={styles.appleText}>
-                  {lang === "ru"
-                    ? "Импортируем препараты, которыми вы разрешили поделиться. Записи, созданные в Аиде, остаются в Аиде: Apple пока даёт сторонним приложениям чтение лекарств и событий приёма, но не создание системных записей лекарств."
-                    : "Import medications you choose to share. Medications created in Aida stay in Aida: Apple currently exposes medication and dose data to third-party apps for reading, not for creating Health medication records."}
-                </Text>
-                {appleImportMessage ? <Text style={styles.appleSuccess}>{appleImportMessage}</Text> : null}
-                {appleImportError ? <Text style={styles.appleError}>{appleImportError}</Text> : null}
-              </View>
-              <Pressable style={styles.appleButton} onPress={importAppleHealth} disabled={appleImporting} testID="import-apple-health-medications">
-                {appleImporting ? <ActivityIndicator color={colors.onSurfaceInverse} /> : <Ionicons name="download-outline" size={18} color={colors.onSurfaceInverse} />}
-              </Pressable>
+          {loading ? (
+            <View style={styles.inlineState} testID="medications-loading-state">
+              <ActivityIndicator size="small" color={colors.onSurface} />
+              <Muted>{lang === "ru" ? "Обновляем лекарства…" : "Refreshing medications…"}</Muted>
             </View>
-          )}
+          ) : null}
 
-          {slots.length > 0 && (
-            <View style={styles.todaySection}>
-              <View style={styles.sectionHead}>
-                <View>
-                  <Text style={styles.sectionTitle}>{lang === "ru" ? "Сегодня" : "Today"}</Text>
-                  <Muted>{takenCount} {lang === "ru" ? "принято" : "taken"} · {pendingCount} {lang === "ru" ? "осталось" : "remaining"}</Muted>
-                </View>
-                <Text style={styles.dateLabel}>{today}</Text>
-              </View>
+          {loadError && hasAnyData ? (
+            <Pressable style={styles.inlineState} onPress={() => void load()} testID="medications-retry-banner">
+              <Ionicons name="cloud-offline-outline" size={18} color={colors.onSurfaceSecondary} />
+              <Muted style={{ flex: 1 }}>{lang === "ru" ? "Часть данных не обновилась. Показываем то, что уже доступно." : "Some data did not refresh. Showing what is available."}</Muted>
+              <Text style={styles.inlineRetryText}>{lang === "ru" ? "Повторить" : "Retry"}</Text>
+            </Pressable>
+          ) : null}
 
-              <View style={{ gap: spacing.sm, marginTop: spacing.md }}>
-                {slots.map((slot) => (
-                  <View key={slot.id} style={[styles.slot, slot.status !== "pending" && styles.slotResolved]} testID={`med-slot-${slot.id}`}>
-                    <View style={styles.timeBox}><Text style={styles.timeText}>{slot.time}</Text></View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.slotName}>{slot.name}</Text>
-                      <Text style={styles.slotMeta}>{[slot.dose, mealLabel(slot.meal_relation)].filter(Boolean).join(" · ")}</Text>
-                      {slot.occurred_at ? <Text style={styles.eventTime}>{lang === "ru" ? "Отмечено" : "Marked"}: {new Date(slot.occurred_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</Text> : null}
-                    </View>
-                    {marking === slot.id ? (
-                      <ActivityIndicator color={colors.onSurface} />
-                    ) : slot.status === "taken" ? (
-                      <View style={styles.doneBadge}><Ionicons name="checkmark" size={15} color={colors.success} /><Text style={[styles.doneText, { color: colors.success }]}>{lang === "ru" ? "Принято" : "Taken"}</Text></View>
-                    ) : slot.status === "skipped" ? (
-                      <View style={styles.doneBadge}><Ionicons name="close" size={15} color={colors.warning} /><Text style={[styles.doneText, { color: colors.warning }]}>{lang === "ru" ? "Пропущено" : "Skipped"}</Text></View>
-                    ) : (
-                      <View style={styles.slotActions}>
-                        <Pressable style={styles.takeButton} onPress={() => mark(slot, "taken")} testID={`take-${slot.id}`}><Ionicons name="checkmark" size={18} color={colors.onSurfaceInverse} /></Pressable>
-                        <Pressable style={styles.skipButton} onPress={() => mark(slot, "skipped")} testID={`skip-${slot.id}`}><Ionicons name="close" size={18} color={colors.onSurfaceSecondary} /></Pressable>
-                      </View>
-                    )}
-                  </View>
-                ))}
-              </View>
-            </View>
-          )}
-
-          {items.length === 0 ? (
-            <View style={styles.empty}>
-              <Ionicons name="medkit-outline" size={56} color={colors.onSurfaceSecondary} />
-              <Muted style={{ marginTop: spacing.md, textAlign: "center" }}>{lang === "ru" ? "Лекарств пока нет" : "No medications yet"}</Muted>
+          {loadError && !hasAnyData && !loading ? (
+            <View style={styles.empty} testID="medications-error-state">
+              <Ionicons name="cloud-offline-outline" size={52} color={colors.onSurfaceSecondary} />
+              <Text style={styles.stateTitle}>{lang === "ru" ? "Не удалось загрузить лекарства" : "Could not load medications"}</Text>
+              <Muted style={{ marginTop: spacing.sm, textAlign: "center" }}>{lang === "ru" ? "Добавление препарата остаётся доступным. Повторите загрузку, когда соединение восстановится." : "Adding medication is still available. Retry when the connection is back."}</Muted>
+              <Pressable onPress={() => void load()} style={styles.retryBtn}><Text style={styles.retryText}>{lang === "ru" ? "Повторить" : "Retry"}</Text></Pressable>
             </View>
           ) : (
             <>
-              <Text style={styles.listTitle}>{lang === "ru" ? "Мои препараты" : "My medications"}</Text>
-              {active.map(renderMed)}
-              {active.length > 0 && slots.length === 0 && (
-                <View style={styles.noSchedule}>
-                  <Ionicons name="time-outline" size={19} color={colors.onSurfaceSecondary} />
-                  <Text style={styles.noScheduleText}>{lang === "ru" ? "Добавьте время приёма хотя бы одному активному препарату — здесь появится дневной чек-лист." : "Add intake times to an active medication to get a daily checklist here."}</Text>
+              {appleImportAvailable && (
+                <View style={styles.appleCard} testID="apple-health-medications-card">
+                  <View style={styles.appleIcon}><Ionicons name="heart" size={20} color={colors.onSurface} /></View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.appleTitle}>{lang === "ru" ? "Лекарства из Apple Health" : "Medications from Apple Health"}</Text>
+                    <Text style={styles.appleText}>
+                      {lang === "ru"
+                        ? "Импортируем препараты, которыми вы разрешили поделиться. Записи, созданные в Аиде, остаются в Аиде: Apple пока даёт сторонним приложениям чтение лекарств и событий приёма, но не создание системных записей лекарств."
+                        : "Import medications you choose to share. Medications created in Aida stay in Aida: Apple currently exposes medication and dose data to third-party apps for reading, not for creating Health medication records."}
+                    </Text>
+                    {appleImportMessage ? <Text style={styles.appleSuccess}>{appleImportMessage}</Text> : null}
+                    {appleImportError ? <Text style={styles.appleError}>{appleImportError}</Text> : null}
+                  </View>
+                  <Pressable style={styles.appleButton} onPress={importAppleHealth} disabled={appleImporting} testID="import-apple-health-medications">
+                    {appleImporting ? <ActivityIndicator color={colors.onSurfaceInverse} /> : <Ionicons name="download-outline" size={18} color={colors.onSurfaceInverse} />}
+                  </Pressable>
                 </View>
               )}
-              {past.length > 0 && <><Text style={styles.sectionLabel}>{lang === "ru" ? "Завершённые" : "Past"}</Text>{past.map(renderMed)}</>}
+
+              {slots.length > 0 && (
+                <View style={styles.todaySection}>
+                  <View style={styles.sectionHead}>
+                    <View>
+                      <Text style={styles.sectionTitle}>{lang === "ru" ? "Сегодня" : "Today"}</Text>
+                      <Muted>{takenCount} {lang === "ru" ? "принято" : "taken"} · {pendingCount} {lang === "ru" ? "осталось" : "remaining"}</Muted>
+                    </View>
+                    <Text style={styles.dateLabel}>{today}</Text>
+                  </View>
+
+                  <View style={{ gap: spacing.sm, marginTop: spacing.md }}>
+                    {slots.map((slot) => (
+                      <View key={slot.id} style={[styles.slot, slot.status !== "pending" && styles.slotResolved]} testID={`med-slot-${slot.id}`}>
+                        <View style={styles.timeBox}><Text style={styles.timeText}>{slot.time}</Text></View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.slotName}>{slot.name}</Text>
+                          <Text style={styles.slotMeta}>{[slot.dose, mealLabel(slot.meal_relation)].filter(Boolean).join(" · ")}</Text>
+                          {slot.occurred_at ? <Text style={styles.eventTime}>{lang === "ru" ? "Отмечено" : "Marked"}: {new Date(slot.occurred_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</Text> : null}
+                        </View>
+                        {marking === slot.id ? (
+                          <ActivityIndicator color={colors.onSurface} />
+                        ) : slot.status === "taken" ? (
+                          <View style={styles.doneBadge}><Ionicons name="checkmark" size={15} color={colors.success} /><Text style={[styles.doneText, { color: colors.success }]}>{lang === "ru" ? "Принято" : "Taken"}</Text></View>
+                        ) : slot.status === "skipped" ? (
+                          <View style={styles.doneBadge}><Ionicons name="close" size={15} color={colors.warning} /><Text style={[styles.doneText, { color: colors.warning }]}>{lang === "ru" ? "Пропущено" : "Skipped"}</Text></View>
+                        ) : (
+                          <View style={styles.slotActions}>
+                            <Pressable style={styles.takeButton} onPress={() => mark(slot, "taken")} testID={`take-${slot.id}`}><Ionicons name="checkmark" size={18} color={colors.onSurfaceInverse} /></Pressable>
+                            <Pressable style={styles.skipButton} onPress={() => mark(slot, "skipped")} testID={`skip-${slot.id}`}><Ionicons name="close" size={18} color={colors.onSurfaceSecondary} /></Pressable>
+                          </View>
+                        )}
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              )}
+
+              {items.length === 0 && !loading ? (
+                <View style={styles.empty}>
+                  <Ionicons name="medkit-outline" size={56} color={colors.onSurfaceSecondary} />
+                  <Muted style={{ marginTop: spacing.md, textAlign: "center" }}>{lang === "ru" ? "Лекарств пока нет" : "No medications yet"}</Muted>
+                </View>
+              ) : items.length > 0 ? (
+                <>
+                  <Text style={styles.listTitle}>{lang === "ru" ? "Мои препараты" : "My medications"}</Text>
+                  {active.map(renderMed)}
+                  {active.length > 0 && slots.length === 0 && (
+                    <View style={styles.noSchedule}>
+                      <Ionicons name="time-outline" size={19} color={colors.onSurfaceSecondary} />
+                      <Text style={styles.noScheduleText}>{lang === "ru" ? "Добавьте время приёма хотя бы одному активному препарату — здесь появится дневной чек-лист." : "Add intake times to an active medication to get a daily checklist here."}</Text>
+                    </View>
+                  )}
+                  {past.length > 0 && <><Text style={styles.sectionLabel}>{lang === "ru" ? "Завершённые" : "Past"}</Text>{past.map(renderMed)}</>}
+                </>
+              ) : null}
             </>
           )}
         </ScrollView>
@@ -455,6 +478,8 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.surface },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   empty: { alignItems: "center", paddingTop: spacing["3xl"] },
+  inlineState: { minHeight: 48, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, marginBottom: spacing.md, borderRadius: radius.md, backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.border },
+  inlineRetryText: { fontSize: fontSize.sm, fontWeight: "700", color: colors.onSurface, fontFamily: fonts.text },
   stateWrap: { alignItems: "center", justifyContent: "center", padding: spacing.xl },
   stateTitle: { marginTop: spacing.md, fontSize: fontSize.lg, fontWeight: "700", color: colors.onSurface, fontFamily: fonts.text, textAlign: "center" },
   stateText: { marginTop: spacing.sm, textAlign: "center" },
