@@ -1,4 +1,5 @@
 import { apiFetch } from "@/src/api";
+import { withTimeout } from "@/src/async";
 import type { LabTest, Medication, Symptom, Task } from "@/src/api";
 import type { MedicationSlot } from "@/src/medicationScheduleApi";
 
@@ -71,10 +72,14 @@ export async function getHome(profileId: string, date: string, language: string)
     now_local: localTime(),
     language,
   });
-  const response = await apiFetch(`/home/${encodeURIComponent(profileId)}?${query.toString()}`);
+  const response = await withTimeout(
+    apiFetch(`/home/${encodeURIComponent(profileId)}?${query.toString()}`),
+    5500,
+    "home",
+  );
   if (!response.ok) {
     const text = await response.text().catch(() => "");
     throw new Error(`${response.status}: ${text}`);
   }
-  return response.json();
+  return withTimeout(response.json(), 1500, "home_json");
 }

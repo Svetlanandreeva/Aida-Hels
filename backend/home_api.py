@@ -1,8 +1,8 @@
 """Aggregated Home API for the web-first Aida baseline.
 
 The endpoint deliberately returns per-section state instead of inventing medical
-values when a source is empty or unavailable. One failing source is isolated and
-does not make the entire Home request fail.
+values when a source is empty or unavailable. One failing or slow source is
+isolated and does not make the entire Home request fail.
 """
 
 from __future__ import annotations
@@ -15,6 +15,8 @@ from fastapi import APIRouter, Depends
 
 from access_control import require_profile_access
 from medication_api import _TIME_RE, _effective_times, _minutes, _normalize_med
+
+HOME_SECTION_TIMEOUT_SECONDS = 3.5
 
 
 def _error_state(exc: BaseException) -> Dict[str, Any]:
@@ -49,6 +51,11 @@ def _lab_status_state(labs) -> Dict[str, Any]:
     if normal + outside == 0:
         return {"state": "no_data", "in_range": None, "out_of_range": None}
     return {"state": "data", "in_range": normal, "out_of_range": outside}
+
+
+async def _bounded(awaitable, timeout: float = HOME_SECTION_TIMEOUT_SECONDS):
+    """Bound one Home source so a slow integration cannot stall the dashboard."""
+    return await asyncio.wait_for(awaitable, timeout=timeout)
 
 
 async def _cycle_summary(db, profile_id: str, local_date: str) -> Dict[str, Any]:
@@ -141,17 +148,20 @@ def build_home_router(db, auth, legacy) -> APIRouter:
             row = await db.puzzle.find_one({"profile_id": profile_id}, {"_id": 0})
             return row or {"profile_id": profile_id, "widgets": []}
 
+        # Every source gets its own deadline. asyncio.gather still returns all
+        # completed sections, while a hung legacy/integration call becomes a
+        # local TimeoutError instead of freezing the entire dashboard.
         results = await asyncio.gather(
-            legacy.readiness(profile_id),
-            legacy.gamification(profile_id),
-            medications(),
-            legacy.list_symptoms(profile_id),
-            legacy.list_labs(profile_id),
-            puzzle(),
-            legacy.overview(profile_id, language),
-            tasks(),
-            _medication_day(db, profile_id, local_date, now_local),
-            _cycle_summary(db, profile_id, local_date),
+            _bounded(legacy.readiness(profile_id)),
+            _bounded(legacy.gamification(profile_id)),
+            _bounded(medications()),
+            _bounded(legacy.list_symptoms(profile_id)),
+            _bounded(legacy.list_labs(profile_id)),
+            _bounded(puzzle()),
+            _bounded(legacy.overview(profile_id, language)),
+            _bounded(tasks()),
+            _bounded(_medication_day(db, profile_id, local_date, now_local)),
+            _bounded(_cycle_summary(db, profile_id, local_date)),
             return_exceptions=True,
         )
         readiness, game, meds, symptoms, labs, puzzle_value, overview, task_rows, medication_day, cycle_summary = results
