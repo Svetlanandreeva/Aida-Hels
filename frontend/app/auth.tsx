@@ -115,6 +115,10 @@ export default function AuthScreen() {
     }
   };
 
+  const submitLabel = mode === "login" ? (ru ? "Войти" : "Sign in") : (ru ? "Отправить ссылку" : "Send reset link");
+  const identifierLabel = ru ? "Email или телефон" : "Email or phone";
+  const passwordLabel = ru ? "Пароль" : "Password";
+
   return (
     <KeyboardAvoidingView style={styles.page} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <ScrollView
@@ -132,7 +136,7 @@ export default function AuthScreen() {
 
         <View style={styles.form}>
           <View style={styles.field}>
-            <View style={styles.labelRow}><Ionicons name="person-circle-outline" size={16} color={colors.onSurfaceSecondary} /><Text style={styles.label}>{ru ? "Email или телефон" : "Email or phone"}</Text></View>
+            <View style={styles.labelRow}><Ionicons name="person-circle-outline" size={16} color={colors.onSurfaceSecondary} /><Text style={styles.label}>{identifierLabel}</Text></View>
             <TextInput
               value={identifier}
               onChangeText={setIdentifier}
@@ -141,13 +145,18 @@ export default function AuthScreen() {
               placeholderTextColor={colors.onSurfaceSecondary}
               autoCapitalize="none"
               autoCorrect={false}
+              autoComplete="username"
+              textContentType="username"
+              accessibilityLabel={identifierLabel}
+              returnKeyType={mode === "forgot" ? "go" : "next"}
+              onSubmitEditing={mode === "forgot" ? submit : undefined}
               testID="auth-identifier"
             />
           </View>
 
           {mode === "login" ? (
             <View style={styles.field}>
-              <View style={styles.labelRow}><Ionicons name="lock-closed-outline" size={16} color={colors.onSurfaceSecondary} /><Text style={styles.label}>{ru ? "Пароль" : "Password"}</Text></View>
+              <View style={styles.labelRow}><Ionicons name="lock-closed-outline" size={16} color={colors.onSurfaceSecondary} /><Text style={styles.label}>{passwordLabel}</Text></View>
               <View style={styles.passwordWrap}>
                 <TextInput
                   value={password}
@@ -157,9 +166,19 @@ export default function AuthScreen() {
                   placeholderTextColor={colors.onSurfaceSecondary}
                   secureTextEntry={!showPassword}
                   textContentType="password"
+                  autoComplete="current-password"
+                  accessibilityLabel={passwordLabel}
+                  returnKeyType="go"
+                  onSubmitEditing={submit}
                   testID="auth-password"
                 />
-                <Pressable onPress={() => setShowPassword((value) => !value)} style={styles.eyeButton}>
+                <Pressable
+                  onPress={() => setShowPassword((value) => !value)}
+                  style={styles.eyeButton}
+                  accessibilityRole="button"
+                  accessibilityLabel={showPassword ? (ru ? "Скрыть пароль" : "Hide password") : (ru ? "Показать пароль" : "Show password")}
+                  accessibilityState={{ selected: showPassword }}
+                >
                   <Ionicons name={showPassword ? "eye-off-outline" : "eye-outline"} size={21} color={colors.onSurfaceSecondary} />
                 </Pressable>
               </View>
@@ -169,24 +188,48 @@ export default function AuthScreen() {
           {error ? <Notice kind="error" text={error} /> : null}
           {message ? <Notice kind="success" text={message} /> : null}
 
-          <Pressable style={[styles.primary, busy && styles.disabled]} onPress={submit} disabled={busy || socialBusy !== null} testID="auth-submit">
-            {busy ? <ActivityIndicator color={colors.onSurfaceInverse} /> : <><Text style={styles.primaryText}>{mode === "login" ? (ru ? "Войти" : "Sign in") : (ru ? "Отправить ссылку" : "Send reset link")}</Text><Ionicons name="arrow-forward" size={18} color={colors.onSurfaceInverse} /></>}
+          <Pressable
+            style={[styles.primary, busy && styles.disabled]}
+            onPress={submit}
+            disabled={busy || socialBusy !== null}
+            accessibilityRole="button"
+            accessibilityLabel={submitLabel}
+            accessibilityState={{ disabled: busy || socialBusy !== null, busy }}
+            testID="auth-submit"
+          >
+            {busy ? <ActivityIndicator color={colors.onSurfaceInverse} /> : <><Text style={styles.primaryText}>{submitLabel}</Text><Ionicons name="arrow-forward" size={18} color={colors.onSurfaceInverse} /></>}
           </Pressable>
 
           {mode === "login" ? (
             <>
-              <Pressable onPress={() => { setMode("forgot"); setError(null); setMessage(null); }} style={styles.textButton}>
+              <Pressable
+                onPress={() => { setMode("forgot"); setError(null); setMessage(null); }}
+                style={styles.textButton}
+                accessibilityRole="button"
+                accessibilityLabel={ru ? "Забыли пароль?" : "Forgot password?"}
+              >
                 <Text style={styles.textButtonText}>{ru ? "Забыли пароль?" : "Forgot password?"}</Text>
               </Pressable>
               <View style={styles.dividerRow}><View style={styles.divider} /><Text style={styles.dividerText}>{ru ? "или" : "or"}</Text><View style={styles.divider} /></View>
               <SocialButton label={ru ? "Продолжить с Яндекс ID" : "Continue with Yandex ID"} busy={socialBusy === "yandex"} onPress={() => socialLogin("yandex")} />
               <SocialButton label={ru ? "Продолжить с VK ID" : "Continue with VK ID"} busy={socialBusy === "vk"} onPress={() => socialLogin("vk")} />
-              <Pressable onPress={() => router.push("/register")} style={styles.registerButton} testID="auth-register-link">
+              <Pressable
+                onPress={() => router.push("/register")}
+                style={styles.registerButton}
+                accessibilityRole="link"
+                accessibilityLabel={ru ? "Нет аккаунта? Создать" : "No account? Create one"}
+                testID="auth-register-link"
+              >
                 <Text style={styles.registerText}>{ru ? "Нет аккаунта? Создать" : "No account? Create one"}</Text>
               </Pressable>
             </>
           ) : (
-            <Pressable onPress={() => { setMode("login"); setError(null); setMessage(null); }} style={styles.textButton}>
+            <Pressable
+              onPress={() => { setMode("login"); setError(null); setMessage(null); }}
+              style={styles.textButton}
+              accessibilityRole="button"
+              accessibilityLabel={ru ? "Вернуться ко входу" : "Back to sign in"}
+            >
               <Ionicons name="arrow-back" size={16} color={colors.onSurface} /><Text style={styles.textButtonText}>{ru ? "Вернуться ко входу" : "Back to sign in"}</Text>
             </Pressable>
           )}
@@ -197,11 +240,31 @@ export default function AuthScreen() {
 }
 
 function SocialButton({ label, busy, onPress }: { label: string; busy: boolean; onPress: () => void }) {
-  return <Pressable style={styles.socialButton} onPress={onPress} disabled={busy}>{busy ? <ActivityIndicator color={colors.onSurface} /> : <><Ionicons name="log-in-outline" size={18} color={colors.onSurface} /><Text style={styles.socialText}>{label}</Text></>}</Pressable>;
+  return (
+    <Pressable
+      style={styles.socialButton}
+      onPress={onPress}
+      disabled={busy}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled: busy, busy }}
+    >
+      {busy ? <ActivityIndicator color={colors.onSurface} /> : <><Ionicons name="log-in-outline" size={18} color={colors.onSurface} /><Text style={styles.socialText}>{label}</Text></>}
+    </Pressable>
+  );
 }
 
 function Notice({ kind, text }: { kind: "error" | "success"; text: string }) {
-  return <View style={[styles.notice, kind === "error" ? styles.noticeError : styles.noticeSuccess]}><Ionicons name={kind === "error" ? "alert-circle-outline" : "checkmark-circle-outline"} size={18} color={kind === "error" ? colors.error : colors.success} /><Text style={styles.noticeText}>{text}</Text></View>;
+  return (
+    <View
+      style={[styles.notice, kind === "error" ? styles.noticeError : styles.noticeSuccess]}
+      accessibilityRole="alert"
+      accessibilityLiveRegion="polite"
+    >
+      <Ionicons name={kind === "error" ? "alert-circle-outline" : "checkmark-circle-outline"} size={18} color={kind === "error" ? colors.error : colors.success} />
+      <Text style={styles.noticeText}>{text}</Text>
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
