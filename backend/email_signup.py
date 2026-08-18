@@ -15,7 +15,7 @@ import smtplib
 import uuid
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 from urllib.parse import quote
 
 import bcrypt
@@ -36,6 +36,19 @@ def _email(value: str) -> str:
     return value.strip().lower()
 
 
+def _phone(value: Optional[str]) -> Optional[str]:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    digits = "".join(ch for ch in raw if ch.isdigit())
+    # Common Russian local notation: 8XXXXXXXXXX -> +7XXXXXXXXXX.
+    if len(digits) == 11 and digits.startswith("8"):
+        digits = "7" + digits[1:]
+    if not 7 <= len(digits) <= 15:
+        raise HTTPException(422, "Invalid phone number")
+    return f"+{digits}"
+
+
 def _password_hash(password: str) -> str:
     return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt(rounds=12)).decode("utf-8")
 
@@ -48,6 +61,7 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
     name: str = Field(min_length=1, max_length=120)
+    phone: Optional[str] = Field(default=None, max_length=40)
 
 
 class ResendVerificationRequest(BaseModel):
@@ -130,9 +144,15 @@ class EmailSignupService:
 
     async def register(self, data: RegisterRequest) -> Dict[str, Any]:
         email = _email(str(data.email))
+        phone = _phone(data.phone)
         existing = await self.db.accounts.find_one({"email": email}, {"_id": 0})
         if existing and str(existing.get("password_hash") or ""):
             raise HTTPException(409, "Account already exists")
+
+        if phone:
+            by_phone = await self.db.accounts.find_one({"phone": phone}, {"_id": 0})
+            if by_phone and str(by_phone.get("id") or "") != str((existing or {}).get("id") or ""):
+                raise HTTPException(409, "Phone number already in use")
 
         now = _iso(_now())
         created = False
@@ -144,6 +164,7 @@ class EmailSignupService:
                 {"id": account_id},
                 {"$set": {
                     "name": data.name.strip(),
+                    "phone": phone,
                     "pending_password_hash": _password_hash(data.password),
                     "email_verified_at": None,
                     "updated_at": now,
@@ -155,6 +176,7 @@ class EmailSignupService:
             await self.db.accounts.insert_one({
                 "id": account_id,
                 "email": email,
+                "phone": phone,
                 "name": data.name.strip(),
                 "password_hash": "",
                 "pending_password_hash": _password_hash(data.password),

@@ -38,7 +38,7 @@ type AuthContextValue = {
   loading: boolean;
   error: string | null;
   login: (email: string, password: string) => Promise<void>;
-  register: (name: string, email: string, password: string) => Promise<RegistrationResult>;
+  register: (name: string, email: string, password: string, phone?: string | null) => Promise<RegistrationResult>;
   resendVerification: (email: string) => Promise<void>;
   logout: () => Promise<void>;
   forgotPassword: (email: string) => Promise<void>;
@@ -151,12 +151,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [applySession]);
 
-  const register = useCallback(async (name: string, email: string, password: string): Promise<RegistrationResult> => {
+  const register = useCallback(async (name: string, email: string, password: string, phone?: string | null): Promise<RegistrationResult> => {
     setError(null);
     try {
-      const result = await authRequest("/auth/register", { name: name.trim(), email: email.trim(), password });
+      const result = await authRequest("/auth/register", {
+        name: name.trim(),
+        email: email.trim(),
+        password,
+        phone: phone?.trim() || null,
+      });
       if (!result?.verification_required || !result?.email) {
-        throw new Error("Email verification was not requested")
+        throw new Error("Email verification was not requested");
       }
       return result as RegistrationResult;
     } catch (e: any) {

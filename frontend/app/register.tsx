@@ -41,13 +41,14 @@ export default function RegisterScreen() {
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
 
   const cleanEmail = email.trim().toLowerCase();
+  const cleanPhone = phone.trim();
   const passwordReady = password.length >= 8;
   const passwordsMatch = password.length > 0 && password === confirm;
 
   const phoneHint = useMemo(
     () => ru
-      ? "Поле уже есть в структуре аккаунта. Вход и восстановление по телефону подключаются отдельным backend-шагом; сейчас email обязателен."
-      : "The phone field is already part of the account flow. Phone sign-in and recovery are a separate backend step; email is required for now.",
+      ? "Необязательно. Если укажете номер, он сохранится в аккаунте после подтверждения email."
+      : "Optional. If provided, the number will be saved to your account after email verification.",
     [ru]
   );
 
@@ -55,7 +56,7 @@ export default function RegisterScreen() {
     const next: FieldErrors = {};
     if (!name.trim()) next.name = ru ? "Введите имя и фамилию" : "Enter your full name";
     if (!cleanEmail || !/^\S+@\S+\.\S+$/.test(cleanEmail)) next.email = ru ? "Введите корректный email" : "Enter a valid email";
-    if (phone.trim() && !/^\+?[0-9()\-\s]{7,20}$/.test(phone.trim())) next.phone = ru ? "Проверьте номер телефона" : "Check the phone number";
+    if (cleanPhone && !/^\+?[0-9()\-\s]{7,20}$/.test(cleanPhone)) next.phone = ru ? "Проверьте номер телефона" : "Check the phone number";
     if (password.length < 8) next.password = ru ? "Нужно минимум 8 символов" : "Use at least 8 characters";
     if (!confirm) next.confirm = ru ? "Повторите пароль" : "Repeat the password";
     else if (password !== confirm) next.confirm = ru ? "Пароли не совпадают" : "Passwords do not match";
@@ -70,7 +71,7 @@ export default function RegisterScreen() {
     if (!validate()) return;
     setBusy(true);
     try {
-      const result = await register(name.trim(), cleanEmail, password);
+      const result = await register(name.trim(), cleanEmail, password, cleanPhone || null);
       setVerificationEmail(result.email);
     } catch (e: any) {
       setError(friendlyError(String(e?.message || ""), ru));
@@ -96,7 +97,7 @@ export default function RegisterScreen() {
 
   if (verificationEmail) {
     return (
-      <View style={[styles.page, { paddingTop: insets.top + 36, paddingBottom: insets.bottom + 28 }]}>
+      <View style={[styles.page, styles.verifyPage, { paddingTop: insets.top + 36, paddingBottom: insets.bottom + 28 }]}>
         <View style={styles.verifyCard}>
           <View style={styles.brandIcon}><Ionicons name="mail-open-outline" size={24} color={colors.onSurfaceInverse} /></View>
           <Text style={styles.title}>{ru ? "Подтвердите email" : "Verify your email"}</Text>
@@ -125,32 +126,32 @@ export default function RegisterScreen() {
 
         <View style={styles.form}>
           <Field label={ru ? "Имя и фамилия" : "Full name"} icon="person-outline" error={fieldErrors.name}>
-            <TextInput value={name} onChangeText={(v) => { setName(v); clearField(setFieldErrors, "name"); }} style={[styles.input, fieldErrors.name && styles.inputError]} placeholder={ru ? "Как к вам обращаться" : "Your full name"} placeholderTextColor={colors.onSurfaceSecondary} autoCapitalize="words" textContentType="name" />
+            <TextInput value={name} onChangeText={(v) => { setName(v); clearField(setFieldErrors, "name"); }} style={[styles.input, fieldErrors.name && styles.inputError]} placeholder={ru ? "Как к вам обращаться" : "Your full name"} placeholderTextColor={colors.onSurfaceSecondary} autoCapitalize="words" textContentType="name" testID="register-name" />
           </Field>
 
           <Field label={ru ? "Электронная почта" : "Email"} icon="mail-outline" error={fieldErrors.email}>
-            <TextInput value={email} onChangeText={(v) => { setEmail(v); clearField(setFieldErrors, "email"); }} style={[styles.input, fieldErrors.email && styles.inputError]} placeholder="name@example.com" placeholderTextColor={colors.onSurfaceSecondary} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" textContentType="emailAddress" />
+            <TextInput value={email} onChangeText={(v) => { setEmail(v); clearField(setFieldErrors, "email"); }} style={[styles.input, fieldErrors.email && styles.inputError]} placeholder="name@example.com" placeholderTextColor={colors.onSurfaceSecondary} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" textContentType="emailAddress" testID="register-email" />
           </Field>
 
           <Field label={ru ? "Телефон" : "Phone"} icon="call-outline" error={fieldErrors.phone} hint={phoneHint}>
-            <TextInput value={phone} onChangeText={(v) => { setPhone(v); clearField(setFieldErrors, "phone"); }} style={[styles.input, fieldErrors.phone && styles.inputError]} placeholder="+7 999 000-00-00" placeholderTextColor={colors.onSurfaceSecondary} keyboardType="phone-pad" textContentType="telephoneNumber" />
+            <TextInput value={phone} onChangeText={(v) => { setPhone(v); clearField(setFieldErrors, "phone"); }} style={[styles.input, fieldErrors.phone && styles.inputError]} placeholder="+7 999 000-00-00" placeholderTextColor={colors.onSurfaceSecondary} keyboardType="phone-pad" textContentType="telephoneNumber" testID="register-phone" />
           </Field>
 
           <Field label={ru ? "Пароль" : "Password"} icon="lock-closed-outline" error={fieldErrors.password}>
             <View style={styles.passwordWrap}>
-              <TextInput value={password} onChangeText={(v) => { setPassword(v); clearField(setFieldErrors, "password"); }} style={[styles.input, styles.passwordInput, fieldErrors.password && styles.inputError]} placeholder={ru ? "Минимум 8 символов" : "At least 8 characters"} placeholderTextColor={colors.onSurfaceSecondary} secureTextEntry={!showPassword} textContentType="newPassword" />
+              <TextInput value={password} onChangeText={(v) => { setPassword(v); clearField(setFieldErrors, "password"); }} style={[styles.input, styles.passwordInput, fieldErrors.password && styles.inputError]} placeholder={ru ? "Минимум 8 символов" : "At least 8 characters"} placeholderTextColor={colors.onSurfaceSecondary} secureTextEntry={!showPassword} textContentType="newPassword" testID="register-password" />
               <Pressable onPress={() => setShowPassword((value) => !value)} style={styles.eyeButton}><Ionicons name={showPassword ? "eye-off-outline" : "eye-outline"} size={21} color={colors.onSurfaceSecondary} /></Pressable>
             </View>
             <Requirement ready={passwordReady} label={ru ? "8 или больше символов" : "8 or more characters"} />
           </Field>
 
           <Field label={ru ? "Повтор пароля" : "Repeat password"} icon="shield-checkmark-outline" error={fieldErrors.confirm}>
-            <TextInput value={confirm} onChangeText={(v) => { setConfirm(v); clearField(setFieldErrors, "confirm"); }} style={[styles.input, fieldErrors.confirm && styles.inputError]} placeholder={ru ? "Введите пароль ещё раз" : "Enter the password again"} placeholderTextColor={colors.onSurfaceSecondary} secureTextEntry={!showPassword} textContentType="newPassword" />
+            <TextInput value={confirm} onChangeText={(v) => { setConfirm(v); clearField(setFieldErrors, "confirm"); }} style={[styles.input, fieldErrors.confirm && styles.inputError]} placeholder={ru ? "Введите пароль ещё раз" : "Enter the password again"} placeholderTextColor={colors.onSurfaceSecondary} secureTextEntry={!showPassword} textContentType="newPassword" testID="register-confirm" />
             {confirm.length > 0 ? <Requirement ready={passwordsMatch} label={passwordsMatch ? (ru ? "Пароли совпадают" : "Passwords match") : (ru ? "Пароли должны совпадать" : "Passwords must match")} /> : null}
           </Field>
 
           <View style={styles.consentBlock}>
-            <Pressable onPress={() => { setConsent((v) => !v); clearField(setFieldErrors, "consent"); }} style={styles.consentRow}>
+            <Pressable onPress={() => { setConsent((v) => !v); clearField(setFieldErrors, "consent"); }} style={styles.consentRow} testID="register-consent">
               <View style={[styles.checkbox, consent && styles.checkboxChecked]}>{consent ? <Ionicons name="checkmark" size={14} color={colors.onSurfaceInverse} /> : null}</View>
               <Text style={styles.consentText}>{ru ? "Я принимаю пользовательское соглашение и политику конфиденциальности" : "I accept the Terms of Use and Privacy Policy"}</Text>
             </Pressable>
@@ -193,6 +194,7 @@ function Notice({ kind, text }: { kind: "error" | "success"; text: string }) {
 
 function friendlyError(raw: string, ru: boolean) {
   const text = raw.toLowerCase();
+  if (text.includes("phone number already in use")) return ru ? "Этот номер телефона уже привязан к другому аккаунту." : "This phone number is already linked to another account.";
   if (text.includes("already exists") || text.includes("409")) return ru ? "Аккаунт с таким email уже существует." : "An account with this email already exists.";
   if (text.includes("verification delivery") || text.includes("smtp") || text.includes("503")) return ru ? "Сервис отправки письма временно недоступен. Попробуйте позже." : "Email delivery is temporarily unavailable. Try again later.";
   return ru ? "Не удалось создать аккаунт. Проверьте данные и попробуйте ещё раз." : "Could not create the account. Check the details and try again.";
@@ -200,6 +202,7 @@ function friendlyError(raw: string, ru: boolean) {
 
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: colors.surface },
+  verifyPage: { paddingHorizontal: spacing.xl, justifyContent: "center" },
   content: { width: "100%", maxWidth: 620, alignSelf: "center", paddingHorizontal: spacing.xl },
   brandIcon: { width: 46, height: 46, borderRadius: 23, backgroundColor: colors.onSurface, alignItems: "center", justifyContent: "center" },
   eyebrow: { marginTop: spacing.lg, color: colors.onSurfaceSecondary, fontFamily: fonts.text, fontSize: 11, fontWeight: "900", letterSpacing: 2 },
@@ -237,7 +240,7 @@ const styles = StyleSheet.create({
   noticeError: { borderColor: "rgba(190, 54, 54, 0.25)", backgroundColor: "rgba(190, 54, 54, 0.06)" },
   noticeSuccess: { borderColor: "rgba(47, 125, 87, 0.25)", backgroundColor: "rgba(47, 125, 87, 0.06)" },
   noticeText: { flex: 1, color: colors.onSurface, fontFamily: fonts.text, fontSize: fontSize.sm, lineHeight: 19 },
-  verifyCard: { width: "100%", maxWidth: 560, alignSelf: "center", margin: "auto" as any, padding: spacing.xl, borderRadius: radius.xl, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceSecondary },
+  verifyCard: { width: "100%", maxWidth: 560, alignSelf: "center", padding: spacing.xl, borderRadius: radius.xl, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceSecondary },
   emailPill: { marginTop: spacing.lg, flexDirection: "row", alignItems: "center", gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surface },
   emailPillText: { color: colors.onSurface, fontFamily: fonts.text, fontSize: fontSize.base, fontWeight: "700" },
   secondary: { marginTop: spacing.sm, minHeight: 50, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.borderStrong, alignItems: "center", justifyContent: "center" },

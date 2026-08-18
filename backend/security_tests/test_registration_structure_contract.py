@@ -22,13 +22,26 @@ def test_registration_screen_contains_required_hierarchy_fields_and_validation()
         'password !== confirm',
         'router.push("/terms"',
         'router.push("/privacy"',
-        'register(name.trim(), cleanEmail, password)',
+        'register(name.trim(), cleanEmail, password, cleanPhone || null)',
+        'testID="register-phone"',
     ]
     for token in required_tokens:
         assert token in register, f"registration hierarchy token missing: {token}"
 
 
-def test_phone_limit_is_disclosed_until_backend_phone_auth_exists():
+def test_registration_phone_is_sent_and_persisted_by_verified_signup_flow():
+    auth = (ROOT / "frontend" / "src" / "auth.tsx").read_text(encoding="utf-8")
+    signup = (ROOT / "backend" / "email_signup.py").read_text(encoding="utf-8")
+
+    assert 'phone: phone?.trim() || null' in auth
+    assert 'phone: Optional[str]' in signup
+    assert 'phone = _phone(data.phone)' in signup
+    assert '"phone": phone' in signup
+    assert 'Phone number already in use' in signup
+
+
+def test_registration_no_longer_claims_phone_is_disconnected():
     register = (ROOT / "frontend" / "app" / "register.tsx").read_text(encoding="utf-8")
-    assert "Вход и восстановление по телефону подключаются отдельным backend-шагом" in register
-    assert "Phone sign-in and recovery are a separate backend step" in register
+    assert "Вход и восстановление по телефону подключаются отдельным backend-шагом" not in register
+    assert "Phone sign-in and recovery are a separate backend step" not in register
+    assert "он сохранится в аккаунте" in register
