@@ -288,12 +288,15 @@ def build_lab_router(db, auth) -> APIRouter:
             "biomarkers": biomarkers,
             "ai_summary": data.ai_summary,
         }
-        await db.candidates.update_one(
+        updated_at = _now()
+        result = await db.candidates.update_one(
             {"id": import_id, "status": "pending"},
-            {"$set": {"payload": payload, "updated_at": _now()}},
+            {"$set": {"payload": payload, "updated_at": updated_at}},
         )
+        if not result.get("matched_count"):
+            raise HTTPException(409, "Lab import changed while it was being reviewed")
         candidate["payload"] = payload
-        candidate["updated_at"] = _now()
+        candidate["updated_at"] = updated_at
         return _preview(candidate)
 
     @router.post("/lab-imports/{import_id}/commit")
@@ -311,6 +314,19 @@ def build_lab_router(db, auth) -> APIRouter:
         biomarkers_raw = _clean_biomarkers(payload.get("biomarkers") or [])
         if not biomarkers_raw:
             raise HTTPException(400, "Lab import has no valid biomarkers")
+
+        claim_time = _now()
+        claim = await db.candidates.update_one(
+            {"id": import_id, "status": "pending"},
+            {"$set": {
+                "status": "committing",
+                "reviewer_account_id": str(account["id"]),
+                "updated_at": claim_time,
+            }},
+        )
+        if not claim.get("matched_count"):
+            raise HTTPException(409, "Lab import is already being committed or reviewed")
+
         biomarkers = [Biomarker(**item) for item in biomarkers_raw]
         lab = LabTest(
             profile_id=candidate["profile_id"],
@@ -327,13 +343,21 @@ def build_lab_router(db, auth) -> APIRouter:
             "drive_file_id": candidate.get("drive_file_id"),
             "verification_status": "user_confirmed",
             "confirmed_by_account_id": str(account["id"]),
-            "confirmed_at": _now(),
-            "updated_at": _now(),
+            "confirmed_at": claim_time,
+            "updated_at": claim_time,
         })
-        await db.labs.insert_one(lab_doc)
+        try:
+            await db.labs.insert_one(lab_doc)
+        except Exception:
+            await db.candidates.update_one(
+                {"id": import_id, "status": "committing"},
+                {"$set": {"status": "pending", "updated_at": _now()}},
+            )
+            raise
+
         reviewed_at = _now()
         await db.candidates.update_one(
-            {"id": import_id, "status": "pending"},
+            {"id": import_id, "status": "committing"},
             {"$set": {
                 "status": "approved",
                 "reviewed_at": reviewed_at,
@@ -360,7 +384,7 @@ def build_lab_router(db, auth) -> APIRouter:
         if candidate.get("status") != "pending":
             raise HTTPException(409, "Lab import has already been reviewed")
         reviewed_at = _now()
-        await db.candidates.update_one(
+        result = await db.candidates.update_one(
             {"id": import_id, "status": "pending"},
             {"$set": {
                 "status": "rejected",
@@ -369,6 +393,8 @@ def build_lab_router(db, auth) -> APIRouter:
                 "updated_at": reviewed_at,
             }},
         )
+        if not result.get("matched_count"):
+            raise HTTPException(409, "Lab import changed while it was being reviewed")
         if candidate.get("source_file_id"):
             await db.files.update_one(
                 {"id": candidate["source_file_id"]},
