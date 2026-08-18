@@ -1,4 +1,9 @@
-"""Authorized medical-document upload and OCR pipeline for Aida 2.0."""
+"""Authorized medical-document upload and OCR pipeline for Aida 2.0.
+
+Uploaded laboratory documents are staged first. OCR output is a pending import
+candidate and is never inserted into canonical lab history until the user
+reviews the preview and explicitly commits it.
+"""
 
 from __future__ import annotations
 
@@ -10,11 +15,12 @@ import tempfile
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from pydantic import BaseModel, Field
 
-from access_control import require_profile_access
+from access_control import require_profile_access, require_record_access
 from google_drive_storage import build_drive_storage_from_env
 from llm_provider import FileContentWithMimeType, LlmChat, UserMessage
 from server import Biomarker, EMERGENT_LLM_KEY, GEMINI_MODEL, LabTest
@@ -46,6 +52,63 @@ def _extract_json(raw: str):
 def _ocr_key() -> str:
     """Prefer the explicit Gemini key while keeping the legacy key as fallback."""
     return (os.environ.get("GEMINI_API_KEY") or EMERGENT_LLM_KEY or "").strip()
+
+
+class LabBiomarkerEdit(BaseModel):
+    name: str
+    value: str
+    unit: Optional[str] = None
+    reference: Optional[str] = None
+    status: str = "unknown"
+
+
+class LabImportEdit(BaseModel):
+    title: str
+    date: str
+    lab_name: Optional[str] = None
+    biomarkers: List[LabBiomarkerEdit] = Field(default_factory=list)
+    ai_summary: Optional[str] = None
+
+
+def _clean_biomarkers(items: List[Dict[str, Any]] | List[LabBiomarkerEdit]) -> list[Dict[str, Any]]:
+    cleaned: list[Dict[str, Any]] = []
+    for raw in items:
+        item = raw.model_dump() if isinstance(raw, LabBiomarkerEdit) else dict(raw)
+        name = str(item.get("name") or "").strip()
+        value = str(item.get("value") or "").strip()
+        if not name or not value:
+            continue
+        status = str(item.get("status") or "unknown").strip().lower()
+        if status not in {"normal", "high", "low", "unknown"}:
+            status = "unknown"
+        cleaned.append({
+            "name": name,
+            "value": value,
+            "unit": str(item.get("unit") or "").strip() or None,
+            "reference": str(item.get("reference") or "").strip() or None,
+            "status": status,
+        })
+    return cleaned
+
+
+def _preview(candidate: Dict[str, Any]) -> Dict[str, Any]:
+    payload = dict(candidate.get("payload") or {})
+    return {
+        "import_id": candidate["id"],
+        "status": candidate.get("status") or "pending",
+        "profile_id": candidate["profile_id"],
+        "title": payload.get("title") or "Лабораторный анализ",
+        "date": payload.get("date") or "unknown",
+        "lab_name": payload.get("lab_name"),
+        "biomarkers": payload.get("biomarkers") or [],
+        "ai_summary": payload.get("ai_summary"),
+        "file": {
+            "id": candidate.get("source_file_id"),
+            "drive_file_id": candidate.get("drive_file_id"),
+            "drive_url": candidate.get("drive_url"),
+            "name": candidate.get("source_file_name"),
+        },
+    }
 
 
 def build_lab_router(db, auth) -> APIRouter:
@@ -151,22 +214,7 @@ def build_lab_router(db, auth) -> APIRouter:
                 },
             )
 
-        biomarkers = []
-        for item in parsed.get("biomarkers") or []:
-            name = str(item.get("name") or "").strip()
-            value = str(item.get("value") or "").strip()
-            if not name or not value:
-                continue
-            biomarkers.append(
-                Biomarker(
-                    name=name,
-                    value=value,
-                    unit=item.get("unit"),
-                    reference=item.get("reference"),
-                    status=item.get("status") or "unknown",
-                )
-            )
-
+        biomarkers = _clean_biomarkers(parsed.get("biomarkers") or [])
         if not biomarkers:
             await db.files.update_one(
                 {"id": file_record_id},
@@ -181,37 +229,177 @@ def build_lab_router(db, auth) -> APIRouter:
                 },
             )
 
-        date = str(parsed.get("date") or "").strip() or "unknown"
+        import_id = str(uuid.uuid4())
+        candidate = {
+            "id": import_id,
+            "profile_id": profile_id,
+            "proposed_by": "import",
+            "entity_type": "lab_import",
+            "status": "pending",
+            "payload": {
+                "title": str(parsed.get("title") or "Лабораторный анализ").strip() or "Лабораторный анализ",
+                "date": str(parsed.get("date") or "").strip() or "unknown",
+                "lab_name": parsed.get("lab_name"),
+                "biomarkers": biomarkers,
+                "ai_summary": parsed.get("ai_summary"),
+            },
+            "source_file_id": file_record_id,
+            "source_file_name": original_name,
+            "drive_file_id": drive_meta.get("id"),
+            "drive_url": drive_meta.get("webViewLink"),
+            "created_at": _now(),
+            "updated_at": _now(),
+        }
+        await db.candidates.insert_one(candidate)
+        await db.files.update_one(
+            {"id": file_record_id},
+            {"$set": {"status": "awaiting_confirmation", "lab_import_id": import_id, "updated_at": _now()}},
+        )
+        return _preview(candidate)
+
+    @router.get("/lab-imports/{import_id}/preview")
+    async def get_lab_preview(
+        import_id: str,
+        account: Dict[str, Any] = Depends(auth.require_account),
+    ):
+        candidate = await require_record_access(db, auth, account, "candidates", import_id)
+        if candidate.get("entity_type") != "lab_import":
+            raise HTTPException(404, "Lab import not found")
+        return _preview(candidate)
+
+    @router.patch("/lab-imports/{import_id}")
+    async def update_lab_preview(
+        import_id: str,
+        data: LabImportEdit,
+        account: Dict[str, Any] = Depends(auth.require_account),
+    ):
+        candidate = await require_record_access(db, auth, account, "candidates", import_id, write=True)
+        if candidate.get("entity_type") != "lab_import":
+            raise HTTPException(404, "Lab import not found")
+        if candidate.get("status") != "pending":
+            raise HTTPException(409, "Lab import has already been reviewed")
+        biomarkers = _clean_biomarkers(data.biomarkers)
+        if not biomarkers:
+            raise HTTPException(400, "At least one biomarker with a name and value is required")
+        payload = {
+            "title": data.title.strip() or "Лабораторный анализ",
+            "date": data.date.strip() or "unknown",
+            "lab_name": (data.lab_name or "").strip() or None,
+            "biomarkers": biomarkers,
+            "ai_summary": data.ai_summary,
+        }
+        updated_at = _now()
+        result = await db.candidates.update_one(
+            {"id": import_id, "status": "pending"},
+            {"$set": {"payload": payload, "updated_at": updated_at}},
+        )
+        if not result.get("matched_count"):
+            raise HTTPException(409, "Lab import changed while it was being reviewed")
+        candidate["payload"] = payload
+        candidate["updated_at"] = updated_at
+        return _preview(candidate)
+
+    @router.post("/lab-imports/{import_id}/commit")
+    async def commit_lab_import(
+        import_id: str,
+        account: Dict[str, Any] = Depends(auth.require_account),
+    ):
+        candidate = await require_record_access(db, auth, account, "candidates", import_id, write=True)
+        if candidate.get("entity_type") != "lab_import":
+            raise HTTPException(404, "Lab import not found")
+        if candidate.get("status") != "pending":
+            raise HTTPException(409, "Lab import has already been reviewed")
+
+        payload = dict(candidate.get("payload") or {})
+        biomarkers_raw = _clean_biomarkers(payload.get("biomarkers") or [])
+        if not biomarkers_raw:
+            raise HTTPException(400, "Lab import has no valid biomarkers")
+
+        claim_time = _now()
+        claim = await db.candidates.update_one(
+            {"id": import_id, "status": "pending"},
+            {"$set": {
+                "status": "committing",
+                "reviewer_account_id": str(account["id"]),
+                "updated_at": claim_time,
+            }},
+        )
+        if not claim.get("matched_count"):
+            raise HTTPException(409, "Lab import is already being committed or reviewed")
+
+        biomarkers = [Biomarker(**item) for item in biomarkers_raw]
         lab = LabTest(
-            profile_id=profile_id,
-            title=str(parsed.get("title") or "Лабораторный анализ"),
-            date=date,
-            lab_name=parsed.get("lab_name"),
+            profile_id=candidate["profile_id"],
+            title=str(payload.get("title") or "Лабораторный анализ"),
+            date=str(payload.get("date") or "unknown"),
+            lab_name=payload.get("lab_name"),
             biomarkers=biomarkers,
-            ai_summary=parsed.get("ai_summary"),
+            ai_summary=payload.get("ai_summary"),
             source="upload",
         )
         lab_doc = lab.model_dump()
         lab_doc.update({
-            "source_file_id": file_record_id,
-            "drive_file_id": drive_meta.get("id"),
-            "verification_status": "unverified",
-            "updated_at": _now(),
+            "source_file_id": candidate.get("source_file_id"),
+            "drive_file_id": candidate.get("drive_file_id"),
+            "verification_status": "user_confirmed",
+            "confirmed_by_account_id": str(account["id"]),
+            "confirmed_at": claim_time,
+            "updated_at": claim_time,
         })
-        await db.labs.insert_one(lab_doc)
-        await db.files.update_one(
-            {"id": file_record_id},
-            {"$set": {"status": "recognized", "lab_id": lab.id, "updated_at": _now()}},
-        )
+        try:
+            await db.labs.insert_one(lab_doc)
+        except Exception:
+            await db.candidates.update_one(
+                {"id": import_id, "status": "committing"},
+                {"$set": {"status": "pending", "updated_at": _now()}},
+            )
+            raise
 
-        return {
-            **lab_doc,
-            "file": {
-                "id": file_record_id,
-                "drive_file_id": drive_meta.get("id"),
-                "drive_url": drive_meta.get("webViewLink"),
-                "name": original_name,
-            },
-        }
+        reviewed_at = _now()
+        await db.candidates.update_one(
+            {"id": import_id, "status": "committing"},
+            {"$set": {
+                "status": "approved",
+                "reviewed_at": reviewed_at,
+                "reviewer_account_id": str(account["id"]),
+                "approved_entity_id": lab.id,
+                "updated_at": reviewed_at,
+            }},
+        )
+        if candidate.get("source_file_id"):
+            await db.files.update_one(
+                {"id": candidate["source_file_id"]},
+                {"$set": {"status": "recognized", "lab_id": lab.id, "updated_at": reviewed_at}},
+            )
+        return lab_doc
+
+    @router.post("/lab-imports/{import_id}/cancel")
+    async def cancel_lab_import(
+        import_id: str,
+        account: Dict[str, Any] = Depends(auth.require_account),
+    ):
+        candidate = await require_record_access(db, auth, account, "candidates", import_id, write=True)
+        if candidate.get("entity_type") != "lab_import":
+            raise HTTPException(404, "Lab import not found")
+        if candidate.get("status") != "pending":
+            raise HTTPException(409, "Lab import has already been reviewed")
+        reviewed_at = _now()
+        result = await db.candidates.update_one(
+            {"id": import_id, "status": "pending"},
+            {"$set": {
+                "status": "rejected",
+                "reviewed_at": reviewed_at,
+                "reviewer_account_id": str(account["id"]),
+                "updated_at": reviewed_at,
+            }},
+        )
+        if not result.get("matched_count"):
+            raise HTTPException(409, "Lab import changed while it was being reviewed")
+        if candidate.get("source_file_id"):
+            await db.files.update_one(
+                {"id": candidate["source_file_id"]},
+                {"$set": {"status": "review_cancelled", "updated_at": reviewed_at}},
+            )
+        return {"ok": True, "import_id": import_id}
 
     return router

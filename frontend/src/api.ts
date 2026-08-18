@@ -2,13 +2,8 @@ const BASE = (process.env.EXPO_PUBLIC_BACKEND_URL || "") + "/api";
 
 let API_TOKEN = "";
 
-export function setApiToken(token?: string | null) {
-  API_TOKEN = token || "";
-}
-
-export function getApiToken() {
-  return API_TOKEN;
-}
+export function setApiToken(token?: string | null) { API_TOKEN = token || ""; }
+export function getApiToken() { return API_TOKEN; }
 
 export async function apiFetch(path: string, options?: RequestInit) {
   const headers = new Headers(options?.headers || {});
@@ -17,43 +12,23 @@ export async function apiFetch(path: string, options?: RequestInit) {
 }
 
 export type Surgery = { id: string; title: string; date?: string | null; note?: string | null };
-
 export type Profile = {
-  id: string;
-  name: string;
-  kind: "me" | "child" | "relative";
-  dob?: string | null;
-  sex?: string | null;
-  height_cm?: number | null;
-  weight_kg?: number | null;
-  blood_type?: string | null;
-  allergies: string[];
-  chronic_conditions: string[];
-  diagnoses?: string[];
-  surgeries?: Surgery[];
-  privacy?: {
-    include_in_ai_context?: boolean;
-    share_documents?: boolean;
-    show_notification_details?: boolean;
-    allow_wearable_ai?: boolean;
-    [key: string]: any;
-  };
-  module_settings?: Record<string, boolean>;
-  goals?: string[];
-  onboarding_completed?: boolean;
-  women_health?: Record<string, any>;
-  lifestyle?: Record<string, any>;
-  emergency_contacts?: Array<{ name?: string; relation?: string; phone?: string; note?: string }>;
-  preferred_locale?: string | null;
-  timezone?: string | null;
-  accessibility?: Record<string, any>;
-  avatar_url?: string | null;
-  access_role?: "owner" | "editor" | "viewer" | string | null;
-  is_owner?: boolean;
+  id: string; name: string; kind: "me" | "child" | "relative"; dob?: string | null; sex?: string | null;
+  height_cm?: number | null; weight_kg?: number | null; blood_type?: string | null; allergies: string[];
+  chronic_conditions: string[]; diagnoses?: string[]; surgeries?: Surgery[];
+  privacy?: { include_in_ai_context?: boolean; share_documents?: boolean; show_notification_details?: boolean; allow_wearable_ai?: boolean; [key: string]: any };
+  module_settings?: Record<string, boolean>; goals?: string[]; onboarding_completed?: boolean; women_health?: Record<string, any>;
+  lifestyle?: Record<string, any>; emergency_contacts?: Array<{ name?: string; relation?: string; phone?: string; note?: string }>;
+  preferred_locale?: string | null; timezone?: string | null; accessibility?: Record<string, any>; avatar_url?: string | null;
+  access_role?: "owner" | "editor" | "viewer" | string | null; is_owner?: boolean;
 };
-
 export type Biomarker = { name: string; value: string; unit?: string | null; reference?: string | null; status?: string | null };
 export type LabTest = { id: string; profile_id: string; title: string; date: string; lab_name?: string | null; biomarkers: Biomarker[]; ai_summary?: string | null; source?: string | null };
+export type LabImportPreview = {
+  import_id: string; status: string; profile_id: string; title: string; date: string; lab_name?: string | null;
+  biomarkers: Biomarker[]; ai_summary?: string | null;
+  file?: { id?: string | null; drive_file_id?: string | null; drive_url?: string | null; name?: string | null };
+};
 export type Symptom = { id: string; profile_id: string; name: string; severity: number; note?: string | null; date: string };
 export type Medication = { id: string; profile_id: string; name: string; dose?: string | null; schedule?: string | null; times?: string[]; meal_relation?: "any" | "before" | "with" | "after" | string; active: boolean; start_date?: string | null; date?: string | null; created_at?: string | null; notes?: string | null };
 export type ChatMsg = { id: string; profile_id: string; role: "user" | "assistant"; text: string; created_at?: string };
@@ -66,10 +41,7 @@ async function req(path: string, options?: RequestInit) {
   const headers = new Headers(options?.headers || {});
   if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
   const res = await apiFetch(path, { ...options, headers });
-  if (!res.ok) {
-    const txt = await res.text().catch(() => "");
-    throw new Error(`${res.status}: ${txt}`);
-  }
+  if (!res.ok) { const txt = await res.text().catch(() => ""); throw new Error(`${res.status}: ${txt}`); }
   const contentType = res.headers.get("content-type") || "";
   if (!contentType.includes("application/json")) throw new Error("Aida API returned an invalid response");
   return res.json();
@@ -86,12 +58,10 @@ function minutesUntilNextDose(medication: Medication, now = new Date()) {
     return diff >= 0 ? diff : diff + 24 * 60;
   }));
 }
-
 function sortMedicationsForNow(items: Medication[]) {
   return [...items].sort((a, b) => {
     if (a.active !== b.active) return a.active ? -1 : 1;
-    const aTime = minutesUntilNextDose(a);
-    const bTime = minutesUntilNextDose(b);
+    const aTime = minutesUntilNextDose(a), bTime = minutesUntilNextDose(b);
     if (Number.isFinite(aTime) && Number.isFinite(bTime) && aTime !== bTime) return aTime - bTime;
     if (Number.isFinite(aTime) && !Number.isFinite(bTime)) return -1;
     if (!Number.isFinite(aTime) && Number.isFinite(bTime)) return 1;
@@ -104,7 +74,6 @@ export const api = {
   createProfile: (data: Partial<Profile>): Promise<Profile> => req("/profiles", { method: "POST", body: JSON.stringify(data) }),
   updateProfile: (id: string, data: Partial<Profile>): Promise<Profile> => req(`/profiles/${id}`, { method: "PUT", body: JSON.stringify(data) }),
   deleteProfile: (id: string) => req(`/profiles/${id}`, { method: "DELETE" }),
-
   listLabs: (pid: string): Promise<LabTest[]> => req(`/labs?profile_id=${pid}`),
   createLab: (data: any): Promise<LabTest> => req("/labs", { method: "POST", body: JSON.stringify(data) }),
   deleteLab: (id: string) => req(`/labs/${id}`, { method: "DELETE" }),
@@ -136,11 +105,9 @@ export const api = {
   listDocuments: (pid: string): Promise<MedicalDocument[]> => req(`/documents?profile_id=${encodeURIComponent(pid)}`),
   wearableProviders: (): Promise<any> => req("/health/wearables/providers"),
   wearableStatus: (pid: string): Promise<any> => req(`/health/wearables/status/${encodeURIComponent(pid)}`),
-
   familyAccess: (pid: string): Promise<{ profile_id: string; current_role: string | null; can_manage: boolean; access: any[] }> => req(`/family/${encodeURIComponent(pid)}`),
   shareProfile: (pid: string, email: string, role: "viewer" | "editor", expiresAt?: string | null) => req(`/family/${encodeURIComponent(pid)}/share`, { method: "POST", body: JSON.stringify({ email, role, expires_at: expiresAt || null }) }),
   revokeShare: (pid: string, grantId: string) => req(`/family/${encodeURIComponent(pid)}/share/${encodeURIComponent(grantId)}`, { method: "DELETE" }),
-
   listSessions: (): Promise<any> => req("/privacy/sessions"),
   revokeSession: (sessionId: string) => req("/privacy/sessions/revoke", { method: "POST", body: JSON.stringify({ session_id: sessionId }) }),
   revokeAllSessions: () => req("/privacy/sessions/revoke-all", { method: "POST" }),
@@ -150,28 +117,26 @@ export const api = {
   biologicalAge: (pid: string): Promise<any> => req(`/insights/biological-age/${encodeURIComponent(pid)}`),
   bodySystems: (pid: string): Promise<any> => req(`/insights/body-systems/${encodeURIComponent(pid)}`),
   bodySystem: (pid: string, systemId: string): Promise<any> => req(`/insights/body-systems/${encodeURIComponent(pid)}/${encodeURIComponent(systemId)}`),
-
   uploadDocument: async (pid: string, documentType: string, note: string, file: { uri: string; name: string; type: string }): Promise<MedicalDocument> => {
-    const form = new FormData();
-    form.append("profile_id", pid);
-    form.append("document_type", documentType);
-    if (note.trim()) form.append("note", note.trim());
+    const form = new FormData(); form.append("profile_id", pid); form.append("document_type", documentType); if (note.trim()) form.append("note", note.trim());
     // @ts-ignore RN FormData file
     form.append("file", { uri: file.uri, name: file.name, type: file.type });
     const res = await apiFetch("/documents/upload", { method: "POST", body: form as any });
     if (!res.ok) { const txt = await res.text().catch(() => ""); throw new Error(`${res.status}: ${txt}`); }
     return res.json();
   },
-  uploadLab: async (pid: string, lang: string, file: { uri: string; name: string; type: string }) => {
-    const form = new FormData();
-    form.append("profile_id", pid);
-    form.append("language", lang);
+  uploadLab: async (pid: string, lang: string, file: { uri: string; name: string; type: string }): Promise<LabImportPreview> => {
+    const form = new FormData(); form.append("profile_id", pid); form.append("language", lang);
     // @ts-ignore RN FormData file
     form.append("file", { uri: file.uri, name: file.name, type: file.type });
     const res = await apiFetch("/labs/upload", { method: "POST", body: form as any });
     if (!res.ok) { const txt = await res.text().catch(() => ""); throw new Error(`${res.status}: ${txt}`); }
     return res.json();
   },
+  updateLabImport: (importId: string, preview: Omit<LabImportPreview, "import_id" | "status" | "profile_id" | "file">): Promise<LabImportPreview> =>
+    req(`/lab-imports/${encodeURIComponent(importId)}`, { method: "PATCH", body: JSON.stringify(preview) }),
+  commitLabImport: (importId: string): Promise<LabTest> => req(`/lab-imports/${encodeURIComponent(importId)}/commit`, { method: "POST" }),
+  cancelLabImport: (importId: string) => req(`/lab-imports/${encodeURIComponent(importId)}/cancel`, { method: "POST" }),
 };
 
 export { BASE };
