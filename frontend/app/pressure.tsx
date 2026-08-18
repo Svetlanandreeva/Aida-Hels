@@ -65,7 +65,7 @@ export default function PressureScreen() {
     if (!activeId) return;
     const validation = validateBloodPressureInput(sys, dia, pul, ru);
     if ("error" in validation) {
-      setSaveError(validation.error);
+      setSaveError(validation.error ?? (ru ? "Проверьте введённые значения" : "Check the entered values"));
       return;
     }
     setSaveError(null);
