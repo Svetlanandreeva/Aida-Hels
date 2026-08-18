@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, radius, spacing } from "@/src/theme";
+import { useResponsiveLayout } from "@/src/hooks/use-responsive-layout";
 
 export const Sheet: React.FC<{
   visible: boolean;
@@ -19,18 +20,33 @@ export const Sheet: React.FC<{
   scroll?: boolean;
 }> = ({ visible, onClose, children, testID, scroll }) => {
   const insets = useSafeAreaInsets();
+  const responsive = useResponsiveLayout();
+
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={styles.flex}
       >
-        <Pressable style={styles.backdrop} onPress={onClose} testID="sheet-backdrop" />
+        <Pressable
+          style={styles.backdrop}
+          onPress={onClose}
+          testID="sheet-backdrop"
+          accessible={false}
+        />
         <View
           testID={testID}
-          style={[styles.sheet, { paddingBottom: insets.bottom + spacing.lg }]}
+          accessibilityViewIsModal
+          style={[
+            styles.sheet,
+            {
+              paddingBottom: insets.bottom + spacing.lg,
+              width: responsive.overlayWidth,
+              alignSelf: "center",
+            },
+          ]}
         >
-          <View style={styles.handle} />
+          <View style={styles.handle} accessible={false} />
           {scroll ? (
             <ScrollView
               keyboardShouldPersistTaps="handled"
