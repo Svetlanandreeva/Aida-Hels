@@ -19,6 +19,7 @@ import { Sheet } from "@/src/components/Sheet";
 import { useApp } from "@/src/store";
 import { useI18n } from "@/src/i18n";
 import { api, MedicalDocument, Medication, Surgery } from "@/src/api";
+import { withTimeout } from "@/src/async";
 import { colors, spacing, radius, fontSize, fonts } from "@/src/theme";
 
 const MODULES = [
@@ -29,6 +30,7 @@ const MODULES = [
   { key: "women_health", ru: "Женское здоровье", en: "Women's health" },
 ];
 
+const MEDICAL_CARD_LOAD_TIMEOUT_MS = 3500;
 const csv = (value: string) => value.split(",").map((x) => x.trim()).filter(Boolean);
 
 export default function MedicalCardScreen() {
@@ -40,7 +42,8 @@ export default function MedicalCardScreen() {
   const [meds, setMeds] = useState<Medication[]>([]);
   const [docs, setDocs] = useState<MedicalDocument[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
+  const [medsError, setMedsError] = useState(false);
+  const [docsError, setDocsError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [edit, setEdit] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -55,27 +58,37 @@ export default function MedicalCardScreen() {
     if (!activeProfile) {
       setMeds([]);
       setDocs([]);
-      setError(false);
+      setMedsError(false);
+      setDocsError(false);
       setLoading(false);
       return;
     }
-    setError(false);
-    try {
-      const [m, d] = await Promise.all([
-        api.listMeds(activeProfile.id),
-        api.listDocuments(activeProfile.id),
-      ]);
-      setMeds(m.filter((x) => x.active));
-      setDocs(d);
-    } catch {
-      setError(true);
-    } finally {
-      setLoading(false);
+
+    setLoading(true);
+    setMedsError(false);
+    setDocsError(false);
+
+    const [medicationsResult, documentsResult] = await Promise.allSettled([
+      withTimeout(api.listMeds(activeProfile.id), MEDICAL_CARD_LOAD_TIMEOUT_MS, "medical_card_medications"),
+      withTimeout(api.listDocuments(activeProfile.id), MEDICAL_CARD_LOAD_TIMEOUT_MS, "medical_card_documents"),
+    ]);
+
+    if (medicationsResult.status === "fulfilled") {
+      setMeds(medicationsResult.value.filter((x) => x.active));
+    } else {
+      setMedsError(true);
     }
+
+    if (documentsResult.status === "fulfilled") {
+      setDocs(documentsResult.value);
+    } else {
+      setDocsError(true);
+    }
+
+    setLoading(false);
   }, [activeProfile?.id]);
 
   useFocusEffect(useCallback(() => {
-    setLoading(true);
     load();
   }, [load, refreshTick]));
 
@@ -132,10 +145,6 @@ export default function MedicalCardScreen() {
     }
   };
 
-  if (loading) {
-    return <View style={styles.center}><ActivityIndicator size="large" color={colors.onSurface} /></View>;
-  }
-
   if (!activeProfile) {
     return (
       <View style={styles.container}>
@@ -143,19 +152,6 @@ export default function MedicalCardScreen() {
         <View style={styles.state}>
           <Ionicons name="person-circle-outline" size={54} color={colors.onSurfaceSecondary} />
           <Text style={styles.stateTitle}>{lang === "ru" ? "Сначала выберите профиль" : "Choose a profile first"}</Text>
-        </View>
-      </View>
-    );
-  }
-
-  if (error) {
-    return (
-      <View style={styles.container}>
-        <ScreenHeader title={lang === "ru" ? "Медицинская карта" : "Medical card"} />
-        <View style={styles.state}>
-          <Ionicons name="cloud-offline-outline" size={54} color={colors.onSurfaceSecondary} />
-          <Text style={styles.stateTitle}>{lang === "ru" ? "Не удалось загрузить карту" : "Could not load medical card"}</Text>
-          <PrimaryButton label={lang === "ru" ? "Повторить" : "Retry"} onPress={() => { setLoading(true); load(); }} style={{ marginTop: spacing.lg }} />
         </View>
       </View>
     );
@@ -181,6 +177,24 @@ export default function MedicalCardScreen() {
           <Ionicons name="chevron-forward" size={19} color={colors.surfaceSecondary} />
         </Pressable>
 
+        {loading ? (
+          <View style={styles.inlineState} testID="medical-card-loading">
+            <ActivityIndicator size="small" color={colors.onSurface} />
+            <Muted>{lang === "ru" ? "Обновляем лекарства и документы…" : "Refreshing medications and documents…"}</Muted>
+          </View>
+        ) : null}
+
+        {(medsError || docsError) ? (
+          <Pressable style={styles.retryCard} onPress={load} testID="medical-card-retry">
+            <Ionicons name="refresh-outline" size={18} color={colors.onSurface} />
+            <Text style={styles.retryText}>
+              {lang === "ru"
+                ? "Часть данных не загрузилась. Карта доступна, нажмите для повтора."
+                : "Some data did not load. The card is still available; tap to retry."}
+            </Text>
+          </Pressable>
+        ) : null}
+
         <SectionCard icon="medical-outline" title={lang === "ru" ? "Диагнозы" : "Diagnoses"}>
           {diagnosesList.length ? <TagList items={diagnosesList} /> : <Muted>{lang === "ru" ? "Нет добавленных диагнозов" : "No diagnoses added"}</Muted>}
         </SectionCard>
@@ -197,7 +211,9 @@ export default function MedicalCardScreen() {
         </SectionCard>
 
         <SectionCard icon="medkit-outline" title={lang === "ru" ? "Текущие лекарства" : "Current medications"}>
-          {meds.length ? meds.map((m) => (
+          {medsError ? (
+            <Muted>{lang === "ru" ? "Не удалось обновить список лекарств" : "Could not refresh medications"}</Muted>
+          ) : meds.length ? meds.map((m) => (
             <View key={m.id} style={styles.detailRow}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.detailTitle}>{m.name}</Text>
@@ -212,8 +228,14 @@ export default function MedicalCardScreen() {
         </SectionCard>
 
         <SectionCard icon="folder-outline" title={lang === "ru" ? "Документы" : "Documents"}>
-          <Text style={styles.bigNumber}>{docs.length}</Text>
-          <Muted>{lang === "ru" ? "оригиналов сохранено в Google Drive" : "originals stored in Google Drive"}</Muted>
+          {docsError ? (
+            <Muted>{lang === "ru" ? "Не удалось обновить список документов" : "Could not refresh documents"}</Muted>
+          ) : (
+            <>
+              <Text style={styles.bigNumber}>{docs.length}</Text>
+              <Muted>{lang === "ru" ? "документов в профиле" : "documents in profile"}</Muted>
+            </>
+          )}
           <Pressable style={styles.inlineAction} onPress={() => router.push("/documents" as any)}>
             <Text style={styles.inlineActionText}>{lang === "ru" ? "Открыть документы" : "Open documents"}</Text>
             <Ionicons name="chevron-forward" size={17} color={colors.onSurfaceSecondary} />
@@ -293,13 +315,15 @@ const ToggleRow: React.FC<{ label: string; value: boolean; onChange: (value: boo
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.surface },
-  center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface },
   state: { flex: 1, alignItems: "center", justifyContent: "center", padding: spacing.xl },
   stateTitle: { marginTop: spacing.md, fontSize: fontSize.lg, fontWeight: "700", color: colors.onSurface, textAlign: "center", fontFamily: fonts.text },
   editCard: { minHeight: 82, borderRadius: radius.xl, backgroundColor: colors.onSurface, paddingHorizontal: spacing.lg, paddingVertical: spacing.md, marginBottom: spacing.xl, flexDirection: "row", alignItems: "center", gap: spacing.md },
   editIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: "rgba(255,255,255,0.12)", alignItems: "center", justifyContent: "center" },
   editTitle: { fontSize: fontSize.lg, fontWeight: "700", color: colors.surfaceSecondary, fontFamily: fonts.text },
   editHint: { marginTop: 3, fontSize: fontSize.sm, lineHeight: 18, color: "rgba(255,255,255,0.68)", fontFamily: fonts.text },
+  inlineState: { minHeight: 48, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.md, marginBottom: spacing.md },
+  retryCard: { minHeight: 52, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceSecondary, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, marginBottom: spacing.md, flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  retryText: { flex: 1, fontSize: fontSize.sm, lineHeight: 19, color: colors.onSurface, fontFamily: fonts.text },
   sectionHead: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.md },
   sectionTitle: { fontSize: fontSize.lg, fontWeight: "700", color: colors.onSurface, fontFamily: fonts.text },
   tags: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
