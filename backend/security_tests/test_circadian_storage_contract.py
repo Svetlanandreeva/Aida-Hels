@@ -37,8 +37,8 @@ def test_pending_circadian_candidate_can_be_corrected_without_rewriting_provenan
     assert '@router.patch("/{candidate_id}/circadian"' in candidates
     assert 'Only pending candidates can be corrected' in candidates
     assert 'Candidate is not a circadian event' in candidates
+    assert 'payload = dict(candidate.get("payload") or {})' in candidates
     assert 'payload.update({"kind": kind, "local_date": local_date, "local_time": local_time})' in candidates
-    assert 'Keep provider, source_record_id, metadata and confidence untouched.' in candidates
     assert 'action="candidate.corrected"' in candidates
     assert 'corrected_fields' in candidates
     assert 'correctCircadianCandidate' in circadian_api
