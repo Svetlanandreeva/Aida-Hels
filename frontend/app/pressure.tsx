@@ -17,6 +17,7 @@ import { Sheet } from "@/src/components/Sheet";
 import { useApp } from "@/src/store";
 import { useI18n } from "@/src/i18n";
 import { api, Vital } from "@/src/api";
+import { validateBloodPressureInput } from "@/src/vitalValidation";
 import { colors, spacing, radius, fontSize, fonts } from "@/src/theme";
 
 const bpColor = (s: number, d: number) => {
@@ -29,6 +30,7 @@ export default function PressureScreen() {
   const insets = useSafeAreaInsets();
   const { activeId, refreshTick, bumpRefresh } = useApp();
   const { t, lang } = useI18n();
+  const ru = lang === "ru";
 
   const [items, setItems] = useState<Vital[]>([]);
   const [loading, setLoading] = useState(true);
@@ -38,6 +40,7 @@ export default function PressureScreen() {
   const [dia, setDia] = useState("");
   const [pul, setPul] = useState("");
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!activeId) {
@@ -59,20 +62,28 @@ export default function PressureScreen() {
   useFocusEffect(useCallback(() => { setLoading(true); load(); }, [load, refreshTick]));
 
   const save = async () => {
-    if (!sys || !dia || !activeId) return;
+    if (!activeId) return;
+    const validation = validateBloodPressureInput(sys, dia, pul, ru);
+    if ("error" in validation) {
+      setSaveError(validation.error);
+      return;
+    }
+    setSaveError(null);
     setSaving(true);
     try {
       await api.createVital({
         profile_id: activeId,
         kind: "bp",
-        systolic: parseFloat(sys),
-        diastolic: parseFloat(dia),
-        pulse: pul ? parseFloat(pul) : null,
+        systolic: validation.value.systolic,
+        diastolic: validation.value.diastolic,
+        pulse: validation.value.pulse,
       });
       setSys(""); setDia(""); setPul("");
       setOpen(false);
       await load();
       bumpRefresh();
+    } catch (_) {
+      setSaveError(ru ? "Не удалось сохранить измерение. Проверьте значения и попробуйте ещё раз." : "Could not save the reading. Check the values and try again.");
     } finally {
       setSaving(false);
     }
@@ -95,20 +106,20 @@ export default function PressureScreen() {
   const stateView = !activeId ? (
     <View style={styles.empty}>
       <Ionicons name="person-circle-outline" size={56} color={colors.onSurfaceSecondary} />
-      <Text style={styles.emptyTitle}>{lang === "ru" ? "Сначала выберите профиль" : "Choose a profile first"}</Text>
-      <Muted style={styles.emptyText}>{lang === "ru" ? "Давление будет сохраняться в медицинскую историю выбранного профиля." : "Blood pressure will be stored in the selected profile's health history."}</Muted>
+      <Text style={styles.emptyTitle}>{ru ? "Сначала выберите профиль" : "Choose a profile first"}</Text>
+      <Muted style={styles.emptyText}>{ru ? "Давление будет сохраняться в медицинскую историю выбранного профиля." : "Blood pressure will be stored in the selected profile's health history."}</Muted>
     </View>
   ) : error ? (
     <View style={styles.empty}>
       <Ionicons name="cloud-offline-outline" size={56} color={colors.onSurfaceSecondary} />
-      <Text style={styles.emptyTitle}>{lang === "ru" ? "Не удалось загрузить давление" : "Could not load blood pressure"}</Text>
-      <Muted style={styles.emptyText}>{lang === "ru" ? "Проверьте соединение и попробуйте ещё раз." : "Check your connection and try again."}</Muted>
-      <PrimaryButton label={lang === "ru" ? "Повторить" : "Retry"} onPress={() => { setLoading(true); load(); }} style={{ marginTop: spacing.lg }} />
+      <Text style={styles.emptyTitle}>{ru ? "Не удалось загрузить давление" : "Could not load blood pressure"}</Text>
+      <Muted style={styles.emptyText}>{ru ? "Проверьте соединение и попробуйте ещё раз." : "Check your connection and try again."}</Muted>
+      <PrimaryButton label={ru ? "Повторить" : "Retry"} onPress={() => { setLoading(true); load(); }} style={{ marginTop: spacing.lg }} />
     </View>
   ) : items.length === 0 ? (
     <View style={styles.empty}>
       <Ionicons name="heart-outline" size={56} color={colors.onSurfaceSecondary} />
-      <Text style={styles.emptyTitle}>{lang === "ru" ? "Пока нет измерений давления" : "No blood pressure readings yet"}</Text>
+      <Text style={styles.emptyTitle}>{ru ? "Пока нет измерений давления" : "No blood pressure readings yet"}</Text>
       <Muted style={styles.emptyText}>{t("pressure_empty")}</Muted>
     </View>
   ) : null;
@@ -122,78 +133,77 @@ export default function PressureScreen() {
         <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 130 + insets.bottom }}>{stateView}</ScrollView>
       ) : (
         <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 130 + insets.bottom, gap: spacing.md }} showsVerticalScrollIndicator={false}>
-          <>
-            {stats && (
-              <View style={styles.statRow}>
-                <Card style={styles.statCard}>
-                  <Text style={styles.statLabel}>{t("avg")}</Text>
-                  <Text style={styles.statBig}>{stats.avgS}/{stats.avgD}</Text>
-                </Card>
-                <Card style={styles.statCard}>
-                  <Text style={styles.statLabel}>{t("min")}–{t("max")}</Text>
-                  <Text style={styles.statBig}>{stats.minS}–{stats.maxS}</Text>
-                </Card>
-              </View>
-            )}
+          {stats && (
+            <View style={styles.statRow}>
+              <Card style={styles.statCard}>
+                <Text style={styles.statLabel}>{t("avg")}</Text>
+                <Text style={styles.statBig}>{stats.avgS}/{stats.avgD}</Text>
+              </Card>
+              <Card style={styles.statCard}>
+                <Text style={styles.statLabel}>{t("min")}–{t("max")}</Text>
+                <Text style={styles.statBig}>{stats.minS}–{stats.maxS}</Text>
+              </Card>
+            </View>
+          )}
 
-            {chart.length > 1 && (
-              <Card>
-                <Text style={styles.chartTitle}>{t("m_pressure")}</Text>
-                <View style={styles.chart}>
-                  {chart.map((x) => {
-                    const sH = ((x.systolic || 0) / maxVal) * 120;
-                    const dH = ((x.diastolic || 0) / maxVal) * 120;
-                    return (
-                      <View key={x.id} style={styles.barGroup}>
-                        <View style={styles.barTrack}>
-                          <View style={[styles.bar, { height: sH, backgroundColor: bpColor(x.systolic || 0, x.diastolic || 0) }]} />
-                          <View style={[styles.bar, { height: dH, backgroundColor: colors.surfaceTertiary, marginLeft: 3 }]} />
-                        </View>
+          {chart.length > 1 && (
+            <Card>
+              <Text style={styles.chartTitle}>{t("m_pressure")}</Text>
+              <View style={styles.chart}>
+                {chart.map((x) => {
+                  const sH = ((x.systolic || 0) / maxVal) * 120;
+                  const dH = ((x.diastolic || 0) / maxVal) * 120;
+                  return (
+                    <View key={x.id} style={styles.barGroup}>
+                      <View style={styles.barTrack}>
+                        <View style={[styles.bar, { height: sH, backgroundColor: bpColor(x.systolic || 0, x.diastolic || 0) }]} />
+                        <View style={[styles.bar, { height: dH, backgroundColor: colors.surfaceTertiary, marginLeft: 3 }]} />
                       </View>
-                    );
-                  })}
-                </View>
-                <Muted style={{ textAlign: "center", marginTop: spacing.sm }}>
-                  {t("systolic").split(" ")[0]} / {t("diastolic").split(" ")[0]}
-                </Muted>
-              </Card>
-            )}
+                    </View>
+                  );
+                })}
+              </View>
+              <Muted style={{ textAlign: "center", marginTop: spacing.sm }}>
+                {t("systolic").split(" ")[0]} / {t("diastolic").split(" ")[0]}
+              </Muted>
+            </Card>
+          )}
 
-            {items.map((x) => (
-              <Card key={x.id} testID={`bp-${x.id}`}>
-                <View style={styles.itemRow}>
-                  <View style={[styles.dot, { backgroundColor: bpColor(x.systolic || 0, x.diastolic || 0) }]} />
-                  <Text style={styles.itemVal}>{Math.round(x.systolic || 0)}/{Math.round(x.diastolic || 0)}</Text>
-                  {x.pulse ? <Text style={styles.itemPulse}>· {Math.round(x.pulse)} {t("pulse").toLowerCase()}</Text> : null}
-                  <View style={{ flex: 1 }} />
-                  <Muted>{(x.date || "").slice(0, 10)}</Muted>
-                  <Pressable onPress={async () => { await api.deleteVital(x.id); load(); }} hitSlop={8} style={{ marginLeft: spacing.sm }} testID={`delete-bp-${x.id}`}>
-                    <Ionicons name="trash-outline" size={16} color={colors.onSurfaceSecondary} />
-                  </Pressable>
-                </View>
-              </Card>
-            ))}
-          </>
+          {items.map((x) => (
+            <Card key={x.id} testID={`bp-${x.id}`}>
+              <View style={styles.itemRow}>
+                <View style={[styles.dot, { backgroundColor: bpColor(x.systolic || 0, x.diastolic || 0) }]} />
+                <Text style={styles.itemVal}>{Math.round(x.systolic || 0)}/{Math.round(x.diastolic || 0)}</Text>
+                {x.pulse ? <Text style={styles.itemPulse}>· {Math.round(x.pulse)} {t("pulse").toLowerCase()}</Text> : null}
+                <View style={{ flex: 1 }} />
+                <Muted>{(x.date || "").slice(0, 10)}</Muted>
+                <Pressable onPress={async () => { await api.deleteVital(x.id); load(); }} hitSlop={8} style={{ marginLeft: spacing.sm }} testID={`delete-bp-${x.id}`}>
+                  <Ionicons name="trash-outline" size={16} color={colors.onSurfaceSecondary} />
+                </Pressable>
+              </View>
+            </Card>
+          ))}
         </ScrollView>
       )}
 
       {!loading && activeId && !error && (
         <View style={[styles.fabWrap, { bottom: insets.bottom + 24 }]}>
-          <PrimaryButton label={t("add_pressure")} icon="add" onPress={() => setOpen(true)} testID="add-pressure-button" />
+          <PrimaryButton label={t("add_pressure")} icon="add" onPress={() => { setSaveError(null); setOpen(true); }} testID="add-pressure-button" />
         </View>
       )}
 
-      <Sheet visible={open} onClose={() => setOpen(false)} testID="pressure-sheet" scroll>
+      <Sheet visible={open} onClose={() => { setSaveError(null); setOpen(false); }} testID="pressure-sheet" scroll>
         <Text style={styles.sheetTitle}>{t("add_pressure")}</Text>
         <Field label={t("systolic")}>
-          <TextInput testID="input-systolic" value={sys} onChangeText={setSys} keyboardType="numeric" placeholder="120" style={styles.input} placeholderTextColor={colors.onSurfaceSecondary} />
+          <TextInput testID="input-systolic" value={sys} onChangeText={(v) => { setSys(v); setSaveError(null); }} keyboardType="numeric" placeholder="120" style={styles.input} placeholderTextColor={colors.onSurfaceSecondary} />
         </Field>
         <Field label={t("diastolic")}>
-          <TextInput testID="input-diastolic" value={dia} onChangeText={setDia} keyboardType="numeric" placeholder="80" style={styles.input} placeholderTextColor={colors.onSurfaceSecondary} />
+          <TextInput testID="input-diastolic" value={dia} onChangeText={(v) => { setDia(v); setSaveError(null); }} keyboardType="numeric" placeholder="80" style={styles.input} placeholderTextColor={colors.onSurfaceSecondary} />
         </Field>
         <Field label={`${t("pulse")} (${t("optional")})`}>
-          <TextInput testID="input-pulse" value={pul} onChangeText={setPul} keyboardType="numeric" placeholder="70" style={styles.input} placeholderTextColor={colors.onSurfaceSecondary} />
+          <TextInput testID="input-pulse" value={pul} onChangeText={(v) => { setPul(v); setSaveError(null); }} keyboardType="numeric" placeholder="70" style={styles.input} placeholderTextColor={colors.onSurfaceSecondary} />
         </Field>
+        {saveError ? <Text style={styles.validationError} testID="pressure-validation-error">{saveError}</Text> : null}
         <PrimaryButton label={t("save")} onPress={save} loading={saving} testID="save-pressure" />
       </Sheet>
     </View>
@@ -229,6 +239,7 @@ const styles = StyleSheet.create({
   fabWrap: { position: "absolute", left: spacing.lg, right: spacing.lg },
   sheetTitle: { fontSize: fontSize.xl, fontWeight: "700", color: colors.onSurface, marginBottom: spacing.lg, fontFamily: fonts.display },
   fieldLabel: { fontSize: fontSize.base, color: colors.onSurfaceSecondary, marginBottom: spacing.sm, fontWeight: "600", fontFamily: fonts.text },
+  validationError: { color: colors.error, fontSize: fontSize.sm, fontFamily: fonts.text, marginBottom: spacing.md },
   input: {
     height: 52,
     backgroundColor: colors.surfaceSecondary,
