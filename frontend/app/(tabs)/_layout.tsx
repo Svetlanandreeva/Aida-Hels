@@ -13,6 +13,7 @@ export default function TabsLayout() {
 
   return (
     <Tabs
+      detachInactiveScreens
       tabBar={(props) => {
         const visibleRoutes = props.state.routes.filter((route) => PRIMARY_TABS.has(route.name));
         const activeName = props.state.routes[props.state.index]?.name;
@@ -21,6 +22,8 @@ export default function TabsLayout() {
       }}
       screenOptions={{
         headerShown: false,
+        lazy: true,
+        freezeOnBlur: true,
         tabBarPosition: responsive.isDesktop ? "left" : "bottom",
         tabBarHideOnKeyboard: true,
         sceneStyle: responsive.isDesktop
