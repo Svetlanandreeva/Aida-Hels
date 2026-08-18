@@ -61,7 +61,7 @@ export default function MeasurementsScreen() {
     if (!activeId) return;
     const validation = validateMeasurementInput(kind, value, ru);
     if ("error" in validation) {
-      setSaveError(validation.error);
+      setSaveError(validation.error ?? (ru ? "Проверьте значение измерения" : "Check the measurement value"));
       return;
     }
     setSaveError(null);
