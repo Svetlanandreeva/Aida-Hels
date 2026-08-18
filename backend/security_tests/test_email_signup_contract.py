@@ -8,7 +8,8 @@ def test_email_registration_requires_verification_before_session():
     signup = (ROOT / "backend" / "email_signup.py").read_text(encoding="utf-8")
     main = (ROOT / "backend" / "main.py").read_text(encoding="utf-8")
     frontend_auth = (ROOT / "frontend" / "src" / "auth.tsx").read_text(encoding="utf-8")
-    screen = (ROOT / "frontend" / "app" / "auth.tsx").read_text(encoding="utf-8")
+    auth_screen = (ROOT / "frontend" / "app" / "auth.tsx").read_text(encoding="utf-8")
+    register_screen = (ROOT / "frontend" / "app" / "register.tsx").read_text(encoding="utf-8")
 
     assert '"password_hash": ""' in signup
     assert '"pending_password_hash"' in signup
@@ -20,6 +21,8 @@ def test_email_registration_requires_verification_before_session():
     assert 'build_email_signup_router(_google_db)' in main
     assert 'verification_required' in frontend_auth
     assert 'resendVerification' in frontend_auth
-    assert 'type Mode = "login" | "register" | "forgot" | "verify"' in screen
-    assert 'src: "/aida-logo.svg"' in screen
-    assert 'Продолжить с Яндекс ID' in screen
+    assert 'const [verificationEmail, setVerificationEmail]' in register_screen
+    assert 'await resendVerification(verificationEmail)' in register_screen
+    assert 'Подтвердите email' in register_screen
+    assert 'router.push("/register")' in auth_screen
+    assert 'Продолжить с Яндекс ID' in auth_screen
