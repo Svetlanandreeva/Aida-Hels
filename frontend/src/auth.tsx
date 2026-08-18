@@ -4,9 +4,6 @@ import { apiFetch, setApiToken } from "@/src/api";
 import { storage } from "@/src/utils/storage";
 
 export const AUTH_TOKEN_KEY = "aida.auth.accessToken";
-
-// Production web must never silently bypass authentication. Preview mode is
-// available only when it is deliberately enabled at build time.
 const WEB_PREVIEW_DEFAULT = process.env.EXPO_PUBLIC_AIDA_WEB_PREVIEW === "true";
 
 export type SocialProvider = "yandex" | "vk";
@@ -14,6 +11,7 @@ export type SocialProvider = "yandex" | "vk";
 type Account = {
   id: string;
   email: string;
+  phone?: string | null;
   name?: string | null;
   created_at?: string | null;
 };
@@ -37,11 +35,11 @@ type AuthContextValue = {
   preview: boolean;
   loading: boolean;
   error: string | null;
-  login: (email: string, password: string) => Promise<void>;
+  login: (identifier: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string, phone?: string | null) => Promise<RegistrationResult>;
   resendVerification: (email: string) => Promise<void>;
   logout: () => Promise<void>;
-  forgotPassword: (email: string) => Promise<void>;
+  forgotPassword: (identifier: string) => Promise<void>;
   resetPassword: (token: string, newPassword: string) => Promise<void>;
   startSocialLogin: (provider: SocialProvider, returnUri: string) => Promise<string>;
   completeSocialLogin: (ticket: string) => Promise<void>;
@@ -54,9 +52,7 @@ function errorDetail(body: any): string | null {
   const detail = body?.detail;
   if (typeof detail === "string" && detail.trim()) return detail.trim();
   if (Array.isArray(detail)) {
-    const messages = detail
-      .map((item) => item?.msg || item?.message)
-      .filter((value): value is string => typeof value === "string" && Boolean(value.trim()));
+    const messages = detail.map((item) => item?.msg || item?.message).filter((value): value is string => typeof value === "string" && Boolean(value.trim()));
     if (messages.length) return messages.join("; ");
   }
   const safeMessage = body?.safe_user_message || body?.message;
@@ -66,11 +62,7 @@ function errorDetail(body: any): string | null {
 async function readJson(res: Response) {
   const text = await res.text();
   let body: any = null;
-  try {
-    body = text ? JSON.parse(text) : null;
-  } catch (_) {
-    body = null;
-  }
+  try { body = text ? JSON.parse(text) : null; } catch (_) { body = null; }
   if (!res.ok) {
     const detail = errorDetail(body);
     const requestId = body?.request_id ? ` [request ${String(body.request_id)}]` : "";
@@ -120,7 +112,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
       return;
     }
-
     setApiToken(stored);
     try {
       const res = await apiFetch("/auth/me", { method: "GET" });
@@ -135,18 +126,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [clearSession]);
 
-  useEffect(() => {
-    restore();
-  }, [restore]);
+  useEffect(() => { restore(); }, [restore]);
 
-  const login = useCallback(async (email: string, password: string) => {
+  const login = useCallback(async (identifier: string, password: string) => {
     setError(null);
     try {
-      const session = await authRequest("/auth/login", { email: email.trim(), password });
+      const session = await authRequest("/auth/login", { identifier: identifier.trim(), password });
       await applySession(session);
     } catch (e: any) {
-      const message = e?.message || "Login failed";
-      setError(message);
+      setError(e?.message || "Login failed");
       throw e;
     }
   }, [applySession]);
@@ -154,66 +142,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const register = useCallback(async (name: string, email: string, password: string, phone?: string | null): Promise<RegistrationResult> => {
     setError(null);
     try {
-      const result = await authRequest("/auth/register", {
-        name: name.trim(),
-        email: email.trim(),
-        password,
-        phone: phone?.trim() || null,
-      });
-      if (!result?.verification_required || !result?.email) {
-        throw new Error("Email verification was not requested");
-      }
+      const result = await authRequest("/auth/register", { name: name.trim(), email: email.trim(), password, phone: phone?.trim() || null });
+      if (!result?.verification_required || !result?.email) throw new Error("Email verification was not requested");
       return result as RegistrationResult;
     } catch (e: any) {
-      const message = e?.message || "Registration failed";
-      setError(message);
+      setError(e?.message || "Registration failed");
       throw e;
     }
   }, []);
 
   const resendVerification = useCallback(async (email: string) => {
     setError(null);
-    try {
-      await authRequest("/auth/resend-verification", { email: email.trim() });
-    } catch (e: any) {
-      const message = e?.message || "Verification email resend failed";
-      setError(message);
-      throw e;
-    }
+    try { await authRequest("/auth/resend-verification", { email: email.trim() }); }
+    catch (e: any) { setError(e?.message || "Verification email resend failed"); throw e; }
   }, []);
 
   const logout = useCallback(async () => {
-    try {
-      if (token) await authRequest("/auth/logout", undefined, "POST");
-    } catch (_) {
-      // Local logout must still complete when the network is unavailable.
-    } finally {
-      await clearSession();
-    }
+    try { if (token) await authRequest("/auth/logout", undefined, "POST"); }
+    catch (_) { /* local logout must still work */ }
+    finally { await clearSession(); }
   }, [clearSession, token]);
 
-  const forgotPassword = useCallback(async (email: string) => {
+  const forgotPassword = useCallback(async (identifier: string) => {
     setError(null);
-    try {
-      await authRequest("/auth/forgot-password", { email: email.trim() });
-    } catch (e: any) {
-      const message = e?.message || "Recovery request failed";
-      setError(message);
-      throw e;
-    }
+    try { await authRequest("/auth/forgot-password", { identifier: identifier.trim() }); }
+    catch (e: any) { setError(e?.message || "Recovery request failed"); throw e; }
   }, []);
 
   const resetPassword = useCallback(async (resetToken: string, newPassword: string) => {
     setError(null);
     try {
-      const session = await authRequest("/auth/reset-password", {
-        token: resetToken,
-        new_password: newPassword,
-      });
+      const session = await authRequest("/auth/reset-password", { token: resetToken, new_password: newPassword });
       await applySession(session);
     } catch (e: any) {
-      const message = e?.message || "Password reset failed";
-      setError(message);
+      setError(e?.message || "Password reset failed");
       throw e;
     }
   }, [applySession]);
@@ -224,10 +186,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const result = await authRequest(`/auth/oauth/${provider}/start`, { return_uri: returnUri });
       if (!result?.authorization_url) throw new Error("Social login URL was not returned");
       return String(result.authorization_url);
-    } catch (e: any) {
-      setError(e?.message || "Social login failed");
-      throw e;
-    }
+    } catch (e: any) { setError(e?.message || "Social login failed"); throw e; }
   }, []);
 
   const completeSocialLogin = useCallback(async (ticket: string) => {
@@ -235,27 +194,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const session = await authRequest("/auth/oauth/complete", { ticket });
       await applySession(session);
-    } catch (e: any) {
-      setError(e?.message || "Social login failed");
-      throw e;
-    }
+    } catch (e: any) { setError(e?.message || "Social login failed"); throw e; }
   }, [applySession]);
 
   const value = useMemo<AuthContextValue>(() => ({
-    account,
-    token,
-    preview,
-    loading,
-    error,
-    login,
-    register,
-    resendVerification,
-    logout,
-    forgotPassword,
-    resetPassword,
-    startSocialLogin,
-    completeSocialLogin,
-    restore,
+    account, token, preview, loading, error, login, register, resendVerification, logout, forgotPassword,
+    resetPassword, startSocialLogin, completeSocialLogin, restore,
   }), [account, token, preview, loading, error, login, register, resendVerification, logout, forgotPassword, resetPassword, startSocialLogin, completeSocialLogin, restore]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
