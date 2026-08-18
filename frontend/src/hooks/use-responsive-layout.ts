@@ -10,6 +10,10 @@ export const layoutBreakpoints = {
   wideDesktop: 1360,
 } as const;
 
+export const layoutMetrics = {
+  overlayMaxWidth: 640,
+} as const;
+
 export const useResponsiveLayout = () => {
   const { width, height } = useWindowDimensions();
   const isWeb = Platform.OS === "web";
@@ -26,6 +30,9 @@ export const useResponsiveLayout = () => {
   const sidebarWidth = sidebarRailWidth + sidebarPanelWidth;
   const showMobileLabels = width >= 360;
   const mobileTabHeight = isTinyPhone ? 58 : isCompactPhone ? 60 : 64;
+  const overlayWidth = isPhone
+    ? width
+    : Math.min(Math.max(0, width - contentPadding * 2), layoutMetrics.overlayMaxWidth);
 
   return {
     width,
@@ -43,5 +50,6 @@ export const useResponsiveLayout = () => {
     sidebarWidth,
     showMobileLabels,
     mobileTabHeight,
+    overlayWidth,
   } as const;
 };
