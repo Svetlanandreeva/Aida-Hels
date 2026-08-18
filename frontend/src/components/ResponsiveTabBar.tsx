@@ -7,6 +7,7 @@ import { useResponsiveLayout } from "@/src/hooks/use-responsive-layout";
 const TAB_ICONS: Record<string, { active: keyof typeof Ionicons.glyphMap; inactive: keyof typeof Ionicons.glyphMap }> = {
   index: { active: "grid", inactive: "grid-outline" },
   health: { active: "heart", inactive: "heart-outline" },
+  body: { active: "body", inactive: "body-outline" },
   chat: { active: "sparkles", inactive: "sparkles-outline" },
   tasks: { active: "checkbox", inactive: "checkbox-outline" },
   profile: { active: "person", inactive: "person-outline" },
@@ -184,7 +185,7 @@ export const ResponsiveTabBar = ({ state, descriptors, navigation, insets }: any
               key={route.key}
               accessibilityRole="button"
               accessibilityState={focused ? { selected: true } : {}}
-              accessibilityLabel={options.tabBarAccessibilityLabel}
+              accessibilityLabel={options.tabBarAccessibilityLabel || label}
               testID={options.tabBarButtonTestID}
               onPress={() => openRoute(route, focused)}
               onLongPress={() => longPressRoute(route)}
