@@ -12,7 +12,8 @@ def test_public_landing_is_not_blocked_by_auth_or_profile_bootstrap():
     assert 'const PUBLIC_ROUTES = new Set(["", "auth", "register", "reset-password", "terms", "privacy-policy"])' in layout
     assert "if (publicRoute) return stack;" in layout
     assert "PUBLIC_ROUTES.has(route) || loading || !activeProfile" in layout
-    assert 'if (Platform.OS !== "web" && !loaded && !error)' in layout
+    assert "useIconFonts();" in layout
+    assert 'if (Platform.OS !== "web" && !loaded && !error)' not in layout
 
 
 def test_session_and_profile_bootstrap_are_time_bounded():
