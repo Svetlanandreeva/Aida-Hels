@@ -71,6 +71,11 @@ def _compact(kind: str, row: Dict[str, Any], keys: Iterable[str]) -> Dict[str, A
     return item
 
 
+def _module_enabled(settings: Dict[str, Any], key: str) -> bool:
+    """Missing settings keep backward compatibility; explicit false is fail-closed."""
+    return settings.get(key) is not False
+
+
 async def build_ai_context(db, profile_id: str, *, as_json: bool = True) -> str | Dict[str, Any]:
     profile = await db.profiles.find_one({"id": profile_id}, {"_id": 0})
     if not profile:
@@ -80,11 +85,12 @@ async def build_ai_context(db, profile_id: str, *, as_json: bool = True) -> str 
     if privacy.get("include_in_ai_context") is False:
         return "" if as_json else {}
 
-    medications = await db.medications.find({"profile_id": profile_id, "active": True}, {"_id": 0}).to_list(100)
-    symptoms = await db.symptoms.find({"profile_id": profile_id}, {"_id": 0}).sort("date", -1).to_list(20)
-    labs = await db.labs.find({"profile_id": profile_id}, {"_id": 0}).sort("date", -1).to_list(12)
-    vitals = await db.vitals.find({"profile_id": profile_id}, {"_id": 0}).sort("observed_at", -1).to_list(80)
-    checkins = await db.checkins.find({"profile_id": profile_id}, {"_id": 0}).sort("date", -1).to_list(14)
+    modules = profile.get("module_settings") or {}
+    medications = await db.medications.find({"profile_id": profile_id, "active": True}, {"_id": 0}).to_list(100) if _module_enabled(modules, "meds") else []
+    symptoms = await db.symptoms.find({"profile_id": profile_id}, {"_id": 0}).sort("date", -1).to_list(20) if _module_enabled(modules, "symptoms") else []
+    labs = await db.labs.find({"profile_id": profile_id}, {"_id": 0}).sort("date", -1).to_list(12) if _module_enabled(modules, "labs") else []
+    vitals = await db.vitals.find({"profile_id": profile_id}, {"_id": 0}).sort("observed_at", -1).to_list(80) if _module_enabled(modules, "pressure") else []
+    checkins = await db.checkins.find({"profile_id": profile_id}, {"_id": 0}).sort("date", -1).to_list(14) if _module_enabled(modules, "mental") else []
 
     context: Dict[str, Any] = {
         "schema_version": "aida-context-v1",
@@ -98,46 +104,26 @@ async def build_ai_context(db, profile_id: str, *, as_json: bool = True) -> str 
             "height_cm": profile.get("height_cm"),
             "weight_kg": profile.get("weight_kg"),
             "allergies": profile.get("allergies") or [],
-            "chronic_conditions": profile.get("chronic_conditions") or [],
-            "diagnoses": profile.get("diagnoses") or [],
+            "chronic_conditions": (profile.get("chronic_conditions") or []) if _module_enabled(modules, "chronic") else [],
+            "diagnoses": (profile.get("diagnoses") or []) if _module_enabled(modules, "chronic") else [],
             "goals": profile.get("goals") or [],
-            "women_health": profile.get("women_health") or {},
+            "women_health": (profile.get("women_health") or {}) if _module_enabled(modules, "women") else {},
         },
-        "active_medications": [
-            _compact("medication", row, ("name", "dose", "schedule", "times", "meal_relation", "start_date"))
-            for row in medications
-        ],
-        "recent_symptoms": [
-            _compact("symptom", row, ("name", "severity", "note", "date")) for row in symptoms
-        ],
-        "recent_labs": [
-            {
-                **_compact("lab", row, ("title", "date", "lab_name", "source")),
-                "biomarkers": (row.get("biomarkers") or [])[:30],
-            }
-            for row in labs
-        ],
+        "active_medications": [_compact("medication", row, ("name", "dose", "schedule", "times", "meal_relation", "start_date")) for row in medications],
+        "recent_symptoms": [_compact("symptom", row, ("name", "severity", "note", "date")) for row in symptoms],
+        "recent_labs": [{**_compact("lab", row, ("title", "date", "lab_name", "source")), "biomarkers": (row.get("biomarkers") or [])[:30]} for row in labs],
         "recent_measurements": [
-            _compact(
-                "vital",
-                row,
-                (
-                    "kind", "metric", "type", "value", "unit", "systolic", "diastolic", "pulse",
-                    "start_at", "end_at", "device_name", "provider_id",
-                ),
-            )
+            _compact("vital", row, ("kind", "metric", "type", "value", "unit", "systolic", "diastolic", "pulse", "start_at", "end_at", "device_name", "provider_id"))
             for row in vitals
         ],
-        "recent_checkins": [
-            _compact("checkin", row, ("mood", "energy", "stress", "anxiety", "sleep", "triggers", "note", "date"))
-            for row in checkins
-        ],
+        "recent_checkins": [_compact("checkin", row, ("mood", "energy", "stress", "anxiety", "sleep", "triggers", "note", "date")) for row in checkins],
         "rules": {
             "missing_data_is_not_zero": True,
             "do_not_infer_medical_facts_without_evidence": True,
             "do_not_mix_profiles": True,
             "wearable_values_are_source_reported_not_diagnoses": True,
             "freshness_and_quality_must_be_considered": True,
+            "respect_module_settings": True,
         },
     }
     return json.dumps(context, ensure_ascii=False, default=str) if as_json else context
