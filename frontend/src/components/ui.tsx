@@ -18,13 +18,17 @@ export const Card: React.FC<{
   style?: StyleProp<ViewStyle>;
   onPress?: () => void;
   testID?: string;
-}> = ({ children, style, onPress, testID }) => {
+  accessibilityLabel?: string;
+  accessibilityHint?: string;
+}> = ({ children, style, onPress, testID, accessibilityLabel, accessibilityHint }) => {
   if (onPress) {
     return (
       <Pressable
         testID={testID}
         onPress={onPress}
         accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel}
+        accessibilityHint={accessibilityHint}
         style={({ pressed }) => [styles.card, style, pressed && { opacity: 0.9 }]}
       >
         {children}
@@ -44,7 +48,9 @@ export const GradientCard: React.FC<{
   style?: StyleProp<ViewStyle>;
   onPress?: () => void;
   testID?: string;
-}> = ({ children, gradient, style, onPress, testID }) => {
+  accessibilityLabel?: string;
+  accessibilityHint?: string;
+}> = ({ children, gradient, style, onPress, testID, accessibilityLabel, accessibilityHint }) => {
   const content = (
     <LinearGradient
       colors={gradient as any}
@@ -61,6 +67,8 @@ export const GradientCard: React.FC<{
         testID={testID}
         onPress={onPress}
         accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel}
+        accessibilityHint={accessibilityHint}
         style={({ pressed }) => pressed && { opacity: 0.92 }}
       >
         {content}
@@ -114,7 +122,8 @@ export const PrimaryButton: React.FC<{
   style?: StyleProp<ViewStyle>;
   variant?: "primary" | "secondary" | "accent";
   testID?: string;
-}> = ({ label, onPress, icon, loading, disabled, style, variant = "primary", testID }) => {
+  accessibilityHint?: string;
+}> = ({ label, onPress, icon, loading, disabled, style, variant = "primary", testID, accessibilityHint }) => {
   const isSecondary = variant === "secondary";
   const isAccent = variant === "accent";
   const fg = isSecondary ? colors.onSurface : isAccent ? colors.onAccent : colors.onBrandPrimary;
@@ -126,6 +135,7 @@ export const PrimaryButton: React.FC<{
       disabled={unavailable}
       accessibilityRole="button"
       accessibilityLabel={label}
+      accessibilityHint={accessibilityHint}
       accessibilityState={{ disabled: unavailable, busy: !!loading }}
       style={({ pressed }) => [
         styles.btn,
@@ -153,13 +163,15 @@ export const Chip: React.FC<{
   onPress?: () => void;
   icon?: keyof typeof Ionicons.glyphMap;
   testID?: string;
-}> = ({ label, active, onPress, icon, testID }) => (
+  accessibilityHint?: string;
+}> = ({ label, active, onPress, icon, testID, accessibilityHint }) => (
   <Pressable
     testID={testID}
     onPress={onPress}
     disabled={!onPress}
     accessibilityRole={onPress ? "button" : undefined}
     accessibilityLabel={onPress ? label : undefined}
+    accessibilityHint={onPress ? accessibilityHint : undefined}
     accessibilityState={onPress ? { selected: !!active } : undefined}
     style={({ pressed }) => [
       styles.chip,
@@ -179,22 +191,32 @@ export const Chip: React.FC<{
   </Pressable>
 );
 
-export const ProgressBar: React.FC<{ value: number; color?: string; height?: number }> = ({
-  value,
-  color = colors.accent,
-  height = 10,
-}) => (
-  <View style={[styles.progressTrack, { height, borderRadius: height / 2 }]}>
+export const ProgressBar: React.FC<{
+  value: number;
+  color?: string;
+  height?: number;
+  accessibilityLabel?: string;
+}> = ({ value, color = colors.accent, height = 10, accessibilityLabel }) => {
+  const normalizedValue = Math.max(0, Math.min(100, value));
+  return (
     <View
-      style={{
-        width: `${Math.max(0, Math.min(100, value))}%`,
-        backgroundColor: color,
-        height: "100%",
-        borderRadius: height / 2,
-      }}
-    />
-  </View>
-);
+      style={[styles.progressTrack, { height, borderRadius: height / 2 }]}
+      accessibilityRole="progressbar"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityValue={{ min: 0, max: 100, now: normalizedValue }}
+    >
+      <View
+        accessible={false}
+        style={{
+          width: `${normalizedValue}%`,
+          backgroundColor: color,
+          height: "100%",
+          borderRadius: height / 2,
+        }}
+      />
+    </View>
+  );
+};
 
 export const Tag: React.FC<{ label: string; color?: string; bg?: string }> = ({
   label,
