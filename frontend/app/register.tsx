@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -26,6 +26,11 @@ export default function RegisterScreen() {
   const { lang } = useI18n();
   const { register, resendVerification } = useAuth();
   const ru = lang === "ru";
+
+  const emailRef = useRef<TextInput>(null);
+  const phoneRef = useRef<TextInput>(null);
+  const passwordRef = useRef<TextInput>(null);
+  const confirmRef = useRef<TextInput>(null);
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -96,78 +101,204 @@ export default function RegisterScreen() {
   };
 
   if (verificationEmail) {
+    const resendLabel = ru ? "Отправить письмо ещё раз" : "Send again";
+    const signInLabel = ru ? "Перейти ко входу" : "Go to sign in";
     return (
       <View style={[styles.page, styles.verifyPage, { paddingTop: insets.top + 36, paddingBottom: insets.bottom + 28 }]}>
-        <View style={styles.verifyCard}>
-          <View style={styles.brandIcon}><Ionicons name="mail-open-outline" size={24} color={colors.onSurfaceInverse} /></View>
+        <View style={styles.verifyCard} accessibilityRole="summary">
+          <View style={styles.brandIcon} accessible={false}><Ionicons name="mail-open-outline" size={24} color={colors.onSurfaceInverse} /></View>
           <Text style={styles.title}>{ru ? "Подтвердите email" : "Verify your email"}</Text>
           <Text style={styles.subtitle}>{ru ? "Откройте ссылку в письме. После подтверждения можно войти и продолжить настройку профиля." : "Open the link in the email. After verification, sign in and continue profile setup."}</Text>
-          <View style={styles.emailPill}><Ionicons name="mail-outline" size={16} color={colors.onSurfaceSecondary} /><Text style={styles.emailPillText}>{verificationEmail}</Text></View>
+          <View style={styles.emailPill} accessible accessibilityLabel={`${ru ? "Email для подтверждения" : "Verification email"}: ${verificationEmail}`}><Ionicons name="mail-outline" size={16} color={colors.onSurfaceSecondary} /><Text style={styles.emailPillText}>{verificationEmail}</Text></View>
           {error ? <Notice kind="error" text={error} /> : null}
           {message ? <Notice kind="success" text={message} /> : null}
-          <Pressable style={[styles.primary, busy && styles.disabled]} onPress={resend} disabled={busy}>
-            {busy ? <ActivityIndicator color={colors.onSurfaceInverse} /> : <Text style={styles.primaryText}>{ru ? "Отправить письмо ещё раз" : "Send again"}</Text>}
+          <Pressable
+            style={[styles.primary, busy && styles.disabled]}
+            onPress={resend}
+            disabled={busy}
+            accessibilityRole="button"
+            accessibilityLabel={resendLabel}
+            accessibilityState={{ disabled: busy, busy }}
+          >
+            {busy ? <ActivityIndicator color={colors.onSurfaceInverse} /> : <Text style={styles.primaryText}>{resendLabel}</Text>}
           </Pressable>
-          <Pressable style={styles.secondary} onPress={() => router.replace("/auth")}>
-            <Text style={styles.secondaryText}>{ru ? "Перейти ко входу" : "Go to sign in"}</Text>
+          <Pressable style={styles.secondary} onPress={() => router.replace("/auth")} accessibilityRole="link" accessibilityLabel={signInLabel}>
+            <Text style={styles.secondaryText}>{signInLabel}</Text>
           </Pressable>
         </View>
       </View>
     );
   }
 
+  const nameLabel = ru ? "Имя и фамилия" : "Full name";
+  const emailLabel = ru ? "Электронная почта" : "Email";
+  const phoneLabel = ru ? "Телефон" : "Phone";
+  const passwordLabel = ru ? "Пароль" : "Password";
+  const confirmLabel = ru ? "Повтор пароля" : "Repeat password";
+  const submitLabel = ru ? "Создать аккаунт" : "Create account";
+  const consentLabel = ru ? "Я принимаю пользовательское соглашение и политику конфиденциальности" : "I accept the Terms of Use and Privacy Policy";
+
   return (
     <KeyboardAvoidingView style={styles.page} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.content, { paddingTop: insets.top + 30, paddingBottom: insets.bottom + 34 }]}>
-        <View style={styles.brandIcon}><Ionicons name="sparkles" size={20} color={colors.onSurfaceInverse} /></View>
+      <ScrollView
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+        contentContainerStyle={[styles.content, { paddingTop: insets.top + 30, paddingBottom: insets.bottom + 34 }]}
+      >
+        <View style={styles.brandIcon} accessible={false}><Ionicons name="sparkles" size={20} color={colors.onSurfaceInverse} /></View>
         <Text style={styles.eyebrow}>AIDA</Text>
         <Text style={styles.title}>{ru ? "Создать аккаунт" : "Create account"}</Text>
         <Text style={styles.subtitle}>{ru ? "Один аккаунт — отдельный профиль и доступ к вашим данным здоровья." : "One account gives you a separate profile and access to your health data."}</Text>
 
         <View style={styles.form}>
-          <Field label={ru ? "Имя и фамилия" : "Full name"} icon="person-outline" error={fieldErrors.name}>
-            <TextInput value={name} onChangeText={(v) => { setName(v); clearField(setFieldErrors, "name"); }} style={[styles.input, fieldErrors.name && styles.inputError]} placeholder={ru ? "Как к вам обращаться" : "Your full name"} placeholderTextColor={colors.onSurfaceSecondary} autoCapitalize="words" textContentType="name" testID="register-name" />
+          <Field label={nameLabel} icon="person-outline" error={fieldErrors.name}>
+            <TextInput
+              value={name}
+              onChangeText={(v) => { setName(v); clearField(setFieldErrors, "name"); }}
+              style={[styles.input, fieldErrors.name && styles.inputError]}
+              placeholder={ru ? "Как к вам обращаться" : "Your full name"}
+              placeholderTextColor={colors.onSurfaceSecondary}
+              autoCapitalize="words"
+              autoCorrect={false}
+              autoComplete="name"
+              textContentType="name"
+              returnKeyType="next"
+              onSubmitEditing={() => emailRef.current?.focus()}
+              blurOnSubmit={false}
+              accessibilityLabel={nameLabel}
+              accessibilityHint={fieldErrors.name}
+              testID="register-name"
+            />
           </Field>
 
-          <Field label={ru ? "Электронная почта" : "Email"} icon="mail-outline" error={fieldErrors.email}>
-            <TextInput value={email} onChangeText={(v) => { setEmail(v); clearField(setFieldErrors, "email"); }} style={[styles.input, fieldErrors.email && styles.inputError]} placeholder="name@example.com" placeholderTextColor={colors.onSurfaceSecondary} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" textContentType="emailAddress" testID="register-email" />
+          <Field label={emailLabel} icon="mail-outline" error={fieldErrors.email}>
+            <TextInput
+              ref={emailRef}
+              value={email}
+              onChangeText={(v) => { setEmail(v); clearField(setFieldErrors, "email"); }}
+              style={[styles.input, fieldErrors.email && styles.inputError]}
+              placeholder="name@example.com"
+              placeholderTextColor={colors.onSurfaceSecondary}
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="email"
+              keyboardType="email-address"
+              textContentType="emailAddress"
+              returnKeyType="next"
+              onSubmitEditing={() => phoneRef.current?.focus()}
+              blurOnSubmit={false}
+              accessibilityLabel={emailLabel}
+              accessibilityHint={fieldErrors.email}
+              testID="register-email"
+            />
           </Field>
 
-          <Field label={ru ? "Телефон" : "Phone"} icon="call-outline" error={fieldErrors.phone} hint={phoneHint}>
-            <TextInput value={phone} onChangeText={(v) => { setPhone(v); clearField(setFieldErrors, "phone"); }} style={[styles.input, fieldErrors.phone && styles.inputError]} placeholder="+7 999 000-00-00" placeholderTextColor={colors.onSurfaceSecondary} keyboardType="phone-pad" textContentType="telephoneNumber" testID="register-phone" />
+          <Field label={phoneLabel} icon="call-outline" error={fieldErrors.phone} hint={phoneHint}>
+            <TextInput
+              ref={phoneRef}
+              value={phone}
+              onChangeText={(v) => { setPhone(v); clearField(setFieldErrors, "phone"); }}
+              style={[styles.input, fieldErrors.phone && styles.inputError]}
+              placeholder="+7 999 000-00-00"
+              placeholderTextColor={colors.onSurfaceSecondary}
+              autoComplete="tel"
+              keyboardType="phone-pad"
+              textContentType="telephoneNumber"
+              returnKeyType="next"
+              onSubmitEditing={() => passwordRef.current?.focus()}
+              blurOnSubmit={false}
+              accessibilityLabel={phoneLabel}
+              accessibilityHint={fieldErrors.phone || phoneHint}
+              testID="register-phone"
+            />
           </Field>
 
-          <Field label={ru ? "Пароль" : "Password"} icon="lock-closed-outline" error={fieldErrors.password}>
+          <Field label={passwordLabel} icon="lock-closed-outline" error={fieldErrors.password}>
             <View style={styles.passwordWrap}>
-              <TextInput value={password} onChangeText={(v) => { setPassword(v); clearField(setFieldErrors, "password"); }} style={[styles.input, styles.passwordInput, fieldErrors.password && styles.inputError]} placeholder={ru ? "Минимум 8 символов" : "At least 8 characters"} placeholderTextColor={colors.onSurfaceSecondary} secureTextEntry={!showPassword} textContentType="newPassword" testID="register-password" />
-              <Pressable onPress={() => setShowPassword((value) => !value)} style={styles.eyeButton}><Ionicons name={showPassword ? "eye-off-outline" : "eye-outline"} size={21} color={colors.onSurfaceSecondary} /></Pressable>
+              <TextInput
+                ref={passwordRef}
+                value={password}
+                onChangeText={(v) => { setPassword(v); clearField(setFieldErrors, "password"); }}
+                style={[styles.input, styles.passwordInput, fieldErrors.password && styles.inputError]}
+                placeholder={ru ? "Минимум 8 символов" : "At least 8 characters"}
+                placeholderTextColor={colors.onSurfaceSecondary}
+                secureTextEntry={!showPassword}
+                autoComplete="new-password"
+                textContentType="newPassword"
+                returnKeyType="next"
+                onSubmitEditing={() => confirmRef.current?.focus()}
+                blurOnSubmit={false}
+                accessibilityLabel={passwordLabel}
+                accessibilityHint={fieldErrors.password}
+                testID="register-password"
+              />
+              <Pressable
+                onPress={() => setShowPassword((value) => !value)}
+                style={styles.eyeButton}
+                accessibilityRole="button"
+                accessibilityLabel={showPassword ? (ru ? "Скрыть пароль" : "Hide password") : (ru ? "Показать пароль" : "Show password")}
+                accessibilityState={{ selected: showPassword }}
+              >
+                <Ionicons name={showPassword ? "eye-off-outline" : "eye-outline"} size={21} color={colors.onSurfaceSecondary} />
+              </Pressable>
             </View>
             <Requirement ready={passwordReady} label={ru ? "8 или больше символов" : "8 or more characters"} />
           </Field>
 
-          <Field label={ru ? "Повтор пароля" : "Repeat password"} icon="shield-checkmark-outline" error={fieldErrors.confirm}>
-            <TextInput value={confirm} onChangeText={(v) => { setConfirm(v); clearField(setFieldErrors, "confirm"); }} style={[styles.input, fieldErrors.confirm && styles.inputError]} placeholder={ru ? "Введите пароль ещё раз" : "Enter the password again"} placeholderTextColor={colors.onSurfaceSecondary} secureTextEntry={!showPassword} textContentType="newPassword" testID="register-confirm" />
+          <Field label={confirmLabel} icon="shield-checkmark-outline" error={fieldErrors.confirm}>
+            <TextInput
+              ref={confirmRef}
+              value={confirm}
+              onChangeText={(v) => { setConfirm(v); clearField(setFieldErrors, "confirm"); }}
+              style={[styles.input, fieldErrors.confirm && styles.inputError]}
+              placeholder={ru ? "Введите пароль ещё раз" : "Enter the password again"}
+              placeholderTextColor={colors.onSurfaceSecondary}
+              secureTextEntry={!showPassword}
+              autoComplete="new-password"
+              textContentType="newPassword"
+              returnKeyType="done"
+              onSubmitEditing={() => { if (consent && !busy) submit(); }}
+              accessibilityLabel={confirmLabel}
+              accessibilityHint={fieldErrors.confirm}
+              testID="register-confirm"
+            />
             {confirm.length > 0 ? <Requirement ready={passwordsMatch} label={passwordsMatch ? (ru ? "Пароли совпадают" : "Passwords match") : (ru ? "Пароли должны совпадать" : "Passwords must match")} /> : null}
           </Field>
 
           <View style={styles.consentBlock}>
-            <Pressable onPress={() => { setConsent((v) => !v); clearField(setFieldErrors, "consent"); }} style={styles.consentRow} testID="register-consent">
-              <View style={[styles.checkbox, consent && styles.checkboxChecked]}>{consent ? <Ionicons name="checkmark" size={14} color={colors.onSurfaceInverse} /> : null}</View>
-              <Text style={styles.consentText}>{ru ? "Я принимаю пользовательское соглашение и политику конфиденциальности" : "I accept the Terms of Use and Privacy Policy"}</Text>
+            <Pressable
+              onPress={() => { setConsent((v) => !v); clearField(setFieldErrors, "consent"); }}
+              style={styles.consentRow}
+              accessibilityRole="checkbox"
+              accessibilityLabel={consentLabel}
+              accessibilityHint={fieldErrors.consent}
+              accessibilityState={{ checked: consent }}
+              testID="register-consent"
+            >
+              <View style={[styles.checkbox, consent && styles.checkboxChecked]} accessible={false}>{consent ? <Ionicons name="checkmark" size={14} color={colors.onSurfaceInverse} /> : null}</View>
+              <Text style={styles.consentText}>{consentLabel}</Text>
             </Pressable>
             <View style={styles.legalRow}>
-              <Pressable onPress={() => router.push("/terms" as any)}><Text style={styles.legalLink}>{ru ? "Условия использования" : "Terms"}</Text></Pressable>
+              <Pressable onPress={() => router.push("/terms" as any)} accessibilityRole="link" accessibilityLabel={ru ? "Условия использования" : "Terms of Use"}><Text style={styles.legalLink}>{ru ? "Условия использования" : "Terms"}</Text></Pressable>
               <Text style={styles.dot}>·</Text>
-              <Pressable onPress={() => router.push("/privacy" as any)}><Text style={styles.legalLink}>{ru ? "Конфиденциальность" : "Privacy"}</Text></Pressable>
+              <Pressable onPress={() => router.push("/privacy" as any)} accessibilityRole="link" accessibilityLabel={ru ? "Политика конфиденциальности" : "Privacy Policy"}><Text style={styles.legalLink}>{ru ? "Конфиденциальность" : "Privacy"}</Text></Pressable>
             </View>
-            {fieldErrors.consent ? <Text style={styles.fieldError}>{fieldErrors.consent}</Text> : null}
+            {fieldErrors.consent ? <Text style={styles.fieldError} accessibilityRole="alert" accessibilityLiveRegion="polite">{fieldErrors.consent}</Text> : null}
           </View>
 
           {error ? <Notice kind="error" text={error} /> : null}
-          <Pressable style={[styles.primary, busy && styles.disabled]} onPress={submit} disabled={busy} testID="register-submit">
-            {busy ? <ActivityIndicator color={colors.onSurfaceInverse} /> : <><Text style={styles.primaryText}>{ru ? "Создать аккаунт" : "Create account"}</Text><Ionicons name="arrow-forward" size={18} color={colors.onSurfaceInverse} /></>}
+          <Pressable
+            style={[styles.primary, busy && styles.disabled]}
+            onPress={submit}
+            disabled={busy}
+            accessibilityRole="button"
+            accessibilityLabel={submitLabel}
+            accessibilityState={{ disabled: busy, busy }}
+            testID="register-submit"
+          >
+            {busy ? <ActivityIndicator color={colors.onSurfaceInverse} /> : <><Text style={styles.primaryText}>{submitLabel}</Text><Ionicons name="arrow-forward" size={18} color={colors.onSurfaceInverse} /></>}
           </Pressable>
-          <Pressable style={styles.loginLink} onPress={() => router.replace("/auth")}>
+          <Pressable style={styles.loginLink} onPress={() => router.replace("/auth")} accessibilityRole="link" accessibilityLabel={ru ? "Уже есть аккаунт? Войти" : "Already have an account? Sign in"}>
             <Text style={styles.loginCopy}>{ru ? "Уже есть аккаунт? " : "Already have an account? "}<Text style={styles.loginStrong}>{ru ? "Войти" : "Sign in"}</Text></Text>
           </Pressable>
         </View>
@@ -181,15 +312,15 @@ function clearField(setter: React.Dispatch<React.SetStateAction<FieldErrors>>, f
 }
 
 function Field({ label, icon, error, hint, children }: { label: string; icon: any; error?: string; hint?: string; children: React.ReactNode }) {
-  return <View style={styles.field}><View style={styles.labelRow}><Ionicons name={icon} size={15} color={colors.onSurfaceSecondary} /><Text style={styles.label}>{label}</Text></View>{children}{hint ? <Text style={styles.hint}>{hint}</Text> : null}{error ? <Text style={styles.fieldError}>{error}</Text> : null}</View>;
+  return <View style={styles.field}><View style={styles.labelRow}><Ionicons name={icon} size={15} color={colors.onSurfaceSecondary} /><Text style={styles.label}>{label}</Text></View>{children}{hint ? <Text style={styles.hint}>{hint}</Text> : null}{error ? <Text style={styles.fieldError} accessibilityRole="alert" accessibilityLiveRegion="polite">{error}</Text> : null}</View>;
 }
 
 function Requirement({ ready, label }: { ready: boolean; label: string }) {
-  return <View style={styles.requirement}><Ionicons name={ready ? "checkmark-circle" : "ellipse-outline"} size={15} color={ready ? colors.success : colors.onSurfaceSecondary} /><Text style={[styles.requirementText, ready && styles.requirementReady]}>{label}</Text></View>;
+  return <View style={styles.requirement} accessible accessibilityLabel={`${label}: ${ready ? "OK" : "not complete"}`}><Ionicons name={ready ? "checkmark-circle" : "ellipse-outline"} size={15} color={ready ? colors.success : colors.onSurfaceSecondary} /><Text style={[styles.requirementText, ready && styles.requirementReady]}>{label}</Text></View>;
 }
 
 function Notice({ kind, text }: { kind: "error" | "success"; text: string }) {
-  return <View style={[styles.notice, kind === "error" ? styles.noticeError : styles.noticeSuccess]}><Ionicons name={kind === "error" ? "alert-circle-outline" : "checkmark-circle-outline"} size={18} color={kind === "error" ? colors.error : colors.success} /><Text style={styles.noticeText}>{text}</Text></View>;
+  return <View style={[styles.notice, kind === "error" ? styles.noticeError : styles.noticeSuccess]} accessibilityRole="alert" accessibilityLiveRegion="polite"><Ionicons name={kind === "error" ? "alert-circle-outline" : "checkmark-circle-outline"} size={18} color={kind === "error" ? colors.error : colors.success} /><Text style={styles.noticeText}>{text}</Text></View>;
 }
 
 function friendlyError(raw: string, ru: boolean) {
@@ -223,7 +354,7 @@ const styles = StyleSheet.create({
   requirementText: { color: colors.onSurfaceSecondary, fontFamily: fonts.text, fontSize: 12 },
   requirementReady: { color: colors.success },
   consentBlock: { gap: spacing.sm, padding: spacing.lg, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceSecondary },
-  consentRow: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm },
+  consentRow: { minHeight: 44, flexDirection: "row", alignItems: "flex-start", gap: spacing.sm, paddingVertical: 2 },
   checkbox: { width: 22, height: 22, borderRadius: 7, borderWidth: 1, borderColor: colors.borderStrong, alignItems: "center", justifyContent: "center", flexShrink: 0 },
   checkboxChecked: { backgroundColor: colors.onSurface, borderColor: colors.onSurface },
   consentText: { flex: 1, color: colors.onSurfaceSecondary, fontFamily: fonts.text, fontSize: 13, lineHeight: 19 },
@@ -231,10 +362,10 @@ const styles = StyleSheet.create({
   legalLink: { color: colors.onSurface, fontFamily: fonts.text, fontSize: 12, fontWeight: "800", textDecorationLine: "underline" },
   dot: { color: colors.onSurfaceSecondary },
   primary: { minHeight: 54, paddingHorizontal: spacing.lg, borderRadius: radius.pill, backgroundColor: colors.onSurface, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 9 },
-  primaryText: { color: colors.onSurfaceInverse, fontFamily: fonts.text, fontWeight: "800", fontSize: fontSize.base },
+  primaryText: { color: colors.onSurfaceInverse, fontFamily: fonts.text, fontWeight: "800", fontSize: fontSize.base, textAlign: "center", flexShrink: 1 },
   disabled: { opacity: 0.55 },
   loginLink: { minHeight: 44, alignItems: "center", justifyContent: "center" },
-  loginCopy: { color: colors.onSurfaceSecondary, fontFamily: fonts.text, fontSize: fontSize.sm },
+  loginCopy: { color: colors.onSurfaceSecondary, fontFamily: fonts.text, fontSize: fontSize.sm, textAlign: "center" },
   loginStrong: { color: colors.onSurface, fontWeight: "800" },
   notice: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, borderWidth: 1 },
   noticeError: { borderColor: "rgba(190, 54, 54, 0.25)", backgroundColor: "rgba(190, 54, 54, 0.06)" },
@@ -242,7 +373,7 @@ const styles = StyleSheet.create({
   noticeText: { flex: 1, color: colors.onSurface, fontFamily: fonts.text, fontSize: fontSize.sm, lineHeight: 19 },
   verifyCard: { width: "100%", maxWidth: 560, alignSelf: "center", padding: spacing.xl, borderRadius: radius.xl, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceSecondary },
   emailPill: { marginTop: spacing.lg, flexDirection: "row", alignItems: "center", gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surface },
-  emailPillText: { color: colors.onSurface, fontFamily: fonts.text, fontSize: fontSize.base, fontWeight: "700" },
-  secondary: { marginTop: spacing.sm, minHeight: 50, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.borderStrong, alignItems: "center", justifyContent: "center" },
-  secondaryText: { color: colors.onSurface, fontFamily: fonts.text, fontWeight: "800", fontSize: fontSize.base },
+  emailPillText: { flex: 1, color: colors.onSurface, fontFamily: fonts.text, fontSize: fontSize.base, fontWeight: "700" },
+  secondary: { marginTop: spacing.sm, minHeight: 50, paddingHorizontal: spacing.lg, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.borderStrong, alignItems: "center", justifyContent: "center" },
+  secondaryText: { color: colors.onSurface, fontFamily: fonts.text, fontWeight: "800", fontSize: fontSize.base, textAlign: "center", flexShrink: 1 },
 });
