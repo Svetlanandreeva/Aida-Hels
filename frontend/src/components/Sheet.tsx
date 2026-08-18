@@ -11,6 +11,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, radius, spacing } from "@/src/theme";
 import { useResponsiveLayout } from "@/src/hooks/use-responsive-layout";
+import { useReducedMotion } from "@/src/hooks/use-reduced-motion";
 
 export const Sheet: React.FC<{
   visible: boolean;
@@ -21,9 +22,15 @@ export const Sheet: React.FC<{
 }> = ({ visible, onClose, children, testID, scroll }) => {
   const insets = useSafeAreaInsets();
   const responsive = useResponsiveLayout();
+  const reduceMotion = useReducedMotion();
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      transparent
+      animationType={reduceMotion ? "none" : "slide"}
+      onRequestClose={onClose}
+    >
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={styles.flex}
