@@ -32,10 +32,9 @@ def test_router_can_render_internal_shell_without_treating_preview_as_authentica
     assert "<AppProvider><ProfileGate><LogProvider>" in layout
 
 
-def test_auth_screen_exposes_explicit_web_preview_entry_without_fake_login():
+def test_auth_screen_does_not_expose_an_implicit_preview_login():
     screen = AUTH_SCREEN.read_text(encoding="utf-8")
-    assert 'Platform.OS === "web" && preview' in screen
     assert 'router.replace("/")' in screen
-    assert "Посмотреть приложение без входа" in screen
-    preview_fragment = screen.split('Platform.OS === "web" && preview', 1)[1].split("</Pressable>", 1)[0]
-    assert "await login" not in preview_fragment
+    assert "Посмотреть приложение без входа" not in screen
+    assert 'setPreview(' not in screen
+    assert 'login(value, password)' in screen
