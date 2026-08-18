@@ -5,13 +5,20 @@ import { useI18n } from "@/src/i18n";
 import { ResponsiveTabBar } from "@/src/components/ResponsiveTabBar";
 import { useResponsiveLayout } from "@/src/hooks/use-responsive-layout";
 
+const PRIMARY_TABS = new Set(["index", "mind", "pressure", "body", "labs", "chat", "tasks"]);
+
 export default function TabsLayout() {
-  const { t, lang } = useI18n();
+  const { lang } = useI18n();
   const responsive = useResponsiveLayout();
 
   return (
     <Tabs
-      tabBar={(props) => <ResponsiveTabBar {...props} />}
+      tabBar={(props) => {
+        const visibleRoutes = props.state.routes.filter((route) => PRIMARY_TABS.has(route.name));
+        const activeName = props.state.routes[props.state.index]?.name;
+        const visibleIndex = Math.max(0, visibleRoutes.findIndex((route) => route.name === activeName));
+        return <ResponsiveTabBar {...props} state={{ ...props.state, routes: visibleRoutes, index: visibleIndex }} />;
+      }}
       screenOptions={{
         headerShown: false,
         tabBarPosition: responsive.isDesktop ? "left" : "bottom",
@@ -34,11 +41,14 @@ export default function TabsLayout() {
       }}
     >
       <Tabs.Screen name="index" options={{ title: lang === "ru" ? "Главная" : "Home" }} />
-      <Tabs.Screen name="health" options={{ title: t("tab_health") }} />
+      <Tabs.Screen name="mind" options={{ title: lang === "ru" ? "Психика" : "Mind" }} />
+      <Tabs.Screen name="pressure" options={{ title: lang === "ru" ? "Давление" : "Pressure" }} />
       <Tabs.Screen name="body" options={{ title: lang === "ru" ? "Организм" : "Body" }} />
-      <Tabs.Screen name="chat" options={{ title: t("tab_chat") }} />
-      <Tabs.Screen name="tasks" options={{ title: t("tab_tasks") }} />
-      <Tabs.Screen name="profile" options={{ title: t("tab_profile") }} />
+      <Tabs.Screen name="labs" options={{ title: lang === "ru" ? "Анализы" : "Labs" }} />
+      <Tabs.Screen name="chat" options={{ title: lang === "ru" ? "Аида" : "Aida" }} />
+      <Tabs.Screen name="tasks" options={{ title: lang === "ru" ? "Задачи" : "Tasks" }} />
+      <Tabs.Screen name="health" options={{ href: null }} />
+      <Tabs.Screen name="profile" options={{ href: null }} />
     </Tabs>
   );
 }
