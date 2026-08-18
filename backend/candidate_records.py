@@ -3,6 +3,10 @@
 Suggestions and imported observations are stored as pending CandidateRecords.
 They do not become medical facts until an explicit approve action materializes
 them into a canonical collection. Rejections remain auditable.
+
+Lab OCR uses the same storage sheet for staging, but lab_import rows are owned
+by the dedicated /api/lab-imports review flow and are intentionally hidden from
+the generic candidate API.
 """
 
 from __future__ import annotations
@@ -35,16 +39,17 @@ ALLOWED_TARGETS = {
 }
 
 EntityType = Literal["symptom", "medication", "vital", "checkin", "task", "circadian_event"]
+StoredEntityType = Literal["symptom", "medication", "vital", "checkin", "task", "circadian_event", "lab_import"]
 
 
 class CandidateRecord(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     profile_id: str
     proposed_by: Literal["ai", "user", "import"] = "ai"
-    entity_type: EntityType
+    entity_type: StoredEntityType
     payload: Dict[str, Any]
     rationale: Optional[str] = None
-    status: Literal["pending", "approved", "rejected"] = "pending"
+    status: Literal["pending", "committing", "approved", "rejected"] = "pending"
     created_at: datetime = Field(default_factory=_now)
     updated_at: datetime = Field(default_factory=_now)
     reviewed_at: Optional[datetime] = None
@@ -61,16 +66,11 @@ class CandidateCreate(BaseModel):
 
 
 class ReviewRequest(BaseModel):
-    # Backward-compatible field; server derives the reviewer from auth.
     reviewer_account_id: Optional[str] = None
 
 
 class CircadianCorrectionRequest(BaseModel):
-    """Fields the user is allowed to correct before approving wearable sleep.
-
-    Provider/source identifiers and ingestion metadata are intentionally not
-    accepted here: review can correct the observation, never rewrite provenance.
-    """
+    """Fields the user is allowed to correct before approving wearable sleep."""
 
     kind: Literal["wake", "bedtime"]
     local_date: str
@@ -101,9 +101,6 @@ def _validated_payload(candidate: Dict[str, Any]) -> Dict[str, Any]:
         kind, local_date, local_time = _validate_circadian_fields(
             payload.get("kind"), payload.get("local_date"), payload.get("local_time")
         )
-        # Imported wearable observations become canonical only after this
-        # explicit user review. Never preserve an arbitrary caller-supplied
-        # source that could make an unreviewed observation look canonical.
         payload["kind"] = kind
         payload["local_date"] = local_date
         payload["local_time"] = local_time
@@ -111,6 +108,11 @@ def _validated_payload(candidate: Dict[str, Any]) -> Dict[str, Any]:
         payload["verification_status"] = "user_confirmed"
 
     return payload
+
+
+def _ensure_generic_candidate(candidate: Dict[str, Any]) -> None:
+    if candidate.get("entity_type") == "lab_import":
+        raise HTTPException(400, "Lab imports must be reviewed through the lab import API")
 
 
 def build_candidate_router(db, auth) -> APIRouter:
@@ -123,7 +125,10 @@ def build_candidate_router(db, auth) -> APIRouter:
         account: Dict[str, Any] = Depends(auth.require_account),
     ):
         await require_profile_access(auth, account, profile_id)
-        query: Dict[str, Any] = {"profile_id": profile_id}
+        query: Dict[str, Any] = {
+            "profile_id": profile_id,
+            "entity_type": {"$in": list(ALLOWED_TARGETS.keys())},
+        }
         if status:
             query["status"] = status
         return await db.candidates.find(query, {"_id": 0}).sort("created_at", -1).to_list(200)
@@ -158,6 +163,7 @@ def build_candidate_router(db, auth) -> APIRouter:
         account: Dict[str, Any] = Depends(auth.require_account),
     ):
         candidate = await require_record_access(db, auth, account, "candidates", candidate_id, write=True)
+        _ensure_generic_candidate(candidate)
         if candidate.get("status") != "pending":
             raise HTTPException(409, "Only pending candidates can be corrected")
         if candidate.get("entity_type") != "circadian_event":
@@ -167,7 +173,6 @@ def build_candidate_router(db, auth) -> APIRouter:
             correction.kind, correction.local_date, correction.local_time
         )
         payload = dict(candidate.get("payload") or {})
-        # Keep provider, source_record_id, metadata and confidence untouched.
         payload.update({"kind": kind, "local_date": local_date, "local_time": local_time})
         updated_at = _now()
         await db.candidates.update_one(
@@ -198,6 +203,7 @@ def build_candidate_router(db, auth) -> APIRouter:
         account: Dict[str, Any] = Depends(auth.require_account),
     ):
         candidate = await require_record_access(db, auth, account, "candidates", candidate_id, write=True)
+        _ensure_generic_candidate(candidate)
         if candidate.get("status") != "pending":
             raise HTTPException(409, "Candidate has already been reviewed")
 
@@ -245,6 +251,7 @@ def build_candidate_router(db, auth) -> APIRouter:
         account: Dict[str, Any] = Depends(auth.require_account),
     ):
         candidate = await require_record_access(db, auth, account, "candidates", candidate_id, write=True)
+        _ensure_generic_candidate(candidate)
         if candidate.get("status") != "pending":
             raise HTTPException(409, "Candidate has already been reviewed")
 
