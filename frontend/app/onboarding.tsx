@@ -6,6 +6,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { api } from "@/src/api";
 import { useApp } from "@/src/store";
 import { useI18n } from "@/src/i18n";
+import { useResponsiveLayout } from "@/src/hooks/use-responsive-layout";
 import { colors, fontSize, fonts, radius, spacing } from "@/src/theme";
 
 const GOALS = [
@@ -37,6 +38,7 @@ export default function OnboardingScreen() {
   const ru = lang === "ru";
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const responsive = useResponsiveLayout();
   const initialDob = splitStoredDob(activeProfile?.dob);
 
   const [name, setName] = useState(activeProfile?.name === "Мой профиль" ? "" : activeProfile?.name || "");
@@ -163,68 +165,134 @@ export default function OnboardingScreen() {
     }
   };
 
-  return <ScrollView style={styles.page} contentContainerStyle={[styles.content, { paddingTop: insets.top + 28, paddingBottom: insets.bottom + 36 }]} keyboardShouldPersistTaps="handled">
-    <View style={styles.progressWrap}><Text style={styles.eyebrow}>AIDA · 1/3</Text><View style={styles.progress}><View style={styles.progressFill} /></View></View>
-    <View style={styles.brand}><Ionicons name="sparkles" size={20} color={colors.onSurfaceInverse} /></View>
+  return <ScrollView
+    style={styles.page}
+    contentContainerStyle={[
+      styles.content,
+      {
+        paddingHorizontal: responsive.contentPadding,
+        paddingTop: insets.top + 28,
+        paddingBottom: insets.bottom + 36,
+      },
+    ]}
+    keyboardShouldPersistTaps="handled"
+  >
+    <View style={styles.progressWrap}>
+      <Text style={styles.eyebrow}>AIDA · 1/3</Text>
+      <View
+        style={styles.progress}
+        accessible
+        accessibilityRole="progressbar"
+        accessibilityLabel={ru ? "Прогресс настройки" : "Setup progress"}
+        accessibilityValue={{ min: 0, max: 3, now: 1, text: ru ? "Шаг 1 из 3" : "Step 1 of 3" }}
+      >
+        <View style={styles.progressFill} />
+      </View>
+    </View>
+    <View style={styles.brand} accessibilityElementsHidden importantForAccessibility="no-hide-descendants"><Ionicons name="sparkles" size={20} color={colors.onSurfaceInverse} /></View>
     <Text style={styles.title}>{ru ? "Настроим Аиду под вас" : "Set up Aida for you"}</Text>
     <Text style={styles.subtitle}>{ru ? "Медицинские поля можно пропустить и заполнить позже. Никаких выдуманных значений Аида не подставит." : "Medical fields are optional and can be completed later. Aida never invents missing values."}</Text>
-    <View style={styles.draftState}>
-      <Ionicons name={draftSaved ? "checkmark-circle-outline" : "cloud-outline"} size={15} color={colors.onSurfaceSecondary} />
+    <View style={styles.draftState} accessibilityLiveRegion="polite">
+      <Ionicons name={draftSaved ? "checkmark-circle-outline" : "cloud-outline"} size={15} color={colors.onSurfaceSecondary} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
       <Text style={styles.draftText}>{draftBusy ? (ru ? "Сохраняем прогресс…" : "Saving progress…") : draftSaved ? (ru ? "Прогресс сохранён" : "Progress saved") : (ru ? "Прогресс сохраняется при изменениях" : "Progress is saved as you go")}</Text>
     </View>
 
     <Section title={ru ? "Основное" : "Basics"}>
-      <Input label={ru ? "Имя *" : "Name *"} value={name} onChangeText={setName} onBlur={() => saveDraft()} placeholder={ru ? "Как к вам обращаться" : "Your name"} />
+      <Input label={ru ? "Имя *" : "Name *"} value={name} onChangeText={setName} onBlur={() => saveDraft()} placeholder={ru ? "Как к вам обращаться" : "Your name"} autoCapitalize="words" textContentType="name" />
       <Text style={styles.label}>{ru ? "Дата рождения" : "Date of birth"}</Text>
       <View style={styles.dateRow}>
         <View style={styles.datePart}>
           <Text style={styles.datePartLabel}>{ru ? "День" : "Day"}</Text>
-          <TextInput value={dobDay} onChangeText={(value) => setDobDay(value.replace(/\D/g, "").slice(0, 2))} onBlur={() => saveDraft()} placeholder="ДД" placeholderTextColor={colors.onSurfaceSecondary} style={[styles.input, styles.dateInput]} keyboardType="number-pad" maxLength={2} />
+          <TextInput accessibilityLabel={ru ? "День рождения" : "Birth day"} value={dobDay} onChangeText={(value) => setDobDay(value.replace(/\D/g, "").slice(0, 2))} onBlur={() => saveDraft()} placeholder="ДД" placeholderTextColor={colors.onSurfaceSecondary} style={[styles.input, styles.dateInput]} keyboardType="number-pad" maxLength={2} />
         </View>
         <View style={styles.datePart}>
           <Text style={styles.datePartLabel}>{ru ? "Месяц" : "Month"}</Text>
-          <TextInput value={dobMonth} onChangeText={(value) => setDobMonth(value.replace(/\D/g, "").slice(0, 2))} onBlur={() => saveDraft()} placeholder="ММ" placeholderTextColor={colors.onSurfaceSecondary} style={[styles.input, styles.dateInput]} keyboardType="number-pad" maxLength={2} />
+          <TextInput accessibilityLabel={ru ? "Месяц рождения" : "Birth month"} value={dobMonth} onChangeText={(value) => setDobMonth(value.replace(/\D/g, "").slice(0, 2))} onBlur={() => saveDraft()} placeholder="ММ" placeholderTextColor={colors.onSurfaceSecondary} style={[styles.input, styles.dateInput]} keyboardType="number-pad" maxLength={2} />
         </View>
         <View style={[styles.datePart, styles.dateYear]}>
           <Text style={styles.datePartLabel}>{ru ? "Год" : "Year"}</Text>
-          <TextInput value={dobYear} onChangeText={(value) => setDobYear(value.replace(/\D/g, "").slice(0, 4))} onBlur={() => saveDraft()} placeholder="ГГГГ" placeholderTextColor={colors.onSurfaceSecondary} style={[styles.input, styles.dateInput]} keyboardType="number-pad" maxLength={4} />
+          <TextInput accessibilityLabel={ru ? "Год рождения" : "Birth year"} value={dobYear} onChangeText={(value) => setDobYear(value.replace(/\D/g, "").slice(0, 4))} onBlur={() => saveDraft()} placeholder="ГГГГ" placeholderTextColor={colors.onSurfaceSecondary} style={[styles.input, styles.dateInput]} keyboardType="number-pad" maxLength={4} />
         </View>
       </View>
       <Text style={styles.dateHint}>{ru ? "День · месяц · год" : "Day · month · year"}</Text>
       <Text style={styles.label}>{ru ? "Пол / медицинский контекст" : "Sex / medical context"}</Text>
-      <View style={styles.row}>{[["female", ru ? "Женский" : "Female"], ["male", ru ? "Мужской" : "Male"], ["", ru ? "Не указывать" : "Prefer not to say"]].map(([v,l]) => <Pressable key={l} style={[styles.chip, sex === v && styles.chipActive]} onPress={() => setSexAndPersist(v)}><Text style={[styles.chipText, sex === v && styles.chipTextActive]}>{l}</Text></Pressable>)}</View>
+      <View style={styles.row}>{[["female", ru ? "Женский" : "Female"], ["male", ru ? "Мужской" : "Male"], ["", ru ? "Не указывать" : "Prefer not to say"]].map(([v,l]) => <Pressable
+        key={l}
+        style={({ pressed }) => [styles.chip, sex === v && styles.chipActive, pressed && styles.pressed]}
+        onPress={() => setSexAndPersist(v)}
+        accessibilityRole="radio"
+        accessibilityState={{ selected: sex === v }}
+        accessibilityLabel={l}
+      ><Text style={[styles.chipText, sex === v && styles.chipTextActive]}>{l}</Text></Pressable>)}</View>
       <View style={styles.two}><View style={styles.half}><Input label={ru ? "Рост, см" : "Height, cm"} value={height} onChangeText={setHeight} onBlur={() => saveDraft()} placeholder="168" keyboardType="decimal-pad" /></View><View style={styles.half}><Input label={ru ? "Вес, кг" : "Weight, kg"} value={weight} onChangeText={setWeight} onBlur={() => saveDraft()} placeholder="65" keyboardType="decimal-pad" /></View></View>
     </Section>
 
     <Section title={ru ? "Что важно отслеживать" : "What matters to you"}>
-      <View style={styles.goals}>{GOALS.filter((g) => g[0] !== "women" || sex === "female").map(([id, r, e]) => <Pressable key={id} onPress={() => toggleGoal(id)} style={[styles.goal, goals.includes(id) && styles.goalActive]}><Ionicons name={goals.includes(id) ? "checkmark-circle" : "ellipse-outline"} size={18} color={colors.onSurface} /><Text style={styles.goalText}>{ru ? r : e}</Text></Pressable>)}</View>
+      <View style={styles.goals}>{GOALS.filter((g) => g[0] !== "women" || sex === "female").map(([id, r, e]) => {
+        const selected = goals.includes(id);
+        const label = ru ? r : e;
+        return <Pressable
+          key={id}
+          onPress={() => toggleGoal(id)}
+          style={({ pressed }) => [styles.goal, selected && styles.goalActive, pressed && styles.pressed]}
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: selected }}
+          accessibilityLabel={label}
+        ><Ionicons name={selected ? "checkmark-circle" : "ellipse-outline"} size={18} color={colors.onSurface} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" /><Text style={styles.goalText}>{label}</Text></Pressable>;
+      })}</View>
 
       {womenRelevant ? <View style={styles.branch}>
         <Text style={styles.branchTitle}>{ru ? "Уточните сценарий женского здоровья" : "Choose the women's health scenario"}</Text>
-        <View style={styles.goals}>{WOMEN_BRANCH.map(([id, r, e]) => <Pressable key={id} onPress={() => toggleGoal(id)} style={[styles.goal, goals.includes(id) && styles.goalActive]}><Ionicons name={goals.includes(id) ? "checkmark-circle" : "ellipse-outline"} size={18} color={colors.onSurface} /><Text style={styles.goalText}>{ru ? r : e}</Text></Pressable>)}</View>
+        <View style={styles.goals}>{WOMEN_BRANCH.map(([id, r, e]) => {
+          const selected = goals.includes(id);
+          const label = ru ? r : e;
+          return <Pressable
+            key={id}
+            onPress={() => toggleGoal(id)}
+            style={({ pressed }) => [styles.goal, selected && styles.goalActive, pressed && styles.pressed]}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: selected }}
+            accessibilityLabel={label}
+          ><Ionicons name={selected ? "checkmark-circle" : "ellipse-outline"} size={18} color={colors.onSurface} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" /><Text style={styles.goalText}>{label}</Text></Pressable>;
+        })}</View>
       </View> : null}
     </Section>
 
-    {error ? <Text style={styles.error}>{error}</Text> : null}
-    <Pressable disabled={!canSave || busy} style={[styles.primary, (!canSave || busy) && { opacity: .55 }]} onPress={() => continueFlow(false)}>{busy ? <ActivityIndicator color={colors.onSurfaceInverse} /> : <Text style={styles.primaryText}>{ru ? "Продолжить" : "Continue"}</Text>}</Pressable>
-    <Pressable disabled={busy} style={styles.skip} onPress={() => continueFlow(true)}><Text style={styles.skipText}>{ru ? "Заполнить остальное позже" : "Complete the rest later"}</Text></Pressable>
+    {error ? <Text style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="assertive">{error}</Text> : null}
+    <Pressable
+      disabled={!canSave || busy}
+      style={({ pressed }) => [styles.primary, (!canSave || busy) && styles.disabled, pressed && canSave && !busy && styles.pressed]}
+      onPress={() => continueFlow(false)}
+      accessibilityRole="button"
+      accessibilityLabel={ru ? "Продолжить" : "Continue"}
+      accessibilityState={{ disabled: !canSave || busy, busy }}
+    >{busy ? <ActivityIndicator color={colors.onSurfaceInverse} /> : <Text style={styles.primaryText}>{ru ? "Продолжить" : "Continue"}</Text>}</Pressable>
+    <Pressable
+      disabled={busy}
+      style={({ pressed }) => [styles.skip, pressed && !busy && styles.pressed]}
+      onPress={() => continueFlow(true)}
+      accessibilityRole="button"
+      accessibilityLabel={ru ? "Заполнить остальное позже" : "Complete the rest later"}
+      accessibilityState={{ disabled: busy, busy }}
+    ><Text style={styles.skipText}>{ru ? "Заполнить остальное позже" : "Complete the rest later"}</Text></Pressable>
   </ScrollView>;
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) { return <View style={styles.section}><Text style={styles.sectionTitle}>{title}</Text>{children}</View>; }
-function Input(props: any) { const { label, ...rest } = props; return <View style={{ marginBottom: spacing.md }}><Text style={styles.label}>{label}</Text><TextInput {...rest} placeholderTextColor={colors.onSurfaceSecondary} style={styles.input} /></View>; }
+function Input(props: any) { const { label, ...rest } = props; return <View style={{ marginBottom: spacing.md }}><Text style={styles.label}>{label}</Text><TextInput {...rest} accessibilityLabel={rest.accessibilityLabel || label} placeholderTextColor={colors.onSurfaceSecondary} style={styles.input} /></View>; }
 
 const styles = StyleSheet.create({
-  page:{flex:1,backgroundColor:colors.surface}, content:{width:"100%",maxWidth:720,alignSelf:"center",paddingHorizontal:spacing.xl},
+  page:{flex:1,backgroundColor:colors.surface}, content:{width:"100%",maxWidth:720,alignSelf:"center"},
   progressWrap:{gap:8},progress:{height:4,borderRadius:2,backgroundColor:colors.surfaceSecondary,overflow:"hidden"},progressFill:{height:4,width:"33%",backgroundColor:colors.onSurface},
   brand:{marginTop:spacing.lg,width:44,height:44,borderRadius:22,backgroundColor:colors.onSurface,alignItems:"center",justifyContent:"center"}, eyebrow:{fontSize:12,fontWeight:"800",letterSpacing:2,color:colors.onSurfaceSecondary},
   title:{marginTop:spacing.lg,fontSize:34,lineHeight:40,fontWeight:"800",fontFamily:fonts.display,color:colors.onSurface}, subtitle:{marginTop:spacing.sm,fontSize:fontSize.base,lineHeight:22,color:colors.onSurfaceSecondary,fontFamily:fonts.text},
-  draftState:{marginTop:spacing.sm,flexDirection:"row",alignItems:"center",gap:6},draftText:{fontSize:fontSize.sm,color:colors.onSurfaceSecondary,fontFamily:fonts.text},
+  draftState:{marginTop:spacing.sm,flexDirection:"row",alignItems:"center",gap:6},draftText:{fontSize:fontSize.sm,color:colors.onSurfaceSecondary,fontFamily:fonts.text,flexShrink:1},
   section:{marginTop:spacing.xl,backgroundColor:colors.surfaceSecondary,borderRadius:radius.lg,borderWidth:1,borderColor:colors.border,padding:spacing.lg}, sectionTitle:{fontSize:fontSize.lg,fontWeight:"800",color:colors.onSurface,marginBottom:spacing.lg,fontFamily:fonts.display},
   label:{fontSize:fontSize.sm,fontWeight:"700",color:colors.onSurfaceSecondary,marginBottom:7,fontFamily:fonts.text}, input:{minHeight:50,borderRadius:radius.md,borderWidth:1,borderColor:colors.border,backgroundColor:colors.surface,paddingHorizontal:spacing.md,color:colors.onSurface,fontSize:fontSize.base},
-  dateRow:{flexDirection:"row",gap:spacing.sm,alignItems:"flex-end"},datePart:{flex:1,minWidth:92},dateYear:{flex:1.25},datePartLabel:{fontSize:12,fontWeight:"700",color:colors.onSurfaceSecondary,marginBottom:6,fontFamily:fonts.text},dateInput:{textAlign:"center",paddingHorizontal:10},dateHint:{fontSize:12,color:colors.onSurfaceSecondary,marginTop:6,marginBottom:spacing.md,fontFamily:fonts.text},
-  row:{flexDirection:"row",flexWrap:"wrap",gap:8,marginBottom:spacing.md}, chip:{paddingHorizontal:14,paddingVertical:9,borderRadius:radius.pill,backgroundColor:colors.surface,borderWidth:1,borderColor:colors.border},chipActive:{backgroundColor:colors.onSurface},chipText:{color:colors.onSurface,fontWeight:"700"},chipTextActive:{color:colors.onSurfaceInverse},
-  two:{flexDirection:"row",gap:spacing.md,flexWrap:"wrap"},half:{flex:1,minWidth:180},goals:{gap:8},goal:{flexDirection:"row",alignItems:"center",gap:10,minHeight:46,paddingHorizontal:spacing.md,borderRadius:radius.md,backgroundColor:colors.surface},goalActive:{borderWidth:1,borderColor:colors.onSurface},goalText:{fontSize:fontSize.base,color:colors.onSurface,fontFamily:fonts.text},
+  dateRow:{flexDirection:"row",flexWrap:"wrap",gap:spacing.sm,alignItems:"flex-end"},datePart:{flex:1,minWidth:80},dateYear:{flex:1.25,minWidth:112},datePartLabel:{fontSize:12,fontWeight:"700",color:colors.onSurfaceSecondary,marginBottom:6,fontFamily:fonts.text},dateInput:{textAlign:"center",paddingHorizontal:10},dateHint:{fontSize:12,color:colors.onSurfaceSecondary,marginTop:6,marginBottom:spacing.md,fontFamily:fonts.text},
+  row:{flexDirection:"row",flexWrap:"wrap",gap:8,marginBottom:spacing.md}, chip:{minHeight:44,paddingHorizontal:14,paddingVertical:9,borderRadius:radius.pill,backgroundColor:colors.surface,borderWidth:1,borderColor:colors.border,alignItems:"center",justifyContent:"center"},chipActive:{backgroundColor:colors.onSurface},chipText:{color:colors.onSurface,fontWeight:"700",fontFamily:fonts.text,textAlign:"center"},chipTextActive:{color:colors.onSurfaceInverse},
+  two:{flexDirection:"row",gap:spacing.md,flexWrap:"wrap"},half:{flex:1,minWidth:180},goals:{gap:8},goal:{flexDirection:"row",alignItems:"center",gap:10,minHeight:46,paddingHorizontal:spacing.md,paddingVertical:10,borderRadius:radius.md,backgroundColor:colors.surface},goalActive:{borderWidth:1,borderColor:colors.onSurface},goalText:{fontSize:fontSize.base,color:colors.onSurface,fontFamily:fonts.text,flex:1},
   branch:{marginTop:spacing.lg,paddingTop:spacing.lg,borderTopWidth:1,borderTopColor:colors.divider},branchTitle:{fontSize:fontSize.sm,fontWeight:"800",color:colors.onSurfaceSecondary,marginBottom:spacing.sm,fontFamily:fonts.text},
-  error:{color:colors.error,marginTop:spacing.lg},primary:{marginTop:spacing.xl,minHeight:54,borderRadius:radius.pill,backgroundColor:colors.onSurface,alignItems:"center",justifyContent:"center"},primaryText:{color:colors.onSurfaceInverse,fontWeight:"800",fontFamily:fonts.text},skip:{minHeight:50,alignItems:"center",justifyContent:"center"},skipText:{color:colors.onSurfaceSecondary,fontWeight:"700"}
+  error:{color:colors.error,marginTop:spacing.lg,fontFamily:fonts.text},primary:{marginTop:spacing.xl,minHeight:56,borderRadius:radius.pill,backgroundColor:colors.onSurface,alignItems:"center",justifyContent:"center",paddingHorizontal:spacing.lg,paddingVertical:spacing.sm},primaryText:{color:colors.onSurfaceInverse,fontWeight:"800",fontFamily:fonts.text,textAlign:"center",flexShrink:1},skip:{minHeight:50,alignItems:"center",justifyContent:"center",paddingHorizontal:spacing.md},skipText:{color:colors.onSurfaceSecondary,fontWeight:"700",fontFamily:fonts.text,textAlign:"center",flexShrink:1},
+  pressed:{opacity:.72},disabled:{opacity:.55}
 });
