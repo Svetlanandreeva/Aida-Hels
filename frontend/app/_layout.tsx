@@ -17,6 +17,7 @@ import { AppProvider, useApp } from "@/src/store";
 import { LogProvider } from "@/src/components/LogProvider";
 import { StartupPreview } from "@/src/components/StartupPreview";
 import { colors } from "@/src/theme";
+import "@/src/lab-runtime-compat";
 
 LogBox.ignoreAllLogs(true);
 
@@ -102,8 +103,6 @@ function RoutedApp() {
     </View>
   );
 
-  // Public pages, especially the promo landing, must paint immediately. Session
-  // restoration continues in the background and must never replace `/` with onboarding/auth.
   if (publicRoute) return stack;
   if (loading) return <StartupPreview />;
   if (!hasAppAccess) return stack;
@@ -111,8 +110,6 @@ function RoutedApp() {
 }
 
 export default function RootLayout() {
-  // Icon fonts can arrive after first paint. They are enhancement assets, not a
-  // reason to hold the whole app behind a splash screen (especially in Expo Go/CDN mode).
   useIconFonts();
   useEffect(() => { SplashScreen.hideAsync().catch(() => undefined); }, []);
   return (
