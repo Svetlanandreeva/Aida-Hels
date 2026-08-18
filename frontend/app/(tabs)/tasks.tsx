@@ -20,8 +20,11 @@ import { useI18n } from "@/src/i18n";
 import { useResponsiveLayout } from "@/src/hooks/use-responsive-layout";
 import { useLog } from "@/src/components/LogProvider";
 import { api, Task } from "@/src/api";
+import { withTimeout } from "@/src/async";
 import { scheduleTaskReminder, cancelTaskReminder } from "@/src/notifications";
 import { colors, spacing, radius, fontSize, fonts } from "@/src/theme";
+
+const TASK_LOAD_TIMEOUT_MS = 3500;
 
 const TYPE_ICON: Record<string, any> = {
   medication: "medkit-outline",
@@ -76,15 +79,19 @@ export default function TasksScreen() {
     }
     try {
       setLoadError(false);
-      setTasks(await api.listTasks(activeId));
-    } catch (e) {
+      const nextTasks = await withTimeout(api.listTasks(activeId), TASK_LOAD_TIMEOUT_MS, "tasks_list");
+      setTasks(nextTasks);
+    } catch (_) {
       setLoadError(true);
     } finally {
       setLoading(false);
     }
   }, [activeId]);
 
-  useFocusEffect(useCallback(() => { setLoading(true); load(); }, [load, refreshTick]));
+  useFocusEffect(useCallback(() => {
+    setLoading(true);
+    void load();
+  }, [load, refreshTick]));
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -228,49 +235,60 @@ export default function TasksScreen() {
         <TopBar subtitle={t("tab_tasks")} />
       </View>
 
-      {loading ? (
-        <View style={styles.center}><ActivityIndicator size="large" color={colors.onSurface} /></View>
-      ) : (
-        <ScrollView
-          contentContainerStyle={{ paddingHorizontal: responsive.contentPadding, paddingTop: spacing.lg, paddingBottom: (responsive.isDesktop ? 40 : 92) + insets.bottom }}
-          showsVerticalScrollIndicator={false}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.onSurface} />}
-        >
-          <Pressable style={[styles.addCard, responsive.isCompactPhone && styles.addCardCompact]} onPress={() => setOpen(true)} testID="add-task-button">
-            <View style={styles.addIcon}><Ionicons name="add" size={24} color={colors.surfaceSecondary} /></View>
-            <View style={styles.addCopy}>
-              <Text style={styles.addTitle}>{t("add_task")}</Text>
-              <Text style={styles.addSubtitle}>{lang === "ru" ? "Задача откроет нужное действие и может напомнить в заданное время" : "A task opens the right action and can remind you at a chosen time"}</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={colors.surfaceSecondary} />
-          </Pressable>
+      <ScrollView
+        contentContainerStyle={{ paddingHorizontal: responsive.contentPadding, paddingTop: spacing.lg, paddingBottom: (responsive.isDesktop ? 40 : 92) + insets.bottom }}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.onSurface} />}
+      >
+        <Pressable style={[styles.addCard, responsive.isCompactPhone && styles.addCardCompact]} onPress={() => setOpen(true)} testID="add-task-button">
+          <View style={styles.addIcon}><Ionicons name="add" size={24} color={colors.surfaceSecondary} /></View>
+          <View style={styles.addCopy}>
+            <Text style={styles.addTitle}>{t("add_task")}</Text>
+            <Text style={styles.addSubtitle}>{lang === "ru" ? "Задача откроет нужное действие и может напомнить в заданное время" : "A task opens the right action and can remind you at a chosen time"}</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={colors.surfaceSecondary} />
+        </Pressable>
 
-          {loadError ? (
-            <View style={styles.empty}>
-              <Ionicons name="cloud-offline-outline" size={52} color={colors.onSurfaceSecondary} />
-              <Text style={styles.emptyTitle}>{lang === "ru" ? "Не удалось загрузить задачи" : "Couldn't load tasks"}</Text>
-              <Muted style={{ marginTop: spacing.sm, textAlign: "center" }}>{lang === "ru" ? "Проверьте соединение и потяните экран вниз, чтобы повторить." : "Check your connection and pull down to retry."}</Muted>
-            </View>
-          ) : !activeId ? (
-            <View style={styles.empty}>
-              <Ionicons name="person-circle-outline" size={52} color={colors.onSurfaceSecondary} />
-              <Text style={styles.emptyTitle}>{lang === "ru" ? "Сначала создайте профиль" : "Create a profile first"}</Text>
-              <Muted style={{ marginTop: spacing.sm, textAlign: "center" }}>{lang === "ru" ? "Задачи будут привязаны к выбранному профилю." : "Tasks will be linked to the selected profile."}</Muted>
-            </View>
-          ) : tasks.length === 0 ? (
-            <View style={styles.empty}>
-              <Ionicons name="checkmark-done-circle-outline" size={56} color={colors.onSurfaceSecondary} />
-              <Muted style={{ marginTop: spacing.md }}>{t("tasks_empty")}</Muted>
-            </View>
-          ) : (
-            <>
-              <Section label={t("tasks_today")} items={today} />
-              <Section label={t("tasks_upcoming")} items={upcoming} />
-              <Section label={t("tasks_done")} items={done} />
-            </>
-          )}
-        </ScrollView>
-      )}
+        {loading ? (
+          <View style={styles.inlineState} testID="tasks-loading-state">
+            <ActivityIndicator size="small" color={colors.onSurface} />
+            <Muted>{lang === "ru" ? "Обновляем задачи…" : "Refreshing tasks…"}</Muted>
+          </View>
+        ) : null}
+
+        {loadError && tasks.length > 0 ? (
+          <Pressable style={styles.inlineState} onPress={() => void load()} testID="tasks-retry-banner">
+            <Ionicons name="cloud-offline-outline" size={18} color={colors.onSurfaceSecondary} />
+            <Muted style={{ flex: 1 }}>{lang === "ru" ? "Не удалось обновить. Показываем последние данные." : "Refresh failed. Showing the latest available data."}</Muted>
+            <Text style={styles.retryText}>{lang === "ru" ? "Повторить" : "Retry"}</Text>
+          </Pressable>
+        ) : null}
+
+        {loadError && tasks.length === 0 && !loading ? (
+          <View style={styles.empty}>
+            <Ionicons name="cloud-offline-outline" size={52} color={colors.onSurfaceSecondary} />
+            <Text style={styles.emptyTitle}>{lang === "ru" ? "Не удалось загрузить задачи" : "Couldn't load tasks"}</Text>
+            <Muted style={{ marginTop: spacing.sm, textAlign: "center" }}>{lang === "ru" ? "Проверьте соединение и потяните экран вниз, чтобы повторить." : "Check your connection and pull down to retry."}</Muted>
+          </View>
+        ) : !activeId ? (
+          <View style={styles.empty}>
+            <Ionicons name="person-circle-outline" size={52} color={colors.onSurfaceSecondary} />
+            <Text style={styles.emptyTitle}>{lang === "ru" ? "Сначала создайте профиль" : "Create a profile first"}</Text>
+            <Muted style={{ marginTop: spacing.sm, textAlign: "center" }}>{lang === "ru" ? "Задачи будут привязаны к выбранному профилю." : "Tasks will be linked to the selected profile."}</Muted>
+          </View>
+        ) : tasks.length === 0 && !loading ? (
+          <View style={styles.empty}>
+            <Ionicons name="checkmark-done-circle-outline" size={56} color={colors.onSurfaceSecondary} />
+            <Muted style={{ marginTop: spacing.md }}>{t("tasks_empty")}</Muted>
+          </View>
+        ) : (
+          <>
+            <Section label={t("tasks_today")} items={today} />
+            <Section label={t("tasks_upcoming")} items={upcoming} />
+            <Section label={t("tasks_done")} items={done} />
+          </>
+        )}
+      </ScrollView>
 
       <Sheet visible={open} onClose={() => setOpen(false)} testID="task-sheet" scroll>
         <Text style={styles.sheetTitle}>{t("add_task")}</Text>
@@ -315,6 +333,8 @@ const styles = StyleSheet.create({
   addCopy: { flex: 1 },
   addTitle: { fontSize: fontSize.lg, fontWeight: "700", color: colors.surfaceSecondary, fontFamily: fonts.text },
   addSubtitle: { marginTop: 3, fontSize: fontSize.sm, lineHeight: 18, color: "rgba(255,255,255,0.68)", fontFamily: fonts.text },
+  inlineState: { minHeight: 48, marginBottom: spacing.lg, paddingHorizontal: spacing.md, borderRadius: radius.md, backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.border, flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  retryText: { fontSize: fontSize.sm, fontWeight: "700", color: colors.onSurface, fontFamily: fonts.text },
   empty: { alignItems: "center", justifyContent: "center", paddingTop: spacing["3xl"], paddingHorizontal: spacing.xl },
   emptyTitle: { marginTop: spacing.md, fontSize: fontSize.lg, fontWeight: "700", color: colors.onSurface, fontFamily: fonts.text, textAlign: "center" },
   sectionLabel: { fontSize: fontSize.sm, fontWeight: "700", color: colors.onSurfaceSecondary, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: spacing.sm, fontFamily: fonts.text },
