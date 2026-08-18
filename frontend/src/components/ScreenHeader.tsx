@@ -7,11 +7,19 @@ import { useI18n } from "@/src/i18n";
 import { useResponsiveLayout } from "@/src/hooks/use-responsive-layout";
 import { colors, spacing, fontSize, fonts } from "@/src/theme";
 
-export const ScreenHeader: React.FC<{ title: string; right?: React.ReactNode }> = ({ title, right }) => {
+export const ScreenHeader: React.FC<{ title: string; right?: React.ReactNode; fallbackHref?: string }> = ({ title, right, fallbackHref = "/" }) => {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { t } = useI18n();
   const responsive = useResponsiveLayout();
+
+  const goBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    router.replace(fallbackHref as any);
+  };
 
   return (
     <View
@@ -24,7 +32,7 @@ export const ScreenHeader: React.FC<{ title: string; right?: React.ReactNode }> 
       ]}
     >
       <Pressable
-        onPress={() => router.back()}
+        onPress={goBack}
         hitSlop={6}
         accessibilityRole="button"
         accessibilityLabel={t("back")}
