@@ -1,10 +1,12 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
 import { storage } from "@/src/utils/storage";
 import { api, Profile } from "@/src/api";
+import { withTimeout } from "@/src/async";
 import { useAuth } from "@/src/auth";
 
 const ACTIVE_KEY = "aida.activeProfileId";
 const PROFILE_CACHE_KEY = "aida.profileCache.v1";
+const PROFILE_BOOTSTRAP_TIMEOUT_MS = 3500;
 
 const PREVIEW_PROFILE: Profile = {
   id: "preview-profile",
@@ -73,9 +75,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     if (cachedProfiles.length === 0) setLoading(true);
     try {
-      let list = await api.listProfiles();
+      let list = await withTimeout(api.listProfiles(), PROFILE_BOOTSTRAP_TIMEOUT_MS, "profiles_list");
       if (!list || list.length === 0) {
-        const blank = await api.createProfile({ name: "Мой профиль", kind: "me", allergies: [], chronic_conditions: [] });
+        const blank = await withTimeout(
+          api.createProfile({ name: "Мой профиль", kind: "me", allergies: [], chronic_conditions: [] }),
+          PROFILE_BOOTSTRAP_TIMEOUT_MS,
+          "profile_create",
+        );
         list = [blank];
       }
       setProfiles(list);
@@ -84,7 +90,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setActiveId(nextId);
       void storage.setItem(PROFILE_CACHE_KEY, JSON.stringify(list));
     } catch (e: any) {
-      setError(e?.message || "Failed to load");
+      // Keep usable cached state when refresh is slow/offline instead of replacing
+      // the whole app with a spinner. Only surface an error when no cache exists.
+      if (cachedProfiles.length === 0) setError(e?.message || "Failed to load");
     } finally {
       setLoading(false);
     }
