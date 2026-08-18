@@ -20,8 +20,8 @@ def test_yandex_id_and_vk_are_supported_social_auth_providers():
     env_example = ENV_EXAMPLE.read_text(encoding="utf-8")
 
     assert 'export type SocialProvider = "yandex" | "vk";' in client
-    assert 'provider="yandex"' in screen
-    assert 'provider="vk"' in screen
+    assert 'socialLogin("yandex")' in screen
+    assert 'socialLogin("vk")' in screen
     assert 'providers = ("yandex", "vk")' in backend
     assert 'https://oauth.yandex.ru/authorize?' in backend
     assert 'https://oauth.yandex.ru/token' in backend
