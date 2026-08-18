@@ -101,10 +101,11 @@ class LlmChat:
                 }
             )
 
+        # Gemini 3.6 no longer accepts the deprecated sampling parameters used by
+        # older Aida requests. Structured JSON output remains supported.
         body: dict[str, Any] = {
             "contents": [{"role": "user", "parts": parts}],
             "generationConfig": {
-                "temperature": 0.0,
                 "responseMimeType": "application/json",
             },
         }
