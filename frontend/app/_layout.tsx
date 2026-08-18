@@ -23,6 +23,8 @@ LogBox.ignoreAllLogs(true);
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
 SystemUI.setBackgroundColorAsync(colors.surface).catch(() => undefined);
 
+const PUBLIC_ROUTES = new Set(["", "auth", "register", "reset-password", "terms", "privacy-policy"]);
+
 function useNotificationNavigation() {
   useEffect(() => {
     if (Platform.OS === "web") return;
@@ -58,8 +60,8 @@ function ProfileGate({ children }: { children: React.ReactNode }) {
   useMedicationReminderSync();
   useSleepRecommendationSync();
   useEffect(() => {
-    if (loading || !activeProfile) return;
     const route = String(segments[0] || "");
+    if (PUBLIC_ROUTES.has(route) || loading || !activeProfile) return;
     const inOnboarding = route === "onboarding";
     if (!activeProfile.onboarding_completed && !inOnboarding) router.replace("/onboarding" as any);
     if (activeProfile.onboarding_completed && inOnboarding) router.replace("/(tabs)" as any);
@@ -74,16 +76,14 @@ function RoutedApp() {
   useNotificationNavigation();
   useDeferredNotificationSetup();
   const hasAppAccess = Boolean(token) || preview;
+  const route = String(segments[0] || "");
+  const publicRoute = PUBLIC_ROUTES.has(route);
 
   useEffect(() => {
     if (loading) return;
-    const route = String(segments[0] || "");
-    const publicRoute = route === "" || route === "auth" || route === "reset-password";
     if (!hasAppAccess && !publicRoute) router.replace("/auth" as any);
-    if (hasAppAccess && (route === "auth" || route === "reset-password")) router.replace("/(tabs)" as any);
-  }, [hasAppAccess, loading, segments]);
-
-  if (loading) return <StartupPreview />;
+    if (hasAppAccess && (route === "auth" || route === "register" || route === "reset-password")) router.replace("/(tabs)" as any);
+  }, [hasAppAccess, loading, publicRoute, route]);
 
   const stack = (
     <View style={{ flex: 1, backgroundColor: colors.surface }}>
@@ -92,13 +92,20 @@ function RoutedApp() {
         <Stack.Screen name="index" />
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="auth" />
+        <Stack.Screen name="register" />
         <Stack.Screen name="reset-password" />
+        <Stack.Screen name="terms" />
+        <Stack.Screen name="privacy-policy" />
         <Stack.Screen name="onboarding" />
         <Stack.Screen name="report" options={{ presentation: "modal" }} />
       </Stack>
     </View>
   );
 
+  // Public pages, especially the promo landing, must paint immediately. Session
+  // restoration continues in the background and must never replace `/` with onboarding/auth.
+  if (publicRoute) return stack;
+  if (loading) return <StartupPreview />;
   if (!hasAppAccess) return stack;
   return <AppProvider><ProfileGate><LogProvider>{stack}</LogProvider></ProfileGate></AppProvider>;
 }
@@ -106,7 +113,9 @@ function RoutedApp() {
 export default function RootLayout() {
   const [loaded, error] = useIconFonts();
   useEffect(() => { SplashScreen.hideAsync().catch(() => undefined); }, []);
-  if (!loaded && !error) return <StartupPreview />;
+  // Web should never hold the whole application behind remote icon-font loading.
+  // Native keeps the existing guard to avoid missing glyphs during app startup.
+  if (Platform.OS !== "web" && !loaded && !error) return <StartupPreview />;
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.surface }}>
       <KeyboardProvider>

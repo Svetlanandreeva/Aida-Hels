@@ -1,10 +1,12 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
 import { apiFetch, setApiToken } from "@/src/api";
+import { withTimeout } from "@/src/async";
 import { storage } from "@/src/utils/storage";
 
 export const AUTH_TOKEN_KEY = "aida.auth.accessToken";
 const WEB_PREVIEW_DEFAULT = process.env.EXPO_PUBLIC_AIDA_WEB_PREVIEW === "true";
+const SESSION_RESTORE_TIMEOUT_MS = 3000;
 
 export type SocialProvider = "yandex" | "vk";
 
@@ -114,8 +116,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     setApiToken(stored);
     try {
-      const res = await apiFetch("/auth/me", { method: "GET" });
-      const body = await readJson(res);
+      const body = await withTimeout((async () => {
+        const res = await apiFetch("/auth/me", { method: "GET" });
+        return readJson(res);
+      })(), SESSION_RESTORE_TIMEOUT_MS, "auth_restore");
       setPreview(false);
       setToken(stored);
       setAccount(body.account || null);
