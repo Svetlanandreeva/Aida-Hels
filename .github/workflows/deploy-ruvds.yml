@@ -20,7 +20,7 @@ permissions:
 
 jobs:
   build-and-deploy:
-    runs-on: [self-hosted, linux, x64, aida-prod]
+    runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
       RUVDS_HOST: ${{ secrets.RUVDS_HOST }}
@@ -60,40 +60,28 @@ jobs:
         working-directory: frontend
         env:
           YARN_NETWORK_CONCURRENCY: '1'
-        run: yarn install --frozen-lockfile --non-interactive --prefer-offline --network-timeout 60000
+        run: yarn install --frozen-lockfile --non-interactive --network-timeout 60000
 
       - name: Lint frontend
         timeout-minutes: 5
         working-directory: frontend
         run: yarn lint
 
-      - name: Report runner memory before TypeScript validation
-        run: |
-          free -h || true
-          swapon --show || true
-
-      - name: Type-check application code in bounded low-memory mode
+      - name: Type-check application
         timeout-minutes: 5
         working-directory: frontend
         env:
-          NODE_OPTIONS: '--max-old-space-size=384'
-        run: |
-          set -o pipefail
-          timeout --signal=TERM --kill-after=15s 240s npx --no-install tsc -p tsconfig.deploy.json --pretty false
+          NODE_OPTIONS: '--max-old-space-size=2048'
+        run: npx --no-install tsc -p tsconfig.deploy.json --pretty false
 
-      - name: Report runner memory before Expo export
-        run: |
-          free -h || true
-          swapon --show || true
-
-      - name: Export Expo web frontend in low-memory mode
+      - name: Export Expo web frontend
         timeout-minutes: 20
         working-directory: frontend
         env:
           EXPO_NO_TELEMETRY: '1'
-          NODE_OPTIONS: '--max-old-space-size=640'
+          NODE_OPTIONS: '--max-old-space-size=3072'
         run: |
-          npx --no-install expo export -p web --max-workers 1
+          npx --no-install expo export -p web
           cp public/aida-logo.svg dist/aida-logo.svg
           test -f dist/index.html
           test -d dist/_expo
@@ -123,54 +111,35 @@ jobs:
           RUVDS_SSH_KNOWN_HOSTS: ${{ secrets.RUVDS_SSH_KNOWN_HOSTS }}
         run: |
           install -d -m 700 ~/.ssh
-          python3 - <<'PY'
-          import base64
-          import os
-          import re
-          import textwrap
-          from pathlib import Path
-
-          raw = os.environ['RUVDS_SSH_KEY'].strip()
-          key = raw.replace('\\n', '\n').replace('\r\n', '\n').replace('\r', '\n').strip()
-          if '-----BEGIN ' not in key:
-              try:
-                  decoded = base64.b64decode(key, validate=True).decode('utf-8').strip()
-                  if '-----BEGIN ' in decoded:
-                      key = decoded
-              except Exception:
-                  pass
-          match = re.search(r'(-----BEGIN [^-]+-----)(.*?)(-----END [^-]+-----)', key, flags=re.S)
-          if match:
-              begin, body, end = match.groups()
-              compact = re.sub(r'\s+', '', body)
-              if compact:
-                  key = begin + '\n' + '\n'.join(textwrap.wrap(compact, 70)) + '\n' + end
-          Path.home().joinpath('.ssh/ruvds').write_text(key + '\n')
-          Path.home().joinpath('.ssh/known_hosts').write_text(os.environ['RUVDS_SSH_KNOWN_HOSTS'].strip() + '\n')
-          PY
+          printf '%s\n' "$RUVDS_SSH_KEY" > ~/.ssh/ruvds
+          printf '%s\n' "$RUVDS_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/ruvds ~/.ssh/known_hosts
           ssh-keygen -y -f ~/.ssh/ruvds >/dev/null
 
-      - name: Verify restricted production access
+      - name: Verify production access
         timeout-minutes: 2
         run: |
           ssh -p "$RUVDS_PORT" -i ~/.ssh/ruvds -o ConnectTimeout=10 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes "$RUVDS_USER@$RUVDS_HOST" \
-            'set -e; test -w /opt/aida/backend; test -w /opt/aida/frontend; sudo -n /usr/bin/systemctl status aida-backend >/dev/null'
+            'set -e; test -w /opt/aida/backend; test -w /opt/aida/web; sudo -n /usr/bin/systemctl status aida-backend >/dev/null'
 
-      - name: Upload application sources
-        timeout-minutes: 5
+      - name: Upload backend and built web bundle
+        timeout-minutes: 8
         run: |
           SSH="ssh -p $RUVDS_PORT -i ~/.ssh/ruvds -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes"
+
           $SSH "$RUVDS_USER@$RUVDS_HOST" <<'EOF'
           set -euo pipefail
           find /opt/aida/backend -mindepth 1 -maxdepth 1 ! -name '.env' ! -name '.venv' -exec rm -rf -- {} +
-          find /opt/aida/frontend -mindepth 1 -maxdepth 1 ! -name 'node_modules' -exec rm -rf -- {} +
+          find /opt/aida/web -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
           EOF
 
           tar -C backend --exclude='.env' --exclude='.venv' --exclude='node_modules' --exclude='.git' -czf - . | \
             $SSH "$RUVDS_USER@$RUVDS_HOST" 'tar -xzf - -C /opt/aida/backend'
-          tar -C frontend --exclude='node_modules' --exclude='.git' -czf - . | \
-            $SSH "$RUVDS_USER@$RUVDS_HOST" 'tar -xzf - -C /opt/aida/frontend'
+
+          tar -C frontend/dist -czf - . | \
+            $SSH "$RUVDS_USER@$RUVDS_HOST" 'tar -xzf - -C /opt/aida/web'
+
+          $SSH "$RUVDS_USER@$RUVDS_HOST" 'test -s /opt/aida/web/index.html'
 
       - name: Ensure persistent production auth secret
         timeout-minutes: 2
@@ -216,7 +185,7 @@ jobs:
           EOF
 
       - name: Restart backend and verify production
-        timeout-minutes: 5
+        timeout-minutes: 8
         run: |
           ssh -p "$RUVDS_PORT" -i ~/.ssh/ruvds -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes "$RUVDS_USER@$RUVDS_HOST" <<'EOF'
           set -euo pipefail
@@ -227,20 +196,27 @@ jobs:
           .venv/bin/python -m pip install -q -r requirements.txt
           sudo -n /usr/bin/systemctl restart aida-backend
 
-          for attempt in 1 2 3 4 5 6; do
+          for attempt in 1 2 3 4 5 6 7 8; do
             sleep 2
-            if curl --fail --silent http://127.0.0.1:8000/api/ | grep -q '"status":"ok"'; then
+            if curl --fail --silent http://127.0.0.1:8000/openapi.json >/dev/null; then
               break
             fi
-            if [ "$attempt" -eq 6 ]; then
-              echo 'Backend health check failed after restart.'
+            if [ "$attempt" -eq 8 ]; then
+              echo 'Backend check failed after restart.'
               sudo -n /usr/bin/systemctl status aida-backend --no-pager || true
               exit 1
             fi
           done
 
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/api/auth/me)" = "401"
           curl --fail --silent --head --resolve aidaassistent.ru:443:127.0.0.1 https://aidaassistent.ru/ >/dev/null
           EOF
 
+      - name: Public production smoke test
+        timeout-minutes: 2
+        run: |
+          curl --fail --silent --head https://aidaassistent.ru/ >/dev/null
+          test "$(curl -s -o /dev/null -w '%{http_code}' https://aidaassistent.ru/api/auth/me)" = "401"
+
       - name: Deployment summary
-        run: echo 'Aida production validated and deployed through the self-hosted aida-prod runner in low-memory mode.'
+        run: echo 'Aida production validated on GitHub-hosted infrastructure and deployed to the new VDS over SSH.'
