@@ -9,28 +9,31 @@ import { Sheet } from "@/src/components/Sheet";
 import { useApp } from "@/src/store";
 import { useI18n } from "@/src/i18n";
 import { api, Vital } from "@/src/api";
+import { validateMeasurementInput, VitalKind } from "@/src/vitalValidation";
 import { colors, spacing, radius, fontSize, fonts } from "@/src/theme";
 
 const KINDS = [
-  { key: "weight", ru: "Вес", en: "Weight", unit: "кг", icon: "scale-outline" as const },
-  { key: "temperature", ru: "Температура", en: "Temperature", unit: "°C", icon: "thermometer-outline" as const },
-  { key: "pulse", ru: "Пульс", en: "Pulse", unit: "уд/мин", icon: "heart-outline" as const },
-  { key: "spo2", ru: "SpO₂", en: "SpO₂", unit: "%", icon: "water-outline" as const },
-  { key: "waist", ru: "Талия", en: "Waist", unit: "см", icon: "resize-outline" as const },
+  { key: "weight" as VitalKind, ru: "Вес", en: "Weight", unit: "кг", icon: "scale-outline" as const },
+  { key: "temperature" as VitalKind, ru: "Температура", en: "Temperature", unit: "°C", icon: "thermometer-outline" as const },
+  { key: "pulse" as VitalKind, ru: "Пульс", en: "Pulse", unit: "уд/мин", icon: "heart-outline" as const },
+  { key: "spo2" as VitalKind, ru: "SpO₂", en: "SpO₂", unit: "%", icon: "water-outline" as const },
+  { key: "waist" as VitalKind, ru: "Талия", en: "Waist", unit: "см", icon: "resize-outline" as const },
 ];
 
 export default function MeasurementsScreen() {
   const insets = useSafeAreaInsets();
   const { activeId, refreshTick, bumpRefresh } = useApp();
   const { t, lang } = useI18n();
+  const ru = lang === "ru";
 
   const [items, setItems] = useState<Vital[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [open, setOpen] = useState(false);
-  const [kind, setKind] = useState("weight");
+  const [kind, setKind] = useState<VitalKind>("weight");
   const [value, setValue] = useState("");
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!activeId) {
@@ -55,14 +58,22 @@ export default function MeasurementsScreen() {
   const meta = (k: string) => KINDS.find((x) => x.key === k) || KINDS[0];
 
   const save = async () => {
-    if (!value || !activeId) return;
+    if (!activeId) return;
+    const validation = validateMeasurementInput(kind, value, ru);
+    if ("error" in validation) {
+      setSaveError(validation.error);
+      return;
+    }
+    setSaveError(null);
     setSaving(true);
     try {
-      await api.createVital({ profile_id: activeId, kind, value: parseFloat(value), unit: meta(kind).unit });
+      await api.createVital({ profile_id: activeId, kind, value: validation.value, unit: meta(kind).unit });
       setValue("");
       setOpen(false);
       await load();
       bumpRefresh();
+    } catch (_) {
+      setSaveError(ru ? "Не удалось сохранить измерение. Проверьте значение и попробуйте ещё раз." : "Could not save the measurement. Check the value and try again.");
     } finally {
       setSaving(false);
     }
@@ -74,16 +85,16 @@ export default function MeasurementsScreen() {
       {loading ? (
         <View style={styles.center}><ActivityIndicator size="large" color={colors.onSurface} /></View>
       ) : !activeId ? (
-        <View style={styles.stateWrap}><Ionicons name="person-circle-outline" size={56} color={colors.onSurfaceSecondary} /><Text style={styles.stateTitle}>{lang === "ru" ? "Выберите профиль" : "Choose a profile"}</Text><Muted style={styles.stateText}>{lang === "ru" ? "Измерения сохраняются для выбранного профиля." : "Measurements are stored for the selected profile."}</Muted></View>
+        <View style={styles.stateWrap}><Ionicons name="person-circle-outline" size={56} color={colors.onSurfaceSecondary} /><Text style={styles.stateTitle}>{ru ? "Выберите профиль" : "Choose a profile"}</Text><Muted style={styles.stateText}>{ru ? "Измерения сохраняются для выбранного профиля." : "Measurements are stored for the selected profile."}</Muted></View>
       ) : loadError ? (
-        <View style={styles.stateWrap}><Ionicons name="cloud-offline-outline" size={56} color={colors.onSurfaceSecondary} /><Text style={styles.stateTitle}>{lang === "ru" ? "Не удалось загрузить измерения" : "Could not load measurements"}</Text><Pressable onPress={load} style={styles.retryBtn}><Text style={styles.retryText}>{lang === "ru" ? "Повторить" : "Retry"}</Text></Pressable></View>
+        <View style={styles.stateWrap}><Ionicons name="cloud-offline-outline" size={56} color={colors.onSurfaceSecondary} /><Text style={styles.stateTitle}>{ru ? "Не удалось загрузить измерения" : "Could not load measurements"}</Text><Pressable onPress={load} style={styles.retryBtn}><Text style={styles.retryText}>{ru ? "Повторить" : "Retry"}</Text></Pressable></View>
       ) : (
         <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 130 + insets.bottom, gap: spacing.md }} showsVerticalScrollIndicator={false}>
           {items.length === 0 ? (
             <View style={styles.empty}>
               <Ionicons name="fitness-outline" size={56} color={colors.onSurfaceSecondary} />
-              <Muted style={{ marginTop: spacing.md, textAlign: "center" }}>{lang === "ru" ? "Измерений пока нет" : "No measurements yet"}</Muted>
-              <Pressable onPress={() => setOpen(true)} style={styles.retryBtn}><Text style={styles.retryText}>{lang === "ru" ? "Добавить измерение" : "Add measurement"}</Text></Pressable>
+              <Muted style={{ marginTop: spacing.md, textAlign: "center" }}>{ru ? "Измерений пока нет" : "No measurements yet"}</Muted>
+              <Pressable onPress={() => { setSaveError(null); setOpen(true); }} style={styles.retryBtn}><Text style={styles.retryText}>{ru ? "Добавить измерение" : "Add measurement"}</Text></Pressable>
             </View>
           ) : (
             items.map((v) => {
@@ -93,7 +104,7 @@ export default function MeasurementsScreen() {
                   <View style={styles.row}>
                     <View style={styles.icon}><Ionicons name={m.icon} size={18} color={colors.onSurface} /></View>
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.mName}>{lang === "ru" ? m.ru : m.en}</Text>
+                      <Text style={styles.mName}>{ru ? m.ru : m.en}</Text>
                       <Muted>{(v.date || "").slice(0, 10)}</Muted>
                     </View>
                     <Text style={styles.mVal}>{v.value} {v.unit}</Text>
@@ -108,15 +119,16 @@ export default function MeasurementsScreen() {
         </ScrollView>
       )}
 
-      {!!activeId && !loadError && <View style={[styles.fabWrap, { bottom: insets.bottom + 24 }]}><PrimaryButton label={lang === "ru" ? "Добавить измерение" : "Add measurement"} icon="add" onPress={() => setOpen(true)} testID="add-measure-button" /></View>}
+      {!!activeId && !loadError && <View style={[styles.fabWrap, { bottom: insets.bottom + 24 }]}><PrimaryButton label={ru ? "Добавить измерение" : "Add measurement"} icon="add" onPress={() => { setSaveError(null); setOpen(true); }} testID="add-measure-button" /></View>}
 
-      <Sheet visible={open} onClose={() => setOpen(false)} testID="measure-sheet" scroll>
+      <Sheet visible={open} onClose={() => { setSaveError(null); setOpen(false); }} testID="measure-sheet" scroll>
         <Text style={styles.sheetTitle}>{t("m_measures")}</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm, paddingVertical: spacing.sm }}>
-          {KINDS.map((k) => <Chip key={k.key} label={lang === "ru" ? k.ru : k.en} active={kind === k.key} onPress={() => setKind(k.key)} testID={`measure-kind-${k.key}`} />)}
+          {KINDS.map((k) => <Chip key={k.key} label={ru ? k.ru : k.en} active={kind === k.key} onPress={() => { setKind(k.key); setSaveError(null); }} testID={`measure-kind-${k.key}`} />)}
         </ScrollView>
-        <Text style={[styles.fieldLabel, { marginTop: spacing.md }]}>{lang === "ru" ? meta(kind).ru : meta(kind).en} ({meta(kind).unit})</Text>
-        <TextInput testID="measure-value" value={value} onChangeText={setValue} keyboardType="numeric" style={styles.input} placeholderTextColor={colors.onSurfaceSecondary} />
+        <Text style={[styles.fieldLabel, { marginTop: spacing.md }]}>{ru ? meta(kind).ru : meta(kind).en} ({meta(kind).unit})</Text>
+        <TextInput testID="measure-value" value={value} onChangeText={(v) => { setValue(v); setSaveError(null); }} keyboardType="numeric" style={styles.input} placeholderTextColor={colors.onSurfaceSecondary} />
+        {saveError ? <Text style={styles.validationError} testID="measure-validation-error">{saveError}</Text> : null}
         <PrimaryButton label={t("save")} onPress={save} loading={saving} testID="save-measure" style={{ marginTop: spacing.lg }} />
       </Sheet>
     </View>
@@ -139,5 +151,6 @@ const styles = StyleSheet.create({
   fabWrap: { position: "absolute", left: spacing.lg, right: spacing.lg },
   sheetTitle: { fontSize: fontSize.xl, fontWeight: "700", color: colors.onSurface, marginBottom: spacing.md, fontFamily: fonts.display },
   fieldLabel: { fontSize: fontSize.base, color: colors.onSurface, marginBottom: spacing.sm, fontWeight: "600", fontFamily: fonts.text },
+  validationError: { color: colors.error, fontSize: fontSize.sm, fontFamily: fonts.text, marginTop: spacing.sm },
   input: { height: 52, backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, paddingHorizontal: spacing.lg, fontSize: fontSize.lg, color: colors.onSurface, borderWidth: 1, borderColor: colors.border, fontFamily: fonts.text },
 });

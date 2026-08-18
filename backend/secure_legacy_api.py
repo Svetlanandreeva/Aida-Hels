@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends
 
 import server as legacy_server
 from access_control import require_profile_access, require_record_access
+from vital_validation import validate_vital_payload
 
 
 def build_secure_legacy_router(db, auth) -> APIRouter:
@@ -87,6 +88,7 @@ def build_secure_legacy_router(db, auth) -> APIRouter:
     @router.post("/vitals")
     async def create_vital(data: legacy_server.VitalCreate, account: Dict[str, Any] = Depends(auth.require_account)):
         await require_profile_access(auth, account, data.profile_id, write=True)
+        validate_vital_payload(data)
         return await legacy_server.create_vital(data)
 
     @router.delete("/vitals/{vital_id}")
