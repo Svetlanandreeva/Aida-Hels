@@ -36,7 +36,7 @@ export default function LandingScreen() {
             <Pressable style={styles.loginButton} onPress={() => router.push("/auth")}>
               <Text style={styles.loginText}>Войти</Text>
             </Pressable>
-            <Pressable style={styles.primarySmall} onPress={() => router.push("/auth")}>
+            <Pressable style={styles.primarySmall} onPress={() => router.push("/register")}>
               <Text style={styles.primaryText}>Начать бесплатно</Text>
             </Pressable>
           </View>
@@ -48,7 +48,7 @@ export default function LandingScreen() {
             <Text style={[styles.heroTitle, desktop && styles.heroTitleDesktop]}>Здоровье — не набор цифр. Аида собирает их в понятную картину.</Text>
             <Text style={styles.heroBody}>Храните данные здоровья в одном профиле, следите за изменениями и получайте объяснения без подмены отсутствующих данных красивыми фантазиями.</Text>
             <View style={styles.heroActions}>
-              <Pressable style={styles.primary} onPress={() => router.push("/auth")}>
+              <Pressable style={styles.primary} onPress={() => router.push("/register")}>
                 <Text style={styles.primaryText}>Начать бесплатно</Text>
                 <Ionicons name="arrow-forward" size={18} color={colors.onSurfaceInverse} />
               </Pressable>
@@ -114,7 +114,7 @@ export default function LandingScreen() {
         <View style={styles.cta}>
           <Text style={styles.ctaTitle}>Соберите свою картину здоровья в одном месте.</Text>
           <Text style={styles.ctaText}>Создайте профиль и включите только те разделы, которые вам действительно нужны.</Text>
-          <Pressable style={styles.ctaButton} onPress={() => router.push("/auth")}>
+          <Pressable style={styles.ctaButton} onPress={() => router.push("/register")}>
             <Text style={styles.primaryText}>Начать бесплатно</Text>
             <Ionicons name="arrow-forward" size={18} color={colors.onSurfaceInverse} />
           </Pressable>
