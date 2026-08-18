@@ -233,7 +233,7 @@ def test_register_restore_onboarding_critical_api_login_logout_and_recovery(monk
     relaunch_restore = client.get("/api/auth/me", headers=_auth(first_token))
     assert relaunch_restore.status_code == 200
 
-    login = client.post("/api/auth/login", json={"email": email, "password": password})
+    login = client.post("/api/auth/login", json={"identifier": email, "password": password})
     assert login.status_code == 200, login.text
     second_token = login.json()["access_token"]
     assert second_token != first_token
@@ -245,11 +245,11 @@ def test_register_restore_onboarding_critical_api_login_logout_and_recovery(monk
     assert second_session_meds.json()[0]["id"] == medication_id
     assert second_session_tasks.json()[0]["id"] == task_id
 
-    bad_login = client.post("/api/auth/login", json={"email": email, "password": "wrong-password"})
+    bad_login = client.post("/api/auth/login", json={"identifier": email, "password": "wrong-password"})
     assert bad_login.status_code == 401
 
-    forgot_known = client.post("/api/auth/forgot-password", json={"email": email})
-    forgot_unknown = client.post("/api/auth/forgot-password", json={"email": "missing@example.com"})
+    forgot_known = client.post("/api/auth/forgot-password", json={"identifier": email})
+    forgot_unknown = client.post("/api/auth/forgot-password", json={"identifier": "missing@example.com"})
     assert forgot_known.status_code == 200
     assert forgot_unknown.status_code == 200
     assert forgot_known.json() == forgot_unknown.json() == {"ok": True}
