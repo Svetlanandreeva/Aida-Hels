@@ -3,7 +3,6 @@ import * as SplashScreen from "expo-splash-screen";
 import { useEffect } from "react";
 import { LogBox, Platform, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import * as SystemUI from "expo-system-ui";
@@ -14,6 +13,7 @@ import { useMedicationReminderSync } from "@/src/hooks/use-medication-reminder-s
 import { useSleepRecommendationSync } from "@/src/hooks/use-sleep-recommendation-sync";
 import { I18nProvider } from "@/src/i18n";
 import { AppProvider, useApp } from "@/src/store";
+import { KeyboardRoot } from "@/src/components/KeyboardRoot";
 import { LogProvider } from "@/src/components/LogProvider";
 import { StartupPreview } from "@/src/components/StartupPreview";
 import { colors } from "@/src/theme";
@@ -118,7 +118,7 @@ export default function RootLayout() {
   useEffect(() => { SplashScreen.hideAsync().catch(() => undefined); }, []);
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.surface }}>
-      <KeyboardProvider>
+      <KeyboardRoot>
         <SafeAreaProvider>
           <I18nProvider>
             <AuthProvider>
@@ -126,7 +126,7 @@ export default function RootLayout() {
             </AuthProvider>
           </I18nProvider>
         </SafeAreaProvider>
-      </KeyboardProvider>
+      </KeyboardRoot>
     </GestureHandlerRootView>
   );
 }
