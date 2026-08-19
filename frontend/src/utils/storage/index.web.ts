@@ -9,7 +9,13 @@
 
 import { AssertNoExtras, StorageBase, StorageItemValue } from "./storage-base";
 
-function browserStorage(): Storage | null {
+type WebStorage = {
+  getItem: (key: string) => string | null;
+  setItem: (key: string, value: string) => void;
+  removeItem: (key: string) => void;
+};
+
+function browserStorage(): WebStorage | null {
   try {
     if (typeof window === "undefined" || !window.localStorage) return null;
     return window.localStorage;
