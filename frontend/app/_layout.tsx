@@ -1,12 +1,10 @@
 import { Stack, router, useSegments } from "expo-router";
-import * as SplashScreen from "expo-splash-screen";
 import { useEffect } from "react";
 import { LogBox, Platform, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
-import * as SystemUI from "expo-system-ui";
 
 import { AuthProvider, useAuth } from "@/src/auth";
 import { useIconFonts } from "@/src/hooks/use-icon-fonts";
@@ -21,8 +19,14 @@ import "@/src/lab-runtime-compat";
 
 LogBox.ignoreAllLogs(true);
 
-SplashScreen.preventAutoHideAsync().catch(() => undefined);
-SystemUI.setBackgroundColorAsync(colors.surface).catch(() => undefined);
+if (Platform.OS !== "web") {
+  void import("expo-splash-screen")
+    .then((SplashScreen) => SplashScreen.preventAutoHideAsync())
+    .catch(() => undefined);
+  void import("expo-system-ui")
+    .then((SystemUI) => SystemUI.setBackgroundColorAsync(colors.surface))
+    .catch(() => undefined);
+}
 
 const PUBLIC_ROUTES = new Set(["", "auth", "register", "reset-password", "terms", "privacy-policy"]);
 
@@ -115,7 +119,12 @@ export default function RootLayout() {
   // Icon fonts can arrive after first paint. They are enhancement assets, not a
   // reason to hold the whole app behind a splash screen (especially in Expo Go/CDN mode).
   useIconFonts();
-  useEffect(() => { SplashScreen.hideAsync().catch(() => undefined); }, []);
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+    void import("expo-splash-screen")
+      .then((SplashScreen) => SplashScreen.hideAsync())
+      .catch(() => undefined);
+  }, []);
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.surface }}>
       <KeyboardProvider>
