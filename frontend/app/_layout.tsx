@@ -1,12 +1,9 @@
 import { Stack, router, useSegments } from "expo-router";
-import * as SplashScreen from "expo-splash-screen";
 import { lazy, Suspense, useEffect } from "react";
 import { LogBox, Platform, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
-import * as SystemUI from "expo-system-ui";
 
 import { AuthProvider, useAuth } from "@/src/auth";
 import { useIconFonts } from "@/src/hooks/use-icon-fonts";
@@ -14,19 +11,24 @@ import { useMedicationReminderSync } from "@/src/hooks/use-medication-reminder-s
 import { useSleepRecommendationSync } from "@/src/hooks/use-sleep-recommendation-sync";
 import { I18nProvider } from "@/src/i18n";
 import { AppProvider, useApp } from "@/src/store";
+import { KeyboardRoot } from "@/src/components/KeyboardRoot";
 import { StartupPreview } from "@/src/components/StartupPreview";
 import { colors } from "@/src/theme";
 
 LogBox.ignoreAllLogs(true);
 
-SplashScreen.preventAutoHideAsync().catch(() => undefined);
-SystemUI.setBackgroundColorAsync(colors.surface).catch(() => undefined);
+if (Platform.OS !== "web") {
+  void import("expo-splash-screen")
+    .then((SplashScreen) => SplashScreen.preventAutoHideAsync())
+    .catch(() => undefined);
+  void import("expo-system-ui")
+    .then((SystemUI) => SystemUI.setBackgroundColorAsync(colors.surface))
+    .catch(() => undefined);
+}
 
 const PUBLIC_ROUTES = new Set(["", "auth", "register", "reset-password", "terms", "privacy-policy"]);
 
 const DeferredLogProvider = lazy(async () => {
-  // Lab upload/runtime compatibility and picker-heavy logging UI are not needed
-  // for the public landing/auth bootstrap. Load them only after app access exists.
   await import("@/src/lab-runtime-compat");
   const module = await import("@/src/components/LogProvider");
   return { default: module.LogProvider };
@@ -109,8 +111,6 @@ function RoutedApp() {
     </View>
   );
 
-  // Public pages, especially the promo landing, must paint immediately. Session
-  // restoration continues in the background and must never replace `/` with onboarding/auth.
   if (publicRoute) return stack;
   if (loading) return <StartupPreview />;
   if (!hasAppAccess) return stack;
@@ -126,13 +126,16 @@ function RoutedApp() {
 }
 
 export default function RootLayout() {
-  // Icon fonts can arrive after first paint. They are enhancement assets, not a
-  // reason to hold the whole app behind a splash screen (especially in Expo Go/CDN mode).
   useIconFonts();
-  useEffect(() => { SplashScreen.hideAsync().catch(() => undefined); }, []);
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+    void import("expo-splash-screen")
+      .then((SplashScreen) => SplashScreen.hideAsync())
+      .catch(() => undefined);
+  }, []);
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.surface }}>
-      <KeyboardProvider>
+      <KeyboardRoot>
         <SafeAreaProvider>
           <I18nProvider>
             <AuthProvider>
@@ -140,7 +143,7 @@ export default function RootLayout() {
             </AuthProvider>
           </I18nProvider>
         </SafeAreaProvider>
-      </KeyboardProvider>
+      </KeyboardRoot>
     </GestureHandlerRootView>
   );
 }
