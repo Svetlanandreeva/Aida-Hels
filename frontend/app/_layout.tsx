@@ -91,7 +91,7 @@ function RoutedApp() {
   useEffect(() => {
     if (loading) return;
     if (!hasAppAccess && !publicRoute) router.replace("/auth" as any);
-    if (hasAppAccess && (route === "auth" || route === "register" || route === "reset-password")) router.replace("/(tabs)" as any);
+    if (hasAppAccess && (route === "" || route === "auth" || route === "register" || route === "reset-password")) router.replace("/(tabs)" as any);
   }, [hasAppAccess, loading, publicRoute, route]);
 
   const stack = (
