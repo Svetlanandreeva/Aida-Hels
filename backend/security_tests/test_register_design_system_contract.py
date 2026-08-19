@@ -44,6 +44,6 @@ def test_registration_social_methods_share_locked_visual_language():
 def test_registration_keeps_design_lock_geometry():
     source = read("frontend/app/register.tsx")
     assert 'maxWidth: 620' in source
-    assert 'minHeight: 54' in source
-    assert 'borderRadius: radius.pill' in source
+    assert 'minHeight: 50' in source
+    assert 'borderRadius: radius.md' in source
     assert 'backgroundColor: colors.surface' in source
