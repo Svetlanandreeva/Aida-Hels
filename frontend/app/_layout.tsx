@@ -1,6 +1,6 @@
 import { Stack, router, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import { useEffect } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { LogBox, Platform, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
@@ -14,10 +14,8 @@ import { useMedicationReminderSync } from "@/src/hooks/use-medication-reminder-s
 import { useSleepRecommendationSync } from "@/src/hooks/use-sleep-recommendation-sync";
 import { I18nProvider } from "@/src/i18n";
 import { AppProvider, useApp } from "@/src/store";
-import { LogProvider } from "@/src/components/LogProvider";
 import { StartupPreview } from "@/src/components/StartupPreview";
 import { colors } from "@/src/theme";
-import "@/src/lab-runtime-compat";
 
 LogBox.ignoreAllLogs(true);
 
@@ -25,6 +23,14 @@ SplashScreen.preventAutoHideAsync().catch(() => undefined);
 SystemUI.setBackgroundColorAsync(colors.surface).catch(() => undefined);
 
 const PUBLIC_ROUTES = new Set(["", "auth", "register", "reset-password", "terms", "privacy-policy"]);
+
+const DeferredLogProvider = lazy(async () => {
+  // Lab upload/runtime compatibility and picker-heavy logging UI are not needed
+  // for the public landing/auth bootstrap. Load them only after app access exists.
+  await import("@/src/lab-runtime-compat");
+  const module = await import("@/src/components/LogProvider");
+  return { default: module.LogProvider };
+});
 
 function useNotificationNavigation() {
   useEffect(() => {
@@ -108,7 +114,15 @@ function RoutedApp() {
   if (publicRoute) return stack;
   if (loading) return <StartupPreview />;
   if (!hasAppAccess) return stack;
-  return <AppProvider><ProfileGate><LogProvider>{stack}</LogProvider></ProfileGate></AppProvider>;
+  return (
+    <AppProvider>
+      <ProfileGate>
+        <Suspense fallback={<StartupPreview />}>
+          <DeferredLogProvider>{stack}</DeferredLogProvider>
+        </Suspense>
+      </ProfileGate>
+    </AppProvider>
+  );
 }
 
 export default function RootLayout() {
