@@ -147,13 +147,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setError(null);
     try {
       const result = await authRequest("/auth/register", { name: name.trim(), email: email.trim(), password, phone: phone?.trim() || null });
-      if (!result?.verification_required || !result?.email) throw new Error("Email verification was not requested");
+      if (result?.access_token && result?.account) {
+        await applySession(result as SessionPayload);
+        return { verification_required: false, email: String(result.account.email || email).trim().toLowerCase() };
+      }
+      if (!result?.verification_required || !result?.email) throw new Error("Registration response was invalid");
       return result as RegistrationResult;
     } catch (e: any) {
       setError(e?.message || "Registration failed");
       throw e;
     }
-  }, []);
+  }, [applySession]);
 
   const resendVerification = useCallback(async (email: string) => {
     setError(null);
