@@ -93,9 +93,6 @@ legacy_server.app.user_middleware = [middleware for middleware in legacy_server.
 legacy_server.app.middleware_stack = None
 
 auth_router, auth_service = build_auth_router(_google_db)
-# The legacy auth router used to create a live session immediately after signup.
-# Remove only that route and replace it with the email-verified registration flow.
-auth_router.routes = [route for route in auth_router.routes if str(getattr(route, "path", "")) != "/api/auth/register"]
 app = legacy_server.app
 
 cors_origins = [origin.strip() for origin in os.environ.get("AIDA_CORS_ORIGINS", "").split(",") if origin.strip()]
