@@ -7,8 +7,6 @@ import { StatusBar } from "expo-status-bar";
 
 import { AuthProvider, useAuth } from "@/src/auth";
 import { useIconFonts } from "@/src/hooks/use-icon-fonts";
-import { useMedicationReminderSync } from "@/src/hooks/use-medication-reminder-sync";
-import { useSleepRecommendationSync } from "@/src/hooks/use-sleep-recommendation-sync";
 import { I18nProvider } from "@/src/i18n";
 import { AppProvider, useApp } from "@/src/store";
 import { KeyboardRoot } from "@/src/components/KeyboardRoot";
@@ -32,6 +30,11 @@ const DeferredLogProvider = lazy(async () => {
   await import("@/src/lab-runtime-compat");
   const module = await import("@/src/components/LogProvider");
   return { default: module.LogProvider };
+});
+
+const DeferredAuthenticatedSyncRuntime = lazy(async () => {
+  const module = await import("@/src/components/AuthenticatedSyncRuntime");
+  return { default: module.AuthenticatedSyncRuntime };
 });
 
 function useNotificationNavigation() {
@@ -66,8 +69,6 @@ function useDeferredNotificationSetup() {
 function ProfileGate({ children }: { children: React.ReactNode }) {
   const { activeProfile, loading } = useApp();
   const segments = useSegments();
-  useMedicationReminderSync();
-  useSleepRecommendationSync();
   useEffect(() => {
     const route = String(segments[0] || "");
     if (PUBLIC_ROUTES.has(route) || loading || !activeProfile) return;
@@ -117,6 +118,9 @@ function RoutedApp() {
   return (
     <AppProvider>
       <ProfileGate>
+        <Suspense fallback={null}>
+          <DeferredAuthenticatedSyncRuntime />
+        </Suspense>
         <Suspense fallback={<StartupPreview />}>
           <DeferredLogProvider>{stack}</DeferredLogProvider>
         </Suspense>
