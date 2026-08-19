@@ -3,11 +3,6 @@ import { Platform } from "react-native";
 
 import { getCircadianDay, getSleepInsight, saveRecommendationReminder } from "@/src/circadianApi";
 import { useApp } from "@/src/store";
-import {
-  cancelNotificationIds,
-  getNotificationPermissionState,
-  schedulePersonalSleepWindowReminder,
-} from "@/src/notifications";
 
 function localDate() {
   const d = new Date();
@@ -23,6 +18,13 @@ export function useSleepRecommendationSync() {
 
     const timer = setTimeout(() => {
       void (async () => {
+        const {
+          cancelNotificationIds,
+          getNotificationPermissionState,
+          schedulePersonalSleepWindowReminder,
+        } = await import("@/src/notifications");
+        if (cancelled) return;
+
         const date = localDate();
         const [day, insight, permission] = await Promise.all([
           getCircadianDay(activeId, date).catch(() => null),
