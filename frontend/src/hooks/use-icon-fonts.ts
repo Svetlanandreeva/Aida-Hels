@@ -1,13 +1,17 @@
 // Icon font loader for Expo apps.
 //
-// Expo Go on Android and the static web build both load the vector-icon fonts
-// from the pinned CDN. This avoids a production-web issue where the bundled
-// .ttf files are exported but the browser still renders missing-glyph squares.
-// Native dev/prod builds keep using autolinking.
+// Expo Go on Android and the static web build load vector-icon fonts from the
+// pinned CDN. On web, only the font used by the public/auth shell (Ionicons)
+// is requested during bootstrap; the rest are deferred until the browser is
+// idle so first paint is not competing with a pile of font downloads.
+// Native Expo Go keeps the previous eager behavior because those screens may
+// need any family immediately. Native dev/prod builds keep using autolinking.
 // ICON_VECTOR_VERSION must match @expo/vector-icons in package.json.
 
 import Constants, { ExecutionEnvironment } from "expo-constants";
+import * as Font from "expo-font";
 import { useFonts } from "expo-font";
+import { useEffect } from "react";
 import { Platform } from "react-native";
 
 const ICON_VECTOR_VERSION = "15.1.1";
@@ -43,10 +47,40 @@ const cdnIconFontMap = (): Record<string, string> =>
     Object.entries(ICON_FAMILIES).map(([family, file]) => [family, cdnUrl(file)]),
   );
 
-export const useIconFonts = (): readonly [boolean, Error | null] => {
-  const shouldLoadFromCdn =
-    Platform.OS === "web" ||
-    Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
+const WEB_CRITICAL_ICON_FONTS: Record<string, string> = {
+  ionicons: cdnUrl("Ionicons"),
+};
 
-  return useFonts(shouldLoadFromCdn ? cdnIconFontMap() : {});
+const WEB_DEFERRED_ICON_FONTS: Record<string, string> = Object.fromEntries(
+  Object.entries(ICON_FAMILIES)
+    .filter(([family]) => family !== "ionicons")
+    .map(([family, file]) => [family, cdnUrl(file)]),
+);
+
+function scheduleWhenIdle(task: () => void): () => void {
+  const root = globalThis as any;
+  if (typeof root.requestIdleCallback === "function") {
+    const id = root.requestIdleCallback(task, { timeout: 1800 });
+    return () => root.cancelIdleCallback?.(id);
+  }
+  const id = setTimeout(task, 700);
+  return () => clearTimeout(id);
+}
+
+export const useIconFonts = (): readonly [boolean, Error | null] => {
+  const isWeb = Platform.OS === "web";
+  const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
+
+  const [loaded, error] = useFonts(
+    isWeb ? WEB_CRITICAL_ICON_FONTS : isExpoGo ? cdnIconFontMap() : {},
+  );
+
+  useEffect(() => {
+    if (!isWeb || !loaded) return;
+    return scheduleWhenIdle(() => {
+      void Font.loadAsync(WEB_DEFERRED_ICON_FONTS).catch(() => undefined);
+    });
+  }, [isWeb, loaded]);
+
+  return [loaded, error] as const;
 };
