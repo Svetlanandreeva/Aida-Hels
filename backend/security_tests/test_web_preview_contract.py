@@ -29,7 +29,10 @@ def test_router_can_render_internal_shell_without_treating_preview_as_authentica
     layout = LAYOUT.read_text(encoding="utf-8")
     assert "const hasAppAccess = Boolean(token) || preview" in layout
     assert "if (!hasAppAccess) return stack" in layout
-    assert "<AppProvider><ProfileGate><LogProvider>" in layout
+    assert "<AppProvider>" in layout
+    assert "<ProfileGate>" in layout
+    assert "<DeferredLogProvider>{stack}</DeferredLogProvider>" in layout
+    assert 'const DeferredLogProvider = lazy(async () =>' in layout
 
 
 def test_auth_screen_does_not_expose_an_implicit_preview_login():
