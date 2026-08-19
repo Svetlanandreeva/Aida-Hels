@@ -1,3 +1,7 @@
+import { Platform } from "react-native";
+
+import { withTimeout } from "@/src/async";
+
 const BASE = (process.env.EXPO_PUBLIC_BACKEND_URL || "") + "/api";
 
 let API_TOKEN = "";
@@ -37,6 +41,8 @@ export type Checkin = { id: string; profile_id: string; mood: number; energy: nu
 export type Task = { id: string; profile_id: string; title: string; kind: string; due?: string | null; reminder_at?: string | null; notification_id?: string | null; action_route?: string | null; source_type?: string | null; source_id?: string | null; notes?: string | null; status?: "pending" | "done" | "cancelled" | string; done: boolean; created_at?: string | null; updated_at?: string | null };
 export type MedicalDocument = { id: string; profile_id: string; name: string; mime_type?: string | null; size_bytes?: number | null; drive_file_id?: string | null; drive_url?: string | null; purpose: string; document_type?: string | null; note?: string | null; status?: string | null; verification_status?: string | null; created_at?: string | null };
 
+type UploadFile = { uri: string; name: string; type: string };
+
 async function req(path: string, options?: RequestInit) {
   const headers = new Headers(options?.headers || {});
   if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
@@ -45,6 +51,25 @@ async function req(path: string, options?: RequestInit) {
   const contentType = res.headers.get("content-type") || "";
   if (!contentType.includes("application/json")) throw new Error("Aida API returned an invalid response");
   return res.json();
+}
+
+async function appendUploadFile(form: FormData, file: UploadFile, label: string) {
+  if (Platform.OS === "web") {
+    const fileResponse = await withTimeout(fetch(file.uri), 5000, `${label}_file_read`);
+    if (!fileResponse.ok) throw new Error(`Could not read selected ${label} file`);
+    const blob = await withTimeout(fileResponse.blob(), 5000, `${label}_file_blob`);
+    form.append("file", blob, file.name);
+    return;
+  }
+  // @ts-ignore React Native FormData accepts a file descriptor object.
+  form.append("file", { uri: file.uri, name: file.name, type: file.type });
+}
+
+async function uploadForm<T>(path: string, form: FormData, label: string): Promise<T> {
+  const timeoutMs = label === "lab_upload" ? 60000 : 15000;
+  const res = await withTimeout(apiFetch(path, { method: "POST", body: form as any }), timeoutMs, label);
+  if (!res.ok) { const txt = await res.text().catch(() => ""); throw new Error(`${res.status}: ${txt}`); }
+  return withTimeout(res.json(), 2000, `${label}_json`) as Promise<T>;
 }
 
 function minutesUntilNextDose(medication: Medication, now = new Date()) {
@@ -117,21 +142,20 @@ export const api = {
   biologicalAge: (pid: string): Promise<any> => req(`/insights/biological-age/${encodeURIComponent(pid)}`),
   bodySystems: (pid: string): Promise<any> => req(`/insights/body-systems/${encodeURIComponent(pid)}`),
   bodySystem: (pid: string, systemId: string): Promise<any> => req(`/insights/body-systems/${encodeURIComponent(pid)}/${encodeURIComponent(systemId)}`),
-  uploadDocument: async (pid: string, documentType: string, note: string, file: { uri: string; name: string; type: string }): Promise<MedicalDocument> => {
-    const form = new FormData(); form.append("profile_id", pid); form.append("document_type", documentType); if (note.trim()) form.append("note", note.trim());
-    // @ts-ignore RN FormData file
-    form.append("file", { uri: file.uri, name: file.name, type: file.type });
-    const res = await apiFetch("/documents/upload", { method: "POST", body: form as any });
-    if (!res.ok) { const txt = await res.text().catch(() => ""); throw new Error(`${res.status}: ${txt}`); }
-    return res.json();
+  uploadDocument: async (pid: string, documentType: string, note: string, file: UploadFile): Promise<MedicalDocument> => {
+    const form = new FormData();
+    form.append("profile_id", pid);
+    form.append("document_type", documentType);
+    if (note.trim()) form.append("note", note.trim());
+    await appendUploadFile(form, file, "document");
+    return uploadForm<MedicalDocument>("/documents/upload", form, "document_upload");
   },
-  uploadLab: async (pid: string, lang: string, file: { uri: string; name: string; type: string }): Promise<LabImportPreview> => {
-    const form = new FormData(); form.append("profile_id", pid); form.append("language", lang);
-    // @ts-ignore RN FormData file
-    form.append("file", { uri: file.uri, name: file.name, type: file.type });
-    const res = await apiFetch("/labs/upload", { method: "POST", body: form as any });
-    if (!res.ok) { const txt = await res.text().catch(() => ""); throw new Error(`${res.status}: ${txt}`); }
-    return res.json();
+  uploadLab: async (pid: string, lang: string, file: UploadFile): Promise<LabImportPreview> => {
+    const form = new FormData();
+    form.append("profile_id", pid);
+    form.append("language", lang);
+    await appendUploadFile(form, file, "lab");
+    return uploadForm<LabImportPreview>("/labs/upload", form, "lab_upload");
   },
   updateLabImport: (importId: string, preview: Omit<LabImportPreview, "import_id" | "status" | "profile_id" | "file">): Promise<LabImportPreview> =>
     req(`/lab-imports/${encodeURIComponent(importId)}`, { method: "PATCH", body: JSON.stringify(preview) }),
