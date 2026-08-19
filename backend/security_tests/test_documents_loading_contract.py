@@ -15,5 +15,6 @@ def test_documents_screen_keeps_shell_available_and_bounds_list_refresh():
     assert 'testID="documents-loading-state"' in source
     assert 'testID="documents-error-state"' in source
     assert "Previously loaded documents remain available" in source
-    assert "Здесь появятся медицинские документы, которые вы загрузите в профиль." in source
-    assert "Original medical files from Google Drive will appear here." not in source
+    assert "Здесь будут храниться оригиналы загруженных медицинских файлов." in source
+    assert "Original uploaded medical files will appear here." in source
+    assert "Google Drive" not in source
