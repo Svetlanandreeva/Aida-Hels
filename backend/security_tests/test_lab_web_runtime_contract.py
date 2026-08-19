@@ -26,6 +26,10 @@ def test_lab_list_upload_and_save_requests_are_bounded():
     assert '"lab_commit"' in source
 
 
-def test_lab_runtime_fix_is_loaded_by_root_layout():
+def test_lab_runtime_fix_is_deferred_until_authenticated_app_access():
     layout = read("frontend/app/_layout.tsx")
-    assert 'import "@/src/lab-runtime-compat";' in layout
+    assert 'import "@/src/lab-runtime-compat";' not in layout
+    assert 'await import("@/src/lab-runtime-compat")' in layout
+    assert 'const DeferredLogProvider = lazy(async () =>' in layout
+    assert '<Suspense fallback={<StartupPreview />}>' in layout
+    assert '<DeferredLogProvider>{stack}</DeferredLogProvider>' in layout

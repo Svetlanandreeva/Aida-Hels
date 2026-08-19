@@ -5,7 +5,6 @@ import { api } from "@/src/api";
 import { getCircadianDay } from "@/src/circadianApi";
 import { useApp } from "@/src/store";
 import { updateMedicationSchedule } from "@/src/medicationScheduleApi";
-import { cancelNotificationIds, getNotificationPermissionState, scheduleMedicationDoseAt, scheduleMedicationReminders } from "@/src/notifications";
 
 function localDate() {
   const d = new Date();
@@ -38,6 +37,14 @@ export function useMedicationReminderSync() {
     let cancelled = false;
     const timer = setTimeout(() => {
       void (async () => {
+        const {
+          cancelNotificationIds,
+          getNotificationPermissionState,
+          scheduleMedicationDoseAt,
+          scheduleMedicationReminders,
+        } = await import("@/src/notifications");
+        if (cancelled) return;
+
         const preference = activeProfile.privacy?.notification_preferences?.medications === true;
         const showDetails = activeProfile.privacy?.show_notification_details === true;
         const permission = await getNotificationPermissionState();

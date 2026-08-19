@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   Linking,
+  Platform,
   TextInput,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -19,7 +20,8 @@ import { Card, Muted, PrimaryButton, Chip } from "@/src/components/ui";
 import { Sheet } from "@/src/components/Sheet";
 import { useApp } from "@/src/store";
 import { useI18n } from "@/src/i18n";
-import { api, MedicalDocument } from "@/src/api";
+import { api, apiFetch, MedicalDocument } from "@/src/api";
+import { withTimeout } from "@/src/async";
 import { colors, spacing, radius, fontSize, fonts } from "@/src/theme";
 
 const TYPES = [
@@ -29,6 +31,9 @@ const TYPES = [
   { key: "imaging", ru: "Исследование", en: "Imaging / study" },
   { key: "other", ru: "Другое", en: "Other" },
 ];
+
+type UploadFile = { uri: string; name: string; type: string };
+const DOCUMENTS_TIMEOUT_MS = 3500;
 
 export default function DocumentsScreen() {
   const insets = useSafeAreaInsets();
@@ -43,6 +48,8 @@ export default function DocumentsScreen() {
   const [type, setType] = useState("other");
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [pendingFile, setPendingFile] = useState<UploadFile | null>(null);
 
   const load = useCallback(async () => {
     if (!activeId) {
@@ -53,7 +60,8 @@ export default function DocumentsScreen() {
     }
     setError(false);
     try {
-      setItems(await api.listDocuments(activeId));
+      const next = await withTimeout(api.listDocuments(activeId), DOCUMENTS_TIMEOUT_MS, "documents");
+      setItems(next);
     } catch {
       setError(true);
     } finally {
@@ -63,7 +71,7 @@ export default function DocumentsScreen() {
 
   useFocusEffect(useCallback(() => {
     setLoading(true);
-    load();
+    void load();
   }, [load, refreshTick]));
 
   const onRefresh = async () => {
@@ -72,8 +80,56 @@ export default function DocumentsScreen() {
     setRefreshing(false);
   };
 
+  const uploadSelected = async (file: UploadFile) => {
+    if (!activeId || saving) return;
+    setSaving(true);
+    setUploadError(null);
+    setPendingFile(file);
+    try {
+      if (Platform.OS === "web") {
+        const fileResponse = await withTimeout(fetch(file.uri), 5000, "document_file_read");
+        if (!fileResponse.ok) throw new Error("Could not read selected file");
+        const blob = await withTimeout(fileResponse.blob(), 5000, "document_file_blob");
+        const form = new FormData();
+        form.append("profile_id", activeId);
+        form.append("document_type", type);
+        if (note.trim()) form.append("note", note.trim());
+        form.append("file", blob, file.name);
+        const response = await withTimeout(
+          apiFetch("/documents/upload", { method: "POST", body: form }),
+          12000,
+          "document_upload",
+        );
+        if (!response.ok) {
+          const text = await response.text().catch(() => "");
+          throw new Error(`${response.status}: ${text}`);
+        }
+        await response.json();
+      } else {
+        await withTimeout(api.uploadDocument(activeId, type, note, file), 12000, "document_upload");
+      }
+      setOpen(false);
+      setNote("");
+      setType("other");
+      setPendingFile(null);
+      setUploadError(null);
+      bumpRefresh();
+      await load();
+    } catch (e: any) {
+      const raw = String(e?.message || "");
+      setUploadError(
+        raw.toLowerCase().includes("timeout")
+          ? (lang === "ru" ? "Загрузка заняла слишком много времени. Можно повторить отправку." : "Upload took too long. You can retry it.")
+          : (lang === "ru" ? "Не удалось загрузить документ. Проверьте соединение и повторите отправку." : "Could not upload the document. Check your connection and retry."),
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const pick = async () => {
     if (!activeId || saving) return;
+    setUploadError(null);
     const res = await DocumentPicker.getDocumentAsync({
       type: ["application/pdf", "image/*"],
       copyToCacheDirectory: true,
@@ -81,21 +137,11 @@ export default function DocumentsScreen() {
     if (res.canceled || !res.assets[0]) return;
 
     const a = res.assets[0];
-    setSaving(true);
-    try {
-      await api.uploadDocument(activeId, type, note, {
-        uri: a.uri,
-        name: a.name || "medical-document.pdf",
-        type: a.mimeType || "application/pdf",
-      });
-      setOpen(false);
-      setNote("");
-      setType("other");
-      bumpRefresh();
-      await load();
-    } finally {
-      setSaving(false);
-    }
+    await uploadSelected({
+      uri: a.uri,
+      name: a.name || "medical-document.pdf",
+      type: a.mimeType || "application/pdf",
+    });
   };
 
   const typeLabel = (key?: string | null) => {
@@ -113,21 +159,11 @@ export default function DocumentsScreen() {
     <View style={styles.container}>
       <ScreenHeader title={lang === "ru" ? "Медицинские документы" : "Medical documents"} />
 
-      {loading ? (
-        <View style={styles.center}>
-          <ActivityIndicator size="large" color={colors.onSurface} />
-        </View>
-      ) : !activeId ? (
+      {!activeId ? (
         <View style={styles.centerState}>
           <Ionicons name="person-circle-outline" size={52} color={colors.onSurfaceSecondary} />
           <Text style={styles.stateTitle}>{lang === "ru" ? "Сначала выберите профиль" : "Choose a profile first"}</Text>
           <Muted style={styles.stateText}>{lang === "ru" ? "Документы всегда привязаны к конкретному человеку." : "Documents are always linked to a specific person."}</Muted>
-        </View>
-      ) : error ? (
-        <View style={styles.centerState}>
-          <Ionicons name="cloud-offline-outline" size={52} color={colors.onSurfaceSecondary} />
-          <Text style={styles.stateTitle}>{lang === "ru" ? "Не удалось загрузить документы" : "Could not load documents"}</Text>
-          <PrimaryButton label={lang === "ru" ? "Повторить" : "Retry"} onPress={() => { setLoading(true); load(); }} style={{ marginTop: spacing.lg }} />
         </View>
       ) : (
         <ScrollView
@@ -135,7 +171,7 @@ export default function DocumentsScreen() {
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.onSurface} />}
         >
-          <Pressable style={styles.addCard} onPress={() => setOpen(true)} testID="upload-medical-document">
+          <Pressable style={styles.addCard} onPress={() => { setUploadError(null); setPendingFile(null); setOpen(true); }} testID="upload-medical-document">
             <View style={styles.addIcon}>
               <Ionicons name="document-attach-outline" size={22} color={colors.surfaceSecondary} />
             </View>
@@ -146,11 +182,28 @@ export default function DocumentsScreen() {
             <Ionicons name="chevron-forward" size={19} color={colors.surfaceSecondary} />
           </Pressable>
 
-          {items.length === 0 ? (
+          {loading ? (
+            <View style={styles.inlineState} testID="documents-loading-state">
+              <ActivityIndicator size="small" color={colors.onSurface} />
+              <Text style={styles.inlineStateText}>{lang === "ru" ? "Обновляем список документов…" : "Refreshing documents…"}</Text>
+            </View>
+          ) : null}
+
+          {error ? (
+            <View style={styles.inlineState} testID="documents-error-state">
+              <Ionicons name="cloud-offline-outline" size={20} color={colors.onSurfaceSecondary} />
+              <Text style={styles.inlineStateText}>{lang === "ru" ? "Не удалось обновить список. Уже загруженные документы остаются доступны." : "Could not refresh the list. Previously loaded documents remain available."}</Text>
+              <Pressable style={styles.retryButton} onPress={() => { setLoading(true); void load(); }} accessibilityRole="button">
+                <Text style={styles.retryText}>{lang === "ru" ? "Повторить" : "Retry"}</Text>
+              </Pressable>
+            </View>
+          ) : null}
+
+          {!loading && !error && items.length === 0 ? (
             <View style={styles.empty}>
               <Ionicons name="folder-open-outline" size={56} color={colors.onSurfaceSecondary} />
               <Text style={styles.stateTitle}>{lang === "ru" ? "Документов пока нет" : "No documents yet"}</Text>
-              <Muted style={styles.stateText}>{lang === "ru" ? "Здесь будут храниться оригиналы медицинских файлов из Google Drive." : "Original medical files from Google Drive will appear here."}</Muted>
+              <Muted style={styles.stateText}>{lang === "ru" ? "Здесь будут храниться оригиналы загруженных медицинских файлов." : "Original uploaded medical files will appear here."}</Muted>
             </View>
           ) : (
             <View style={{ gap: spacing.md }}>
@@ -193,13 +246,29 @@ export default function DocumentsScreen() {
           placeholder={lang === "ru" ? "Например: заключение кардиолога" : "For example: cardiology report"}
           placeholderTextColor={colors.onSurfaceSecondary}
         />
-        <PrimaryButton
-          label={lang === "ru" ? "Выбрать PDF или фото" : "Choose PDF or image"}
-          icon="document-attach-outline"
-          onPress={pick}
-          loading={saving}
-          style={{ marginTop: spacing.lg }}
-        />
+        {uploadError ? (
+          <View style={styles.uploadError} testID="document-upload-error">
+            <Ionicons name="alert-circle-outline" size={20} color={colors.error} />
+            <Text style={styles.uploadErrorText}>{uploadError}</Text>
+          </View>
+        ) : null}
+        {uploadError && pendingFile ? (
+          <PrimaryButton
+            label={lang === "ru" ? "Повторить отправку" : "Retry upload"}
+            icon="refresh-outline"
+            onPress={() => uploadSelected(pendingFile)}
+            loading={saving}
+            style={{ marginTop: spacing.md }}
+          />
+        ) : (
+          <PrimaryButton
+            label={lang === "ru" ? "Выбрать PDF или фото" : "Choose PDF or image"}
+            icon="document-attach-outline"
+            onPress={pick}
+            loading={saving}
+            style={{ marginTop: spacing.lg }}
+          />
+        )}
         <Muted style={{ marginTop: spacing.md, lineHeight: 18 }}>
           {lang === "ru" ? "Документ сохранится как оригинал. Аида не будет автоматически считать его лабораторным анализом." : "The original file will be stored as-is. Aida will not automatically treat it as a lab result."}
         </Muted>
@@ -210,11 +279,14 @@ export default function DocumentsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.surface },
-  center: { flex: 1, alignItems: "center", justifyContent: "center" },
   centerState: { flex: 1, alignItems: "center", justifyContent: "center", padding: spacing.xl },
   empty: { alignItems: "center", paddingTop: spacing["3xl"], paddingHorizontal: spacing.lg },
   stateTitle: { marginTop: spacing.md, fontSize: fontSize.lg, fontWeight: "700", color: colors.onSurface, textAlign: "center", fontFamily: fonts.text },
   stateText: { marginTop: spacing.sm, textAlign: "center", lineHeight: 19 },
+  inlineState: { minHeight: 56, marginBottom: spacing.lg, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radius.md, backgroundColor: colors.surfaceSecondary, flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  inlineStateText: { flex: 1, color: colors.onSurfaceSecondary, fontSize: fontSize.sm, lineHeight: 19, fontFamily: fonts.text },
+  retryButton: { minHeight: 38, paddingHorizontal: spacing.md, borderRadius: radius.pill, backgroundColor: colors.onSurface, alignItems: "center", justifyContent: "center" },
+  retryText: { color: colors.onSurfaceInverse, fontWeight: "800", fontSize: fontSize.sm, fontFamily: fonts.text },
   addCard: { minHeight: 82, borderRadius: radius.xl, backgroundColor: colors.onSurface, paddingHorizontal: spacing.lg, paddingVertical: spacing.md, marginBottom: spacing.xl, flexDirection: "row", alignItems: "center", gap: spacing.md },
   addIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: "rgba(255,255,255,0.12)", alignItems: "center", justifyContent: "center" },
   addTitle: { fontSize: fontSize.lg, fontWeight: "700", color: colors.surfaceSecondary, fontFamily: fonts.text },
@@ -227,4 +299,6 @@ const styles = StyleSheet.create({
   fieldLabel: { fontSize: fontSize.base, color: colors.onSurface, marginBottom: spacing.sm, fontWeight: "600", fontFamily: fonts.text },
   chips: { gap: spacing.sm, paddingVertical: spacing.sm },
   input: { minHeight: 84, backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, paddingHorizontal: spacing.lg, paddingVertical: spacing.md, fontSize: fontSize.base, color: colors.onSurface, borderWidth: 1, borderColor: colors.border, textAlignVertical: "top", fontFamily: fonts.text },
+  uploadError: { marginTop: spacing.lg, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.error, flexDirection: "row", alignItems: "flex-start", gap: spacing.sm },
+  uploadErrorText: { flex: 1, color: colors.error, fontSize: fontSize.sm, lineHeight: 19, fontFamily: fonts.text },
 });
