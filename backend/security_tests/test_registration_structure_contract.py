@@ -10,38 +10,41 @@ def test_landing_signup_ctas_open_dedicated_registration_screen():
     assert landing.count('router.push("/register")') >= 3
 
 
-def test_registration_screen_contains_required_hierarchy_fields_and_validation():
+def test_registration_screen_is_auth_first_and_profile_second():
     register = (ROOT / "frontend" / "app" / "register.tsx").read_text(encoding="utf-8")
     required_tokens = [
-        '"name"',
         '"email"',
-        '"phone"',
         '"password"',
         '"confirm"',
         '"consent"',
         'password !== confirm',
         'router.push("/terms"',
-        'router.push("/privacy"',
-        'register(name.trim(), cleanEmail, password, cleanPhone || null)',
-        'testID="register-phone"',
+        'router.push("/privacy-policy"',
+        'register("Мой профиль", cleanEmail, password, null)',
+        'router.replace("/onboarding"',
+        'Продолжить с Яндекс ID',
+        'Продолжить с VK ID',
+        'Дальше: имя, дата рождения, пол, рост, вес и цели.',
     ]
     for token in required_tokens:
-        assert token in register, f"registration hierarchy token missing: {token}"
+        assert token in register, f"registration auth-first token missing: {token}"
+
+    assert 'testID="register-phone"' not in register
+    assert 'testID="register-name"' not in register
 
 
-def test_registration_phone_is_sent_and_persisted_by_verified_signup_flow():
-    auth = (ROOT / "frontend" / "src" / "auth.tsx").read_text(encoding="utf-8")
-    signup = (ROOT / "backend" / "email_signup.py").read_text(encoding="utf-8")
-
-    assert 'phone: phone?.trim() || null' in auth
-    assert 'phone: Optional[str]' in signup
-    assert 'phone = _phone(data.phone)' in signup
-    assert '"phone": phone' in signup
-    assert 'Phone number already in use' in signup
-
-
-def test_registration_no_longer_claims_phone_is_disconnected():
+def test_email_registration_defers_personal_data_to_onboarding():
     register = (ROOT / "frontend" / "app" / "register.tsx").read_text(encoding="utf-8")
-    assert "Вход и восстановление по телефону подключаются отдельным backend-шагом" not in register
+    onboarding = (ROOT / "frontend" / "app" / "onboarding.tsx").read_text(encoding="utf-8")
+
+    assert 'Personal/profile data is intentionally collected on the next onboarding step.' in register
+    assert 'router.replace("/onboarding"' in register
+    assert 'Мой профиль' in register
+    assert "name" in onboarding.lower()
+
+
+def test_registration_no_longer_claims_phone_is_collected_on_step_one():
+    register = (ROOT / "frontend" / "app" / "register.tsx").read_text(encoding="utf-8")
+    assert "он сохранится в аккаунте" not in register
     assert "Phone sign-in and recovery are a separate backend step" not in register
-    assert "он сохранится в аккаунте" in register
+    assert "Сначала выберите способ регистрации" in register
