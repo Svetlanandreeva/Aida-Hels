@@ -66,7 +66,8 @@ async function appendUploadFile(form: FormData, file: UploadFile, label: string)
 }
 
 async function uploadForm<T>(path: string, form: FormData, label: string): Promise<T> {
-  const res = await withTimeout(apiFetch(path, { method: "POST", body: form as any }), 15000, label);
+  const timeoutMs = label === "lab_upload" ? 60000 : 15000;
+  const res = await withTimeout(apiFetch(path, { method: "POST", body: form as any }), timeoutMs, label);
   if (!res.ok) { const txt = await res.text().catch(() => ""); throw new Error(`${res.status}: ${txt}`); }
   return withTimeout(res.json(), 2000, `${label}_json`) as Promise<T>;
 }
