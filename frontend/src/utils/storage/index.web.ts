@@ -6,8 +6,9 @@
 //
 // New web reads/writes use localStorage so auth/profile bootstrap does not eagerly
 // pull the AsyncStorage IndexedDB shim into the first JS path. Existing users are
-// migrated lazily: on a localStorage miss we dynamically load AsyncStorage once,
-// copy any legacy value into localStorage, then future boots stay on the fast path.
+// migrated lazily on the first miss for each key. A per-key migration marker makes
+// subsequent misses stay on the fast localStorage path instead of re-importing the
+// legacy IndexedDB shim on every anonymous/cold startup.
 
 import { AssertNoExtras, StorageBase, StorageItemValue } from "./storage-base";
 
@@ -16,6 +17,12 @@ type WebStorage = {
   setItem: (key: string, value: string) => void;
   removeItem: (key: string) => void;
 };
+
+const LEGACY_MIGRATION_MARKER_PREFIX = "aida.storage.legacyChecked:";
+
+function legacyMarkerKey(key: string): string {
+  return `${LEGACY_MIGRATION_MARKER_PREFIX}${key}`;
+}
 
 function browserStorage(): WebStorage | null {
   try {
@@ -26,12 +33,16 @@ function browserStorage(): WebStorage | null {
   }
 }
 
-async function legacyGet(key: string): Promise<string | null> {
+async function legacyGet(key: string): Promise<string | null | undefined> {
   try {
     const module = await import("@react-native-async-storage/async-storage");
-    return await module.default.getItem(key);
+    try {
+      return await module.default.getItem(key);
+    } catch {
+      return undefined;
+    }
   } catch {
-    return null;
+    return undefined;
   }
 }
 
@@ -54,9 +65,18 @@ export class Storage extends StorageBase {
       const current = store?.getItem(key) ?? null;
       if (current !== null) return this.retrieve(current, fallback);
 
+      const marker = legacyMarkerKey(key);
+      if (store?.getItem(marker) === "1") return fallback;
+
       const legacy = await legacyGet(key);
+      if (legacy === undefined) return fallback;
+
+      try {
+        if (legacy !== null) store?.setItem(key, legacy);
+        store?.setItem(marker, "1");
+      } catch {}
+
       if (legacy === null) return fallback;
-      try { store?.setItem(key, legacy); } catch {}
       return this.retrieve(legacy, fallback);
     } catch (e) {
       this.warn("getItem", key, e);
@@ -72,6 +92,7 @@ export class Storage extends StorageBase {
       const store = browserStorage();
       if (!store) return false;
       store.setItem(key, JSON.stringify(value));
+      store.setItem(legacyMarkerKey(key), "1");
       return true;
     } catch (e) {
       this.warn("setItem", key, e);
@@ -83,6 +104,9 @@ export class Storage extends StorageBase {
     try {
       const store = browserStorage();
       store?.removeItem(key);
+      // Mark the legacy key as handled before best-effort cleanup so an immediate
+      // follow-up read cannot resurrect a just-removed session/value from IndexedDB.
+      store?.setItem(legacyMarkerKey(key), "1");
       void legacyRemove(key);
       return Boolean(store);
     } catch (e) {
