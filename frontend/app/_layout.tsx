@@ -27,8 +27,10 @@ if (Platform.OS !== "web") {
 const PUBLIC_ROUTES = new Set(["", "auth", "register", "reset-password", "terms", "privacy-policy"]);
 
 const DeferredLogProvider = lazy(async () => {
-  await import("@/src/lab-runtime-compat");
-  const module = await import("@/src/components/LogProvider");
+  const [, module] = await Promise.all([
+    import("@/src/lab-runtime-compat"),
+    import("@/src/components/LogProvider"),
+  ]);
   return { default: module.LogProvider };
 });
 
