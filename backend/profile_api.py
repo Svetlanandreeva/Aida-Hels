@@ -29,16 +29,18 @@ def _module_settings_for_goals(goals: List[str] | None) -> Dict[str, bool]:
     selected = {str(goal) for goal in (goals or []) if goal}
     if not selected:
         return {}
+    general = "general" in selected
+    chronic = "chronic" in selected
     women_selected = bool(selected & {"women", "cycle", "pregnancy_planning", "pregnancy"})
     return {
-        "general": "general" in selected,
-        "labs": "labs" in selected,
-        "symptoms": "symptoms" in selected,
-        "pressure": "pressure" in selected,
-        "sleep": "sleep" in selected,
-        "mental": "mental" in selected,
-        "chronic": "chronic" in selected,
-        "meds": "meds" in selected,
+        "general": general,
+        "labs": general or chronic or "labs" in selected,
+        "symptoms": general or chronic or "symptoms" in selected,
+        "pressure": general or chronic or "pressure" in selected,
+        "sleep": general or "sleep" in selected or "mental" in selected,
+        "mental": general or "mental" in selected or "sleep" in selected,
+        "chronic": chronic,
+        "meds": chronic or "meds" in selected,
         "women": women_selected,
     }
 
@@ -228,6 +230,11 @@ def build_profile_router(db, auth) -> APIRouter:
             merged.update(current.get("privacy") or {})
             merged.update(patch["privacy"] or {})
             patch["privacy"] = merged
+
+        # A direct module-settings write is a deliberate user customization and
+        # must never be silently replaced by later goal edits.
+        if "module_settings" in patch and patch["module_settings"] is not None:
+            patch["module_settings_source"] = "user"
 
         was_completed = bool(current.get("onboarding_completed"))
         finishing_onboarding = patch.get("onboarding_completed") is True and not was_completed
