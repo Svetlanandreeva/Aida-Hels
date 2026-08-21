@@ -50,11 +50,15 @@ class _Collection:
     def find(self, query: Dict[str, Any], projection: Optional[Dict[str, int]] = None):
         return _Cursor(self._project(row, projection) for row in self.rows if self._matches(row, query))
 
-    async def update_one(self, query: Dict[str, Any], update: Dict[str, Any]):
+    async def update_one(self, query: Dict[str, Any], update: Dict[str, Any], upsert: bool = False):
         for row in self.rows:
             if self._matches(row, query):
                 row.update(copy.deepcopy(update.get("$set", {})))
-                break
+                return object()
+        if upsert:
+            row = copy.deepcopy(query)
+            row.update(copy.deepcopy(update.get("$set", {})))
+            self.rows.append(row)
         return object()
 
     async def delete_one(self, query: Dict[str, Any]):
@@ -225,7 +229,7 @@ def test_register_restore_onboarding_critical_api_login_logout_and_recovery(monk
     assert toggled.json()["status"] == "done"
 
     tasks = client.get(f"/api/tasks?profile_id={profile_id}", headers=_auth(first_token))
-    assert tasks.status_code == 200, tasks.text
+    assert tasks.status_code == 200
     assert len(tasks.json()) == 1
     assert tasks.json()[0]["id"] == task_id
     assert tasks.json()[0]["done"] is True
