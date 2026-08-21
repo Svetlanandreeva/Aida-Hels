@@ -40,6 +40,7 @@ class _Collection:
 
 class _Db:
     def __init__(self):
+        self.profiles = _Collection()
         self.medications = _Collection()
         self.medication_events = _Collection()
         self.circadian_events = _Collection()
