@@ -130,10 +130,18 @@ jobs:
           VK_CLIENT_ID: ${{ secrets.VK_CLIENT_ID }}
           VK_CLIENT_SECRET: ${{ secrets.VK_CLIENT_SECRET }}
         run: |
-          YANDEX_CLIENT_ID_B64="$(printf '%s' "$YANDEX_CLIENT_ID" | base64 | tr -d '\n')"
-          YANDEX_CLIENT_SECRET_B64="$(printf '%s' "$YANDEX_CLIENT_SECRET" | base64 | tr -d '\n')"
-          VK_CLIENT_ID_B64="$(printf '%s' "$VK_CLIENT_ID" | base64 | tr -d '\n')"
-          VK_CLIENT_SECRET_B64="$(printf '%s' "$VK_CLIENT_SECRET" | base64 | tr -d '\n')"
+          encode_optional_secret() {
+            if [ -z "$1" ]; then
+              printf '-'
+            else
+              printf '%s' "$1" | base64 | tr -d '\n'
+            fi
+          }
+
+          YANDEX_CLIENT_ID_B64="$(encode_optional_secret "$YANDEX_CLIENT_ID")"
+          YANDEX_CLIENT_SECRET_B64="$(encode_optional_secret "$YANDEX_CLIENT_SECRET")"
+          VK_CLIENT_ID_B64="$(encode_optional_secret "$VK_CLIENT_ID")"
+          VK_CLIENT_SECRET_B64="$(encode_optional_secret "$VK_CLIENT_SECRET")"
 
           ssh -p "$RUVDS_PORT" -i ~/.ssh/ruvds -o ConnectTimeout=10 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
             "$RUVDS_USER@$RUVDS_HOST" bash -s -- \
@@ -168,7 +176,7 @@ jobs:
 
           def incoming(name):
               encoded = os.environ.get(f'{name}_B64', '')
-              if not encoded:
+              if not encoded or encoded == '-':
                   return ''
               return base64.b64decode(encoded.encode('ascii')).decode('utf-8').strip()
 
