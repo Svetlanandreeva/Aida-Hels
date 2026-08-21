@@ -122,6 +122,97 @@ jobs:
           ssh -p "$RUVDS_PORT" -i ~/.ssh/ruvds -o ConnectTimeout=10 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes "$RUVDS_USER@$RUVDS_HOST" \
             'set -e; test -w /opt/aida/backend; test -w /opt/aida/web; sudo -n /usr/bin/systemctl status aida-backend >/dev/null'
 
+      - name: Ensure persistent social OAuth configuration
+        timeout-minutes: 2
+        env:
+          YANDEX_CLIENT_ID: ${{ secrets.YANDEX_CLIENT_ID }}
+          YANDEX_CLIENT_SECRET: ${{ secrets.YANDEX_CLIENT_SECRET }}
+          VK_CLIENT_ID: ${{ secrets.VK_CLIENT_ID }}
+          VK_CLIENT_SECRET: ${{ secrets.VK_CLIENT_SECRET }}
+        run: |
+          YANDEX_CLIENT_ID_B64="$(printf '%s' "$YANDEX_CLIENT_ID" | base64 | tr -d '\n')"
+          YANDEX_CLIENT_SECRET_B64="$(printf '%s' "$YANDEX_CLIENT_SECRET" | base64 | tr -d '\n')"
+          VK_CLIENT_ID_B64="$(printf '%s' "$VK_CLIENT_ID" | base64 | tr -d '\n')"
+          VK_CLIENT_SECRET_B64="$(printf '%s' "$VK_CLIENT_SECRET" | base64 | tr -d '\n')"
+
+          ssh -p "$RUVDS_PORT" -i ~/.ssh/ruvds -o ConnectTimeout=10 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            "$RUVDS_USER@$RUVDS_HOST" bash -s -- \
+            "$YANDEX_CLIENT_ID_B64" "$YANDEX_CLIENT_SECRET_B64" "$VK_CLIENT_ID_B64" "$VK_CLIENT_SECRET_B64" <<'EOF'
+          set -euo pipefail
+          cd /opt/aida/backend
+          touch .env
+          test -w .env || (echo 'Production .env is not writable by deploy user' && exit 1)
+          chmod 600 .env
+
+          export YANDEX_CLIENT_ID_B64="$1"
+          export YANDEX_CLIENT_SECRET_B64="$2"
+          export VK_CLIENT_ID_B64="$3"
+          export VK_CLIENT_SECRET_B64="$4"
+
+          python3 - <<'PY'
+          import base64
+          import os
+          from pathlib import Path
+
+          path = Path('.env')
+          lines = path.read_text().splitlines()
+
+          def current_values():
+              values = {}
+              for line in lines:
+                  if not line or line.lstrip().startswith('#') or '=' not in line:
+                      continue
+                  key, value = line.split('=', 1)
+                  values[key.strip()] = value.strip()
+              return values
+
+          def incoming(name):
+              encoded = os.environ.get(f'{name}_B64', '')
+              if not encoded:
+                  return ''
+              return base64.b64decode(encoded.encode('ascii')).decode('utf-8').strip()
+
+          existing = current_values()
+          managed = {
+              'YANDEX_CLIENT_ID': incoming('YANDEX_CLIENT_ID') or existing.get('YANDEX_CLIENT_ID', ''),
+              'YANDEX_CLIENT_SECRET': incoming('YANDEX_CLIENT_SECRET') or existing.get('YANDEX_CLIENT_SECRET', ''),
+              'VK_CLIENT_ID': incoming('VK_CLIENT_ID') or existing.get('VK_CLIENT_ID', ''),
+              'VK_CLIENT_SECRET': incoming('VK_CLIENT_SECRET') or existing.get('VK_CLIENT_SECRET', ''),
+              'YANDEX_REDIRECT_URI': 'https://aidaassistent.ru/api/auth/oauth/yandex/callback',
+              'VK_REDIRECT_URI': 'https://aidaassistent.ru/api/auth/oauth/vk/callback',
+              'OAUTH_ALLOWED_RETURN_URIS': 'https://aidaassistent.ru/auth',
+          }
+
+          required = ('YANDEX_CLIENT_ID', 'YANDEX_CLIENT_SECRET', 'VK_CLIENT_ID', 'VK_CLIENT_SECRET')
+          missing = [key for key in required if not managed[key]]
+          if missing:
+              print('Social OAuth production configuration is incomplete: ' + ', '.join(missing))
+              print('Add the missing values to GitHub Actions secrets or the persistent /opt/aida/backend/.env file.')
+              raise SystemExit(1)
+
+          updated = []
+          seen = set()
+          for line in lines:
+              if '=' in line and not line.lstrip().startswith('#'):
+                  key = line.split('=', 1)[0].strip()
+                  if key in managed:
+                      if key not in seen:
+                          updated.append(f'{key}={managed[key]}')
+                          seen.add(key)
+                      continue
+              updated.append(line)
+
+          for key, value in managed.items():
+              if key not in seen:
+                  if updated and updated[-1] != '':
+                      updated.append('')
+                  updated.append(f'{key}={value}')
+
+          path.write_text('\n'.join(updated).rstrip() + '\n')
+          print('Yandex ID and VK ID production configuration is present and persisted.')
+          PY
+          EOF
+
       - name: Upload backend and built web bundle
         timeout-minutes: 8
         run: |
@@ -209,6 +300,8 @@ jobs:
           done
 
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/api/auth/me)" = "401"
+          curl --fail --silent http://127.0.0.1:8000/api/auth/oauth/providers | \
+            python3 -c 'import json,sys; data=json.load(sys.stdin); assert data.get("yandex", {}).get("configured") is True; assert data.get("vk", {}).get("configured") is True'
           curl --fail --silent --head --resolve aidaassistent.ru:443:127.0.0.1 https://aidaassistent.ru/ >/dev/null
           EOF
 
@@ -217,6 +310,8 @@ jobs:
         run: |
           curl --fail --silent --head https://aidaassistent.ru/ >/dev/null
           test "$(curl -s -o /dev/null -w '%{http_code}' https://aidaassistent.ru/api/auth/me)" = "401"
+          curl --fail --silent https://aidaassistent.ru/api/auth/oauth/providers | \
+            python3 -c 'import json,sys; data=json.load(sys.stdin); assert data.get("yandex", {}).get("configured") is True; assert data.get("vk", {}).get("configured") is True'
 
       - name: Deployment summary
         run: echo 'Aida production validated on GitHub-hosted infrastructure and deployed to the new VDS over SSH.'
