@@ -17,13 +17,13 @@ def test_home_backend_bounds_each_aggregate_source():
         "legacy.readiness(profile_id)",
         "legacy.gamification(profile_id)",
         "medications()",
-        "legacy.list_symptoms(profile_id)",
-        "legacy.list_labs(profile_id)",
+        "symptoms()",
+        "labs()",
         "puzzle()",
-        "legacy.overview(profile_id, language)",
+        "overview()",
         "tasks()",
-        "_medication_day(db, profile_id, local_date, now_local)",
-        "_cycle_summary(db, profile_id, local_date)",
+        "medication_day()",
+        "cycle_summary()",
     ):
         assert f"_bounded({call})" in source
 
