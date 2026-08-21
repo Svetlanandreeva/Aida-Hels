@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends
 
 from access_control import require_profile_access
 from medication_api import _TIME_RE, _effective_times, _minutes, _normalize_med
+from puzzle_api import widgets_for_goals
 
 HOME_SECTION_TIMEOUT_SECONDS = 3.5
 
@@ -51,6 +52,48 @@ def _lab_status_state(labs) -> Dict[str, Any]:
     if normal + outside == 0:
         return {"state": "no_data", "in_range": None, "out_of_range": None}
     return {"state": "data", "in_range": normal, "out_of_range": outside}
+
+
+def _profile_is_personalized(profile: Dict[str, Any]) -> bool:
+    return bool(profile.get("goals") or profile.get("module_settings"))
+
+
+def _module_enabled(profile: Dict[str, Any], key: str) -> bool:
+    """Resolve a Home module from explicit settings first, then onboarding goals.
+
+    Profiles created before personalization remain backward compatible: with no
+    goals/settings every Home section stays enabled.
+    """
+    if not _profile_is_personalized(profile):
+        return True
+
+    settings = profile.get("module_settings") or {}
+    if key in settings:
+        return settings.get(key) is not False
+
+    goals = {str(goal) for goal in (profile.get("goals") or []) if goal}
+    goal_map = {
+        "labs": {"labs", "general", "chronic"},
+        "symptoms": {"symptoms", "general", "chronic"},
+        "meds": {"meds", "chronic"},
+        "pressure": {"pressure", "general", "chronic"},
+        "mental": {"mental", "sleep", "general"},
+        "sleep": {"sleep", "mental", "general"},
+        "women": {"women", "cycle", "pregnancy_planning", "pregnancy"},
+    }
+    accepted = goal_map.get(key)
+    return True if accepted is None else bool(goals & accepted)
+
+
+def _attention_allowed(profile: Dict[str, Any], item: Dict[str, Any]) -> bool:
+    kind = str(item.get("type") or "")
+    if kind == "lab":
+        return _module_enabled(profile, "labs")
+    if kind == "bp":
+        return _module_enabled(profile, "pressure")
+    if kind == "symptom":
+        return _module_enabled(profile, "symptoms")
+    return True
 
 
 async def _bounded(awaitable, timeout: float = HOME_SECTION_TIMEOUT_SECONDS):
@@ -136,17 +179,56 @@ def build_home_router(db, auth, legacy) -> APIRouter:
     ):
         await require_profile_access(auth, account, profile_id)
         local_date = date or datetime.now(timezone.utc).date().isoformat()
+        profile = await db.profiles.find_one({"id": profile_id}, {"_id": 0}) or {}
 
         async def medications():
+            if not _module_enabled(profile, "meds"):
+                return []
             rows = await db.medications.find({"profile_id": profile_id}, {"_id": 0}).sort("created_at", -1).to_list(300)
             return [_normalize_med(row) for row in rows]
+
+        async def symptoms():
+            if not _module_enabled(profile, "symptoms"):
+                return []
+            return await legacy.list_symptoms(profile_id)
+
+        async def labs():
+            if not _module_enabled(profile, "labs"):
+                return []
+            return await legacy.list_labs(profile_id)
 
         async def tasks():
             return await db.tasks.find({"profile_id": profile_id}, {"_id": 0}).sort("created_at", -1).to_list(400)
 
         async def puzzle():
             row = await db.puzzle.find_one({"profile_id": profile_id}, {"_id": 0})
-            return row or {"profile_id": profile_id, "widgets": []}
+            if row:
+                return row
+            return {
+                "profile_id": profile_id,
+                "widgets": widgets_for_goals(profile.get("goals") or []),
+                "source": "goals_fallback" if profile.get("goals") else "default",
+            }
+
+        async def overview():
+            value = await legacy.overview(profile_id, language)
+            return {
+                **(value or {}),
+                "attention": [
+                    item for item in ((value or {}).get("attention") or [])
+                    if _attention_allowed(profile, item)
+                ],
+            }
+
+        async def medication_day():
+            if not _module_enabled(profile, "meds"):
+                return {"state": "not_applicable", "date": local_date, "wake_time": None, "slots": []}
+            return await _medication_day(db, profile_id, local_date, now_local)
+
+        async def cycle_summary():
+            if not _module_enabled(profile, "women"):
+                return {"state": "not_applicable", "cycle_day": None, "last_period_start": None}
+            return await _cycle_summary(db, profile_id, local_date)
 
         # Every source gets its own deadline. asyncio.gather still returns all
         # completed sections, while a hung legacy/integration call becomes a
@@ -155,41 +237,47 @@ def build_home_router(db, auth, legacy) -> APIRouter:
             _bounded(legacy.readiness(profile_id)),
             _bounded(legacy.gamification(profile_id)),
             _bounded(medications()),
-            _bounded(legacy.list_symptoms(profile_id)),
-            _bounded(legacy.list_labs(profile_id)),
+            _bounded(symptoms()),
+            _bounded(labs()),
             _bounded(puzzle()),
-            _bounded(legacy.overview(profile_id, language)),
+            _bounded(overview()),
             _bounded(tasks()),
-            _bounded(_medication_day(db, profile_id, local_date, now_local)),
-            _bounded(_cycle_summary(db, profile_id, local_date)),
+            _bounded(medication_day()),
+            _bounded(cycle_summary()),
             return_exceptions=True,
         )
-        readiness, game, meds, symptoms, labs, puzzle_value, overview, task_rows, medication_day, cycle_summary = results
+        readiness, game, meds, symptoms_value, labs_value, puzzle_value, overview_value, task_rows, medication_day_value, cycle_value = results
 
         def safe_list(value):
             return _error_state(value) if isinstance(value, BaseException) else _list_state(value)
 
-        labs_section = safe_list(labs)
-        lab_items = [] if isinstance(labs, BaseException) else list(labs or [])
+        labs_section = safe_list(labs_value)
+        lab_items = [] if isinstance(labs_value, BaseException) else list(labs_value or [])
 
+        modules = profile.get("module_settings") or {}
         return {
             "profile_id": profile_id,
             "generated_at": datetime.now(timezone.utc).isoformat(),
+            "personalization": {
+                "state": "personalized" if _profile_is_personalized(profile) else "default",
+                "goals": profile.get("goals") or [],
+                "modules": modules,
+            },
             "readiness": _error_state(readiness) if isinstance(readiness, BaseException) else _readiness_state(readiness),
             "gamification": _error_state(game) if isinstance(game, BaseException) else {"state": "data", "value": game},
             "medications": safe_list(meds),
-            "symptoms": safe_list(symptoms),
+            "symptoms": safe_list(symptoms_value),
             "labs": labs_section,
-            "lab_status": _error_state(labs) if isinstance(labs, BaseException) else _lab_status_state(lab_items),
+            "lab_status": _error_state(labs_value) if isinstance(labs_value, BaseException) else _lab_status_state(lab_items),
             "puzzle": _error_state(puzzle_value) if isinstance(puzzle_value, BaseException) else {"state": "data", "value": puzzle_value},
-            "overview": _error_state(overview) if isinstance(overview, BaseException) else {
-                "state": "data" if (overview or {}).get("attention") or (overview or {}).get("ai_summary") else "no_data",
-                "attention": (overview or {}).get("attention") or [],
-                "ai_summary": (overview or {}).get("ai_summary"),
+            "overview": _error_state(overview_value) if isinstance(overview_value, BaseException) else {
+                "state": "data" if (overview_value or {}).get("attention") or (overview_value or {}).get("ai_summary") else "no_data",
+                "attention": (overview_value or {}).get("attention") or [],
+                "ai_summary": (overview_value or {}).get("ai_summary"),
             },
             "tasks": safe_list(task_rows),
-            "medication_day": _error_state(medication_day) if isinstance(medication_day, BaseException) else medication_day,
-            "cycle": _error_state(cycle_summary) if isinstance(cycle_summary, BaseException) else cycle_summary,
+            "medication_day": _error_state(medication_day_value) if isinstance(medication_day_value, BaseException) else medication_day_value,
+            "cycle": _error_state(cycle_value) if isinstance(cycle_value, BaseException) else cycle_value,
         }
 
     return router
