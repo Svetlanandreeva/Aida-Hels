@@ -229,7 +229,7 @@ def test_register_restore_onboarding_critical_api_login_logout_and_recovery(monk
     assert toggled.json()["status"] == "done"
 
     tasks = client.get(f"/api/tasks?profile_id={profile_id}", headers=_auth(first_token))
-    assert tasks.status_code == 200
+    assert tasks.status_code == 200, tasks.text
     assert len(tasks.json()) == 1
     assert tasks.json()[0]["id"] == task_id
     assert tasks.json()[0]["done"] is True
