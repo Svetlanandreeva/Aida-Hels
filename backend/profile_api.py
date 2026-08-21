@@ -231,17 +231,36 @@ def build_profile_router(db, auth) -> APIRouter:
 
         was_completed = bool(current.get("onboarding_completed"))
         finishing_onboarding = patch.get("onboarding_completed") is True and not was_completed
+        goals_changed = "goals" in patch and list(patch.get("goals") or []) != list(current.get("goals") or [])
         effective_goals = list(patch.get("goals") if "goals" in patch else (current.get("goals") or []))
-        if finishing_onboarding and "module_settings" not in patch and not (current.get("module_settings") or {}):
-            patch["module_settings"] = _module_settings_for_goals(effective_goals)
+
+        # Goals are the source of the first module configuration. Keep that
+        # mapping current while the user has not explicitly customized module
+        # settings. Explicit module settings always win.
+        if "module_settings" not in patch and (finishing_onboarding or goals_changed):
+            current_settings = current.get("module_settings") or {}
+            if finishing_onboarding or not current_settings or current.get("module_settings_source") == "goals":
+                patch["module_settings"] = _module_settings_for_goals(effective_goals)
+                patch["module_settings_source"] = "goals"
 
         patch["updated_at"] = _now()
         await db.profiles.update_one({"id": profile_id}, {"$set": patch})
 
-        if finishing_onboarding:
+        if finishing_onboarding or goals_changed:
             existing_puzzle = await db.puzzle.find_one({"profile_id": profile_id}, {"_id": 0})
-            if not existing_puzzle:
-                await db.puzzle.insert_one({"profile_id": profile_id, "widgets": widgets_for_goals(effective_goals), "source": "onboarding_goals", "updated_at": _now()})
+            puzzle_source = str((existing_puzzle or {}).get("source") or "")
+            can_sync_goal_puzzle = not existing_puzzle or puzzle_source in {"onboarding_goals", "goals", "goals_fallback"}
+            if can_sync_goal_puzzle:
+                await db.puzzle.update_one(
+                    {"profile_id": profile_id},
+                    {"$set": {
+                        "profile_id": profile_id,
+                        "widgets": widgets_for_goals(effective_goals),
+                        "source": "goals",
+                        "updated_at": _now(),
+                    }},
+                    upsert=True,
+                )
 
         doc = await db.profiles.find_one({"id": profile_id}, {"_id": 0})
         grant = await current_grant(account_id, profile_id)
