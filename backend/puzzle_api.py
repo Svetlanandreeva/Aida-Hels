@@ -58,8 +58,9 @@ def _merge_defaults(stored):
 def widgets_for_goals(goals: List[str] | None) -> List[Dict[str, Any]]:
     """Build the first Home layout from onboarding goals.
 
-    This is used only while there is no persisted Puzzle document. Once the user
-    customizes Home in Settings, onboarding/profile edits must not overwrite it.
+    This is used only while there is no persisted user-customized Puzzle
+    document. Once the user customizes Home in Settings, goal changes must not
+    silently overwrite that manual layout.
     """
     selected = {str(goal) for goal in (goals or []) if goal}
     if not selected:
@@ -68,11 +69,9 @@ def widgets_for_goals(goals: List[str] | None) -> List[Dict[str, Any]]:
     widgets = _merge_defaults(None)
     by_id = {item["id"]: item for item in widgets}
 
-    # Brand/product anchors remain available without forcing health data cards.
+    # Product anchors remain available without forcing unrelated health cards.
     by_id["companion"].update(enabled=True, show_on_home=True)
     by_id["quests"].update(enabled=True, show_on_home=True)
-
-    # Overall readiness is relevant to every explicitly personalized setup.
     by_id["readiness"].update(enabled=True, show_on_home=True)
 
     meds = bool(selected & {"meds", "chronic"})
@@ -95,10 +94,20 @@ def build_puzzle_router(db, auth) -> APIRouter:
     async def get_puzzle(profile_id: str, account: Dict[str, Any] = Depends(auth.require_account)):
         await require_profile_access(auth, account, profile_id)
         doc = await db.puzzle.find_one({"profile_id": profile_id}, {"_id": 0})
+        if doc:
+            widgets = _merge_defaults(doc.get("widgets"))
+            source = doc.get("source") or "legacy"
+            updated_at = doc.get("updated_at")
+        else:
+            profile = await db.profiles.find_one({"id": profile_id}, {"_id": 0}) or {}
+            widgets = widgets_for_goals(profile.get("goals") or [])
+            source = "goals_fallback" if profile.get("goals") else "default"
+            updated_at = None
         return {
             "profile_id": profile_id,
-            "widgets": _merge_defaults((doc or {}).get("widgets")),
-            "updated_at": (doc or {}).get("updated_at"),
+            "widgets": widgets,
+            "source": source,
+            "updated_at": updated_at,
         }
 
     @router.post("/{profile_id}")
@@ -109,7 +118,12 @@ def build_puzzle_router(db, auth) -> APIRouter:
     ):
         await require_profile_access(auth, account, profile_id, write=True)
         widgets = [w.model_dump() for w in sorted(config.widgets, key=lambda x: x.order)]
-        data = {"profile_id": profile_id, "widgets": widgets, "updated_at": _now()}
+        data = {
+            "profile_id": profile_id,
+            "widgets": widgets,
+            "source": "user",
+            "updated_at": _now(),
+        }
         await db.puzzle.update_one({"profile_id": profile_id}, {"$set": data}, upsert=True)
         return data
 

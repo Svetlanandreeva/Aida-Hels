@@ -29,16 +29,18 @@ def _module_settings_for_goals(goals: List[str] | None) -> Dict[str, bool]:
     selected = {str(goal) for goal in (goals or []) if goal}
     if not selected:
         return {}
+    general = "general" in selected
+    chronic = "chronic" in selected
     women_selected = bool(selected & {"women", "cycle", "pregnancy_planning", "pregnancy"})
     return {
-        "general": "general" in selected,
-        "labs": "labs" in selected,
-        "symptoms": "symptoms" in selected,
-        "pressure": "pressure" in selected,
-        "sleep": "sleep" in selected,
-        "mental": "mental" in selected,
-        "chronic": "chronic" in selected,
-        "meds": "meds" in selected,
+        "general": general,
+        "labs": general or chronic or "labs" in selected,
+        "symptoms": general or chronic or "symptoms" in selected,
+        "pressure": general or chronic or "pressure" in selected,
+        "sleep": general or "sleep" in selected or "mental" in selected,
+        "mental": general or "mental" in selected or "sleep" in selected,
+        "chronic": chronic,
+        "meds": chronic or "meds" in selected,
         "women": women_selected,
     }
 
@@ -229,19 +231,43 @@ def build_profile_router(db, auth) -> APIRouter:
             merged.update(patch["privacy"] or {})
             patch["privacy"] = merged
 
+        # A direct module-settings write is a deliberate user customization and
+        # must never be silently replaced by later goal edits.
+        if "module_settings" in patch and patch["module_settings"] is not None:
+            patch["module_settings_source"] = "user"
+
         was_completed = bool(current.get("onboarding_completed"))
         finishing_onboarding = patch.get("onboarding_completed") is True and not was_completed
+        goals_changed = "goals" in patch and list(patch.get("goals") or []) != list(current.get("goals") or [])
         effective_goals = list(patch.get("goals") if "goals" in patch else (current.get("goals") or []))
-        if finishing_onboarding and "module_settings" not in patch and not (current.get("module_settings") or {}):
-            patch["module_settings"] = _module_settings_for_goals(effective_goals)
+
+        # Goals are the source of the first module configuration. Keep that
+        # mapping current while the user has not explicitly customized module
+        # settings. Explicit module settings always win.
+        if "module_settings" not in patch and (finishing_onboarding or goals_changed):
+            current_settings = current.get("module_settings") or {}
+            if finishing_onboarding or not current_settings or current.get("module_settings_source") == "goals":
+                patch["module_settings"] = _module_settings_for_goals(effective_goals)
+                patch["module_settings_source"] = "goals"
 
         patch["updated_at"] = _now()
         await db.profiles.update_one({"id": profile_id}, {"$set": patch})
 
-        if finishing_onboarding:
+        if finishing_onboarding or goals_changed:
             existing_puzzle = await db.puzzle.find_one({"profile_id": profile_id}, {"_id": 0})
-            if not existing_puzzle:
-                await db.puzzle.insert_one({"profile_id": profile_id, "widgets": widgets_for_goals(effective_goals), "source": "onboarding_goals", "updated_at": _now()})
+            puzzle_source = str((existing_puzzle or {}).get("source") or "")
+            can_sync_goal_puzzle = not existing_puzzle or puzzle_source in {"onboarding_goals", "goals", "goals_fallback"}
+            if can_sync_goal_puzzle:
+                await db.puzzle.update_one(
+                    {"profile_id": profile_id},
+                    {"$set": {
+                        "profile_id": profile_id,
+                        "widgets": widgets_for_goals(effective_goals),
+                        "source": "goals",
+                        "updated_at": _now(),
+                    }},
+                    upsert=True,
+                )
 
         doc = await db.profiles.find_one({"id": profile_id}, {"_id": 0})
         grant = await current_grant(account_id, profile_id)

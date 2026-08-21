@@ -14,6 +14,11 @@ type ListSection<T> = {
 export type HomePayload = {
   profile_id: string;
   generated_at: string;
+  personalization?: {
+    state: "personalized" | "default";
+    goals: string[];
+    modules: Record<string, boolean>;
+  };
   readiness: {
     state: DataState;
     value: number | null;
@@ -36,7 +41,7 @@ export type HomePayload = {
   };
   puzzle: {
     state: DataState;
-    value?: { profile_id: string; widgets: any[] };
+    value?: { profile_id: string; widgets: any[]; source?: string };
     error?: string;
   };
   overview: {
