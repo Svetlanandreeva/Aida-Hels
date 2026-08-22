@@ -1,0 +1,161 @@
+name: Apply ICD-10 medical onboarding integration
+
+on:
+  push:
+    branches: [feat/icd10-medical-onboarding]
+    paths:
+      - '.github/workflows/apply-icd10-medical-onboarding.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Apply source updates
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace(path, old, new, count=1):
+              p = Path(path)
+              source = p.read_text(encoding="utf-8")
+              found = source.count(old)
+              if found < count:
+                  raise RuntimeError(f"{path}: expected at least {count} matches, found {found}: {old[:100]!r}")
+              source = source.replace(old, new, count)
+              p.write_text(source, encoding="utf-8")
+
+          # Production router wiring.
+          replace(
+              "backend/main.py",
+              'from home_api import build_home_router  # noqa: E402\nfrom lab_pipeline import build_lab_router  # noqa: E402',
+              'from home_api import build_home_router  # noqa: E402\nfrom icd10_api import build_icd10_router  # noqa: E402\nfrom lab_pipeline import build_lab_router  # noqa: E402',
+          )
+          replace(
+              "backend/main.py",
+              'app.include_router(build_profile_router(_google_db, auth_service))\napp.include_router(build_family_router(_google_db, auth_service))',
+              'app.include_router(build_profile_router(_google_db, auth_service))\napp.include_router(build_icd10_router())\napp.include_router(build_family_router(_google_db, auth_service))',
+          )
+
+          # Add a dedicated mental-disorder profile field without breaking legacy diagnoses.
+          replace(
+              "backend/profile_api.py",
+              '    chronic_conditions: List[str] = Field(default_factory=list)\n    diagnoses: List[str] = Field(default_factory=list)',
+              '    chronic_conditions: List[str] = Field(default_factory=list)\n    mental_conditions: List[str] = Field(default_factory=list)\n    diagnoses: List[str] = Field(default_factory=list)',
+              count=2,
+          )
+          replace(
+              "backend/profile_api.py",
+              '    chronic_conditions: Optional[List[str]] = None\n    diagnoses: Optional[List[str]] = None',
+              '    chronic_conditions: Optional[List[str]] = None\n    mental_conditions: Optional[List[str]] = None\n    diagnoses: Optional[List[str]] = None',
+          )
+          replace(
+              "backend/profile_api.py",
+              '    out.setdefault("chronic_conditions", [])\n    out.setdefault("diagnoses", [])',
+              '    out.setdefault("chronic_conditions", [])\n    out.setdefault("mental_conditions", [])\n    out.setdefault("diagnoses", [])',
+          )
+
+          replace(
+              "backend/ai_context.py",
+              '            "chronic_conditions": (profile.get("chronic_conditions") or []) if _module_enabled(modules, "chronic") else [],\n            "diagnoses": (profile.get("diagnoses") or []) if _module_enabled(modules, "chronic") else [],',
+              '            "chronic_conditions": (profile.get("chronic_conditions") or []) if _module_enabled(modules, "chronic") else [],\n            "mental_conditions": (profile.get("mental_conditions") or []) if _module_enabled(modules, "mental") else [],\n            "diagnoses": (profile.get("diagnoses") or []) if _module_enabled(modules, "chronic") else [],',
+          )
+
+          # Frontend API contract and search method.
+          replace(
+              "frontend/src/api.ts",
+              'export type Surgery = { id: string; title: string; date?: string | null; note?: string | null };\nexport type Profile = {',
+              'export type Surgery = { id: string; title: string; date?: string | null; note?: string | null };\nexport type Icd10Item = { code: string; name: string };\nexport type Profile = {',
+          )
+          replace(
+              "frontend/src/api.ts",
+              '  chronic_conditions: string[]; diagnoses?: string[]; surgeries?: Surgery[];',
+              '  chronic_conditions: string[]; mental_conditions?: string[]; diagnoses?: string[]; surgeries?: Surgery[];',
+          )
+          replace(
+              "frontend/src/api.ts",
+              '  deleteProfile: (id: string) => req(`/profiles/${id}`, { method: "DELETE" }),\n  listLabs:',
+              '  deleteProfile: (id: string) => req(`/profiles/${id}`, { method: "DELETE" }),\n  searchIcd10: async (q: string, group: "all" | "mental" = "all"): Promise<Icd10Item[]> => {\n    const result = await req(`/reference/icd10/search?q=${encodeURIComponent(q)}&group=${encodeURIComponent(group)}&limit=12`);\n    return Array.isArray(result?.items) ? result.items : [];\n  },\n  listLabs:',
+          )
+
+          # Medical onboarding: conditional ICD pickers for chronic and mental conditions.
+          replace(
+              "frontend/app/onboarding-medical.tsx",
+              'import { useResponsiveLayout } from "@/src/hooks/use-responsive-layout";\nimport { colors, fontSize, fonts, radius, spacing } from "@/src/theme";',
+              'import { useResponsiveLayout } from "@/src/hooks/use-responsive-layout";\nimport { DiagnosisPicker } from "@/src/components/DiagnosisPicker";\nimport { colors, fontSize, fonts, radius, spacing } from "@/src/theme";',
+          )
+          replace(
+              "frontend/app/onboarding-medical.tsx",
+              '  const [blood, setBlood] = useState(activeProfile?.blood_type || "");\n  const [allergies, setAllergies] = useState((activeProfile?.allergies || []).join(", "));\n  const [chronic, setChronic] = useState((activeProfile?.chronic_conditions || []).join(", "));\n  const [diagnoses, setDiagnoses] = useState((activeProfile?.diagnoses || []).join(", "));\n  const [surgeries, setSurgeries] = useState((activeProfile?.surgeries || []).map((x) => x.title).join(", "));',
+              '  const legacyMentalConditions = splitList(String(activeProfile?.lifestyle?.mental_health?.diagnoses || ""));\n  const initialMentalConditions = activeProfile?.mental_conditions?.length ? activeProfile.mental_conditions : legacyMentalConditions;\n  const [blood, setBlood] = useState(activeProfile?.blood_type || "");\n  const [allergies, setAllergies] = useState((activeProfile?.allergies || []).join(", "));\n  const [chronicConditions, setChronicConditions] = useState<string[]>(activeProfile?.chronic_conditions || []);\n  const [mentalConditions, setMentalConditions] = useState<string[]>(initialMentalConditions);\n  const [hasChronic, setHasChronic] = useState((activeProfile?.chronic_conditions || []).length > 0);\n  const [hasMental, setHasMental] = useState(initialMentalConditions.length > 0);\n  const [surgeries, setSurgeries] = useState((activeProfile?.surgeries || []).map((x) => x.title).join(", "));',
+          )
+          replace(
+              "frontend/app/onboarding-medical.tsx",
+              '        chronic_conditions: splitList(chronic),\n        diagnoses: splitList(diagnoses),\n        surgeries: surgeryItems,',
+              '        chronic_conditions: hasChronic ? chronicConditions : [],\n        mental_conditions: hasMental ? mentalConditions : [],\n        surgeries: surgeryItems,',
+          )
+          replace(
+              "frontend/app/onboarding-medical.tsx",
+              '        <Field label={ru ? "Хронические заболевания" : "Chronic conditions"} value={chronic} onChangeText={setChronic} placeholder={ru ? "Через запятую" : "Comma separated"} />\n        <Field label={ru ? "Диагнозы" : "Diagnoses"} value={diagnoses} onChangeText={setDiagnoses} placeholder={ru ? "Через запятую" : "Comma separated"} />\n',
+              '',
+          )
+          replace(
+              "frontend/app/onboarding-medical.tsx",
+              '        </Pressable>\n      </Section>\n\n      {women ? <Section title={ru ? "Женское здоровье" : "Women\'s health"}>',
+              '        </Pressable>\n      </Section>\n\n      <Section title={ru ? "Хронические заболевания" : "Chronic conditions"}>\n        <CheckQuestion\n          label={ru ? "У меня есть хронические заболевания" : "I have chronic conditions"}\n          checked={hasChronic}\n          onPress={() => setHasChronic((value) => !value)}\n        />\n        {hasChronic ? <DiagnosisPicker selected={chronicConditions} onChange={setChronicConditions} ru={ru} testID="chronic-diagnosis-picker" /> : <Text style={s.help}>{ru ? "Поставьте галочку, если хронический диагноз уже установлен." : "Check this if you have an established chronic diagnosis."}</Text>}\n      </Section>\n\n      <Section title={ru ? "Психические расстройства" : "Mental disorders"}>\n        <CheckQuestion\n          label={ru ? "У меня есть диагностированные психические расстройства" : "I have diagnosed mental disorders"}\n          checked={hasMental}\n          onPress={() => setHasMental((value) => !value)}\n        />\n        {hasMental ? <DiagnosisPicker selected={mentalConditions} onChange={setMentalConditions} mentalOnly ru={ru} testID="mental-diagnosis-picker" /> : <Text style={s.help}>{ru ? "Поставьте галочку только для ранее установленного диагноза. Аида не ставит диагнозы по этой анкете." : "Check this only for a previously established diagnosis. Aida does not diagnose from this form."}</Text>}\n      </Section>\n\n      {women ? <Section title={ru ? "Женское здоровье" : "Women\'s health"}>',
+          )
+          replace(
+              "frontend/app/onboarding-medical.tsx",
+              'function Field({ label, ...props }: any) { return <View style={{ marginBottom: spacing.md }}><Text style={s.label}>{label}</Text><TextInput {...props} accessibilityLabel={props.accessibilityLabel || label} placeholderTextColor={colors.onSurfaceSecondary} style={s.input} /></View>; }\nfunction Toggle({ label, value, onValueChange }: any) {',
+              'function Field({ label, ...props }: any) { return <View style={{ marginBottom: spacing.md }}><Text style={s.label}>{label}</Text><TextInput {...props} accessibilityLabel={props.accessibilityLabel || label} placeholderTextColor={colors.onSurfaceSecondary} style={s.input} /></View>; }\nfunction CheckQuestion({ label, checked, onPress }: { label: string; checked: boolean; onPress: () => void }) { return <Pressable style={({ pressed }) => [s.checkRow, pressed && s.pressed]} onPress={onPress} accessibilityRole="checkbox" accessibilityState={{ checked }} accessibilityLabel={label}><Ionicons name={checked ? "checkbox" : "square-outline"} size={23} color={colors.onSurface} /><Text style={s.checkText}>{label}</Text></Pressable>; }\nfunction Toggle({ label, value, onValueChange }: any) {',
+          )
+          replace(
+              "frontend/app/onboarding-medical.tsx",
+              'half:{flex:1,minWidth:180},toggle:{minHeight:54,flexDirection:"row",alignItems:"center",gap:spacing.md,borderBottomWidth:1,borderBottomColor:colors.divider},toggleText:',
+              'half:{flex:1,minWidth:180},checkRow:{minHeight:52,flexDirection:"row",alignItems:"center",gap:10,borderRadius:radius.md,backgroundColor:colors.surface,paddingHorizontal:spacing.md,paddingVertical:10,marginBottom:spacing.sm},checkText:{flex:1,color:colors.onSurface,fontWeight:"800",fontFamily:fonts.text},help:{fontSize:fontSize.sm,lineHeight:19,color:colors.onSurfaceSecondary,fontFamily:fonts.text},toggle:{minHeight:54,flexDirection:"row",alignItems:"center",gap:spacing.md,borderBottomWidth:1,borderBottomColor:colors.divider},toggleText:',
+          )
+
+          # Step 3 no longer asks for psychiatric diagnoses a second time.
+          replace(
+              "frontend/app/onboarding-lifestyle.tsx",
+              '  const [mentalDiagnoses, setMentalDiagnoses] = useState(String(current.mental_health?.diagnoses || ""));\n',
+              '',
+          )
+          replace(
+              "frontend/app/onboarding-lifestyle.tsx",
+              '            diagnoses: mentalDiagnoses.trim() || null,',
+              '            diagnoses: current.mental_health?.diagnoses ?? null,',
+          )
+          replace(
+              "frontend/app/onboarding-lifestyle.tsx",
+              '        <Text style={s.sectionHint}>{ru ? "Можно пропустить. Эти данные не заменяют консультацию специалиста." : "Optional. These details do not replace professional care."}</Text>\n        <Field label={ru ? "Диагнозы" : "Diagnoses"} value={mentalDiagnoses} onChangeText={setMentalDiagnoses} placeholder={ru ? "Необязательно" : "Optional"} />',
+              '        <Text style={s.sectionHint}>{ru ? "Психические диагнозы указываются на шаге «Медицинская карта». Здесь можно добавить препараты и комментарий." : "Mental diagnoses are selected in the Medical card step. Add medications or a note here if useful."}</Text>',
+          )
+
+          # Main medical card displays chronic and mental diagnoses separately.
+          replace(
+              "frontend/app/medical-card.tsx",
+              '  const diagnosesList = activeProfile.diagnoses || [];\n  const surgeriesList = activeProfile.surgeries || [];',
+              '  const chronicList = activeProfile.chronic_conditions || [];\n  const mentalList = activeProfile.mental_conditions || [];\n  const diagnosesList = activeProfile.diagnoses || [];\n  const surgeriesList = activeProfile.surgeries || [];',
+          )
+          replace(
+              "frontend/app/medical-card.tsx",
+              '        <SectionCard icon="medical-outline" title={lang === "ru" ? "Диагнозы" : "Diagnoses"}>\n          {diagnosesList.length ? <TagList items={diagnosesList} /> : <Muted>{lang === "ru" ? "Нет добавленных диагнозов" : "No diagnoses added"}</Muted>}\n        </SectionCard>',
+              '        <SectionCard icon="medical-outline" title={lang === "ru" ? "Хронические заболевания" : "Chronic conditions"}>\n          {chronicList.length ? <TagList items={chronicList} /> : <Muted>{lang === "ru" ? "Не указаны" : "Not specified"}</Muted>}\n        </SectionCard>\n\n        <SectionCard icon="heart-outline" title={lang === "ru" ? "Психические расстройства" : "Mental disorders"}>\n          {mentalList.length ? <TagList items={mentalList} /> : <Muted>{lang === "ru" ? "Не указаны" : "Not specified"}</Muted>}\n        </SectionCard>\n\n        {diagnosesList.length ? <SectionCard icon="reader-outline" title={lang === "ru" ? "Другие диагнозы" : "Other diagnoses"}>\n          <TagList items={diagnosesList} />\n        </SectionCard> : null}',
+          )
+          PY
+
+      - name: Commit integration changes
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add backend/main.py backend/profile_api.py backend/ai_context.py frontend/src/api.ts frontend/app/onboarding-medical.tsx frontend/app/onboarding-lifestyle.tsx frontend/app/medical-card.tsx
+          git commit -m 'Integrate ICD-10 diagnosis selection into medical onboarding' || exit 0
+          git push origin HEAD:feat/icd10-medical-onboarding
