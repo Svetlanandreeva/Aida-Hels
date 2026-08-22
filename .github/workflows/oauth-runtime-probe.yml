@@ -65,6 +65,7 @@ jobs:
           print('callback_hardening_deployed=' + str('Social OAuth account persistence failed' in social_source and 'Yandex ID is temporarily unavailable' in social_source).lower())
           print('oauth_storage_startup_check_deployed=' + str('_validate_social_auth_storage' in main_source).lower())
           print('sheet_metadata_cache_deployed=' + str('self.known_sheets' in storage_source).lower())
+          print('sheets_429_backoff_deployed=' + str('SHEETS_RETRY_ATTEMPTS = 5' in storage_source and 'response.status_code == 429' in storage_source).lower())
 
           try:
               from google_storage import build_storage_from_env
