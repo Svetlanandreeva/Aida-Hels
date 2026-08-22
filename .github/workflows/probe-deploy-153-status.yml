@@ -1,0 +1,52 @@
+name: Probe deploy 153 status
+
+on:
+  push:
+    branches: [ops/oauth-runtime-probe-20260823]
+    paths:
+      - '.github/workflows/probe-deploy-153-status.yml'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Query production workflow run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: 0fc4a2abd260bfe7b9acd7e70b0a9167aefcba18
+        run: |
+          set -euo pipefail
+          mkdir -p ops
+          result=ops/deploy-153-status.txt
+          json=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${TARGET_SHA}&per_page=20")
+          python - <<'PY' "$json" "$result"
+          import json, sys
+          payload = json.loads(sys.argv[1])
+          runs = [r for r in payload.get('workflow_runs', []) if r.get('name') == 'Deploy to RU VDS']
+          with open(sys.argv[2], 'w', encoding='utf-8') as f:
+              if not runs:
+                  f.write('deploy_run_found=false\n')
+              else:
+                  run = sorted(runs, key=lambda r: r.get('created_at') or '', reverse=True)[0]
+                  f.write('deploy_run_found=true\n')
+                  f.write(f"run_id={run.get('id')}\n")
+                  f.write(f"run_number={run.get('run_number')}\n")
+                  f.write(f"status={run.get('status')}\n")
+                  f.write(f"conclusion={run.get('conclusion')}\n")
+                  f.write(f"attempt={run.get('run_attempt')}\n")
+          PY
+          cat "$result"
+      - name: Persist result
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add ops/deploy-153-status.txt
+          git commit -m 'Record deploy 153 status' || exit 0
+          git push origin HEAD:ops/oauth-runtime-probe-20260823
