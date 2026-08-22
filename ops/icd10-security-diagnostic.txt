@@ -1,2 +1,0 @@
-pytest_exit=1
-/usr/bin/python: No module named pytest
