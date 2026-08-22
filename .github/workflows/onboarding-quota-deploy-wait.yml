@@ -1,0 +1,61 @@
+name: Wait for onboarding quota production deploy
+
+on:
+  push:
+    branches: [ops/oauth-runtime-probe-20260823]
+    paths:
+      - '.github/workflows/onboarding-quota-deploy-wait.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  wait-for-production:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      RUVDS_HOST: ${{ secrets.RUVDS_HOST }}
+      RUVDS_USER: ${{ secrets.RUVDS_USER }}
+      RUVDS_PORT: ${{ secrets.RUVDS_PORT }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare SSH
+        env:
+          RUVDS_SSH_KEY: ${{ secrets.RUVDS_SSH_KEY }}
+          RUVDS_SSH_KNOWN_HOSTS: ${{ secrets.RUVDS_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$RUVDS_SSH_KEY" > ~/.ssh/ruvds
+          printf '%s\n' "$RUVDS_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/ruvds ~/.ssh/known_hosts
+      - name: Wait for deployed backend marker
+        run: |
+          set -euo pipefail
+          result=false
+          for attempt in $(seq 1 36); do
+            if ssh -p "$RUVDS_PORT" -i ~/.ssh/ruvds -o ConnectTimeout=10 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+              "$RUVDS_USER@$RUVDS_HOST" \
+              "grep -q 'sync_goal_puzzle = finishing_onboarding or (was_completed and goals_changed)' /opt/aida/backend/profile_api.py && grep -q 'Draft goal changes during onboarding are frequent' /opt/aida/backend/profile_api.py"; then
+              result=true
+              break
+            fi
+            sleep 10
+          done
+          printf 'backend_onboarding_quota_guard_deployed=%s\n' "$result" > onboarding-quota-wait-result.txt
+          if [ "$result" != true ]; then
+            printf 'wait_result=timeout\n' >> onboarding-quota-wait-result.txt
+          else
+            printf 'wait_result=deployed\n' >> onboarding-quota-wait-result.txt
+          fi
+          cat onboarding-quota-wait-result.txt
+      - name: Persist result
+        run: |
+          set -euo pipefail
+          mkdir -p ops
+          mv onboarding-quota-wait-result.txt ops/onboarding-quota-wait-result.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add ops/onboarding-quota-wait-result.txt
+          git commit -m 'Record onboarding deploy wait result' || exit 0
+          git push origin HEAD:ops/oauth-runtime-probe-20260823
