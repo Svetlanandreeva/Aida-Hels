@@ -53,6 +53,32 @@ def _score(query_name: str, query_code: str, code_norm: str, name_norm: str) -> 
     return None
 
 
+def search_catalog(query: str, group: str = "all", limit: int = 12) -> list[dict[str, str]]:
+    query = " ".join(str(query or "").strip().split())
+    if not query:
+        return []
+    if group not in {"all", "mental"}:
+        group = "all"
+
+    query_name = _normalize_name(query)
+    # Treat the input as an ICD code only when it contains a digit. This keeps
+    # Cyrillic look-alike normalization useful for "А01" without letting words
+    # such as "астма" accidentally compete as code prefixes.
+    query_code = _normalize_code(query) if any(char.isdigit() for char in query) else ""
+    ranked: list[tuple[int, int, str, str]] = []
+    for code, name, code_norm, name_norm in _catalog():
+        if group == "mental" and not code_norm.startswith("F"):
+            continue
+        score = _score(query_name, query_code, code_norm, name_norm)
+        if score is None:
+            continue
+        ranked.append((score, len(name), code, name))
+
+    ranked.sort(key=lambda item: (item[0], item[1], item[2]))
+    safe_limit = max(1, min(int(limit), 20))
+    return [{"code": code, "name": name} for _, _, code, name in ranked[:safe_limit]]
+
+
 def build_icd10_router() -> APIRouter:
     router = APIRouter(prefix="/api/reference/icd10", tags=["reference"])
 
@@ -62,30 +88,10 @@ def build_icd10_router() -> APIRouter:
         group: str = Query("all", max_length=16),
         limit: int = Query(12, ge=1, le=20),
     ) -> dict[str, Any]:
-        query = " ".join(q.strip().split())
-        if not query:
-            return {"items": []}
-        if group not in {"all", "mental"}:
-            group = "all"
-
-        query_name = _normalize_name(query)
-        # Treat the input as an ICD code only when it contains a digit. This keeps
-        # Cyrillic look-alike normalization useful for "А01" without letting words
-        # such as "астма" accidentally compete as code prefixes.
-        query_code = _normalize_code(query) if any(char.isdigit() for char in query) else ""
-        ranked: list[tuple[int, int, str, str]] = []
-        for code, name, code_norm, name_norm in _catalog():
-            if group == "mental" and not code_norm.startswith("F"):
-                continue
-            score = _score(query_name, query_code, code_norm, name_norm)
-            if score is None:
-                continue
-            ranked.append((score, len(name), code, name))
-
-        ranked.sort(key=lambda item: (item[0], item[1], item[2]))
+        normalized_group = group if group in {"all", "mental"} else "all"
         return {
-            "items": [{"code": code, "name": name} for _, _, code, name in ranked[:limit]],
-            "group": group,
+            "items": search_catalog(q, normalized_group, limit),
+            "group": normalized_group,
         }
 
     return router
