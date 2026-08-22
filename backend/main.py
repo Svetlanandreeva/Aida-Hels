@@ -168,6 +168,18 @@ async def _validate_auth_configuration() -> None:
 
 
 @app.on_event("startup")
+async def _validate_social_auth_storage() -> None:
+    # OAuth state is used during provider launch, while identities and tickets are
+    # first touched only after the provider callback. Force all three collections
+    # to be readable/creatable at startup so a green deploy cannot hide a callback-only
+    # Google Sheets failure from the user.
+    for collection_name in ("oauth_states", "oauth_identities", "oauth_tickets"):
+        collection = getattr(_google_db, collection_name)
+        await collection.count_documents({})
+    logging.info("Social OAuth storage is ready: states, identities and tickets")
+
+
+@app.on_event("startup")
 async def _seed_opt_in_test_account() -> None:
     result = await seed_test_account(_google_db)
     if result.get("enabled"):

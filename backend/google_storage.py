@@ -96,6 +96,10 @@ class SheetsHTTP:
         self.auth_request = GoogleAuthRequest()
         self.auth_lock = threading.RLock()
         self.sheet_lock = threading.RLock()
+        # Sheet existence changes rarely, while every CRUD operation used to fetch
+        # spreadsheet metadata again. Cache known titles per backend process to reduce
+        # quota pressure during multi-step flows such as OAuth callbacks.
+        self.known_sheets: set[str] = set()
 
     def headers(self) -> Dict[str, str]:
         with self.auth_lock:
@@ -108,10 +112,13 @@ class SheetsHTTP:
 
     def ensure_sheet(self, sheet: str) -> None:
         with self.sheet_lock:
+            if sheet in self.known_sheets:
+                return
             meta = requests.get(self._base("?fields=sheets.properties.title"), headers=self.headers(), timeout=20)
             meta.raise_for_status()
             titles = {item.get("properties", {}).get("title") for item in meta.json().get("sheets", [])}
-            if sheet in titles:
+            self.known_sheets.update(title for title in titles if isinstance(title, str) and title)
+            if sheet in self.known_sheets:
                 return
             r = requests.post(
                 self._base(":batchUpdate"),
@@ -120,8 +127,10 @@ class SheetsHTTP:
                 timeout=20,
             )
             if r.status_code == 400 and "already exists" in r.text.lower():
+                self.known_sheets.add(sheet)
                 return
             r.raise_for_status()
+            self.known_sheets.add(sheet)
 
     def get_rows(self, sheet: str) -> List[List[Any]]:
         self.ensure_sheet(sheet)
