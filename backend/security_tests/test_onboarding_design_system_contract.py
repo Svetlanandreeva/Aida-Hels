@@ -12,7 +12,9 @@ def test_lifestyle_onboarding_exposes_progress_and_selection_semantics():
     assert 'accessibilityRole="progressbar"' in source
     assert "accessibilityValue={{ min: 0, max: 4, now: 3" in source
     assert 'accessibilityState={{ selected: active }}' in source
-    assert 'accessibilityState={{ selected: value === item }}' in source
+    assert 'accessibilityRole="adjustable"' in source
+    assert 'accessibilityValue={value === null ? { min: 0, max: 5' in source
+    assert 'accessibilityActions={[{ name: "increment" }, { name: "decrement" }]}' in source
     assert "const SCALE = [0, 1, 2, 3, 4, 5]" in source
     assert "const SCALE_COLORS" in source
 
