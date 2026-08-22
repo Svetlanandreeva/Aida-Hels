@@ -16,6 +16,8 @@ _TIME_RE = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
 _ALLOWED_MEAL = {"any", "before", "with", "after"}
 _ALLOWED_EVENT = {"taken", "skipped"}
 _ALLOWED_SOURCE = {"aida", "apple_health"}
+_ALLOWED_DAY_PARTS = {"morning", "day", "evening"}
+_ALLOWED_DOSE_UNITS = {"mg", "tablet"}
 
 
 def _now():
@@ -29,6 +31,15 @@ def _times(values) -> List[str]:
         if _TIME_RE.match(text) and text not in out:
             out.append(text)
     return sorted(out)
+
+
+def _day_parts(values) -> List[str]:
+    out = []
+    for value in values or []:
+        text = str(value).strip().lower()
+        if text in _ALLOWED_DAY_PARTS and text not in out:
+            out.append(text)
+    return [part for part in ("morning", "day", "evening") if part in out]
 
 
 def _notification_ids(values) -> List[str]:
@@ -50,6 +61,7 @@ def _normalize_med(doc):
         return doc
     result = dict(doc)
     result["times"] = _times(result.get("times"))
+    result["day_parts"] = _day_parts(result.get("day_parts"))
     result["notification_ids"] = _notification_ids(result.get("notification_ids"))
     meal = str(result.get("meal_relation") or "any").lower()
     result["meal_relation"] = meal if meal in _ALLOWED_MEAL else "any"
@@ -59,6 +71,9 @@ def _normalize_med(doc):
     result.setdefault("active", True)
     result.setdefault("schedule", None)
     result.setdefault("dose", None)
+    result.setdefault("dose_amount", None)
+    dose_unit = str(result.get("dose_unit") or "").lower() or None
+    result["dose_unit"] = dose_unit if dose_unit in _ALLOWED_DOSE_UNITS else None
     result.setdefault("notes", None)
     result.setdefault("start_date", None)
     result.setdefault("first_dose_anchor", "clock")
@@ -70,8 +85,11 @@ class MedicationCreate(BaseModel):
     profile_id: str
     name: str
     dose: Optional[str] = None
+    dose_amount: Optional[float] = None
+    dose_unit: Optional[str] = None
     schedule: Optional[str] = None
     times: List[str] = Field(default_factory=list)
+    day_parts: List[str] = Field(default_factory=list)
     meal_relation: str = "any"
     active: bool = True
     start_date: Optional[str] = None
@@ -87,8 +105,11 @@ class MedicationCreate(BaseModel):
 class MedicationUpdate(BaseModel):
     name: Optional[str] = None
     dose: Optional[str] = None
+    dose_amount: Optional[float] = None
+    dose_unit: Optional[str] = None
     schedule: Optional[str] = None
     times: Optional[List[str]] = None
+    day_parts: Optional[List[str]] = None
     meal_relation: Optional[str] = None
     active: Optional[bool] = None
     start_date: Optional[str] = None
@@ -127,6 +148,18 @@ def _effective_times(med: Dict[str, Any], wake_time: Optional[str]) -> List[Dict
     return effective
 
 
+def _validate_structured_dose(payload: Dict[str, Any]) -> None:
+    amount = payload.get("dose_amount")
+    if amount is not None and float(amount) <= 0:
+        raise HTTPException(400, "dose_amount must be positive")
+    unit = payload.get("dose_unit")
+    if unit is not None:
+        normalized = str(unit).strip().lower()
+        if normalized not in _ALLOWED_DOSE_UNITS:
+            raise HTTPException(400, "dose_unit must be mg or tablet")
+        payload["dose_unit"] = normalized
+
+
 def build_medication_router(db, auth) -> APIRouter:
     router = APIRouter(prefix="/api/medications", tags=["medications"])
 
@@ -144,7 +177,9 @@ def build_medication_router(db, auth) -> APIRouter:
         if not payload["name"]:
             raise HTTPException(400, "Medication name is required")
         payload["times"] = _times(payload.get("times"))
+        payload["day_parts"] = _day_parts(payload.get("day_parts"))
         payload["notification_ids"] = _notification_ids(payload.get("notification_ids"))
+        _validate_structured_dose(payload)
         if payload.get("first_dose_anchor") not in {"clock", "wake"}:
             raise HTTPException(400, "first_dose_anchor must be clock or wake")
         payload["wake_offset_minutes"] = max(-240, min(720, int(payload.get("wake_offset_minutes") or 0)))
@@ -180,8 +215,11 @@ def build_medication_router(db, auth) -> APIRouter:
                 raise HTTPException(400, "Medication name is required")
         if "times" in patch:
             patch["times"] = _times(patch["times"])
+        if "day_parts" in patch:
+            patch["day_parts"] = _day_parts(patch["day_parts"])
         if "notification_ids" in patch:
             patch["notification_ids"] = _notification_ids(patch["notification_ids"])
+        _validate_structured_dose(patch)
         if "first_dose_anchor" in patch and patch["first_dose_anchor"] not in {"clock", "wake"}:
             raise HTTPException(400, "first_dose_anchor must be clock or wake")
         if "wake_offset_minutes" in patch:
