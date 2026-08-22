@@ -26,6 +26,8 @@ def test_wellbeing_uses_colored_zero_to_five_scale_and_not_tiles():
     assert "const SCALE = [0, 1, 2, 3, 4, 5]" in source
     assert "const SCALE_COLORS" in source
     assert "colors.error" in source and "colors.success" in source
+    assert "scaleBar" in source and "scaleTicks" in source and "scaleTickSelected" in source
+    assert "scaleSegment" not in source and "scaleTrack" not in source
     assert "0 ·" in source and "5 ·" in source
     assert "stress_level: stressWellbeing === null ? null : 5 - stressWellbeing" in source
 
