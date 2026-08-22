@@ -35,7 +35,7 @@ export type LabImportPreview = {
   file?: { id?: string | null; drive_file_id?: string | null; drive_url?: string | null; name?: string | null };
 };
 export type Symptom = { id: string; profile_id: string; name: string; severity: number; note?: string | null; date: string };
-export type Medication = { id: string; profile_id: string; name: string; dose?: string | null; schedule?: string | null; times?: string[]; meal_relation?: "any" | "before" | "with" | "after" | string; active: boolean; start_date?: string | null; date?: string | null; created_at?: string | null; notes?: string | null };
+export type Medication = { id: string; profile_id: string; name: string; dose?: string | null; dose_amount?: number | null; dose_unit?: "mg" | "tablet" | string | null; schedule?: string | null; times?: string[]; day_parts?: Array<"morning" | "day" | "evening" | string>; meal_relation?: "any" | "before" | "with" | "after" | string; active: boolean; start_date?: string | null; date?: string | null; created_at?: string | null; notes?: string | null };
 export type ChatMsg = { id: string; profile_id: string; role: "user" | "assistant"; text: string; created_at?: string };
 export type Vital = { id: string; profile_id: string; kind: string; metric?: string | null; type?: string | null; systolic?: number | null; diastolic?: number | null; pulse?: number | null; value?: number | null; unit?: string | null; note?: string | null; date: string };
 export type Checkin = { id: string; profile_id: string; mood: number; energy: number; stress: number; anxiety: number; sleep: number; triggers?: string | null; note?: string | null; date: string };
