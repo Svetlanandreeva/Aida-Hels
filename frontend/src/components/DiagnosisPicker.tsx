@@ -93,7 +93,7 @@ export function DiagnosisPicker({
           placeholder={ru ? "Название или код МКБ-10" : "Name or ICD-10 code"}
           placeholderTextColor={colors.onSurfaceSecondary}
           style={s.input}
-          autoCapitalize="characters"
+          autoCapitalize="none"
           autoCorrect={false}
           accessibilityLabel={ru ? "Поиск диагноза по названию или коду МКБ-10" : "Search diagnosis by name or ICD-10 code"}
         />

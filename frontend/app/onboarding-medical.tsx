@@ -48,6 +48,14 @@ export default function OnboardingMedicalScreen() {
 
   const continueToLifestyle = async () => {
     if (!activeId || !activeProfile) return;
+    if (hasChronic && chronicConditions.length === 0) {
+      setError(ru ? "Добавьте хотя бы один хронический диагноз по МКБ-10 или снимите галочку" : "Add at least one chronic ICD-10 diagnosis or uncheck the box");
+      return;
+    }
+    if (hasMental && mentalConditions.length === 0) {
+      setError(ru ? "Добавьте хотя бы одно психическое расстройство по МКБ-10 или снимите галочку" : "Add at least one mental-disorder ICD-10 diagnosis or uncheck the box");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
