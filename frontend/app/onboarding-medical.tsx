@@ -12,6 +12,40 @@ import { colors, fontSize, fonts, radius, spacing } from "@/src/theme";
 
 const splitList = (value: string) => value.split(",").map((item) => item.trim()).filter(Boolean);
 
+const formatDateInput = (value: string) => {
+  const trimmed = value.trim();
+  const iso = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const source = iso ? `${iso[3]}${iso[2]}${iso[1]}` : value;
+  const digits = source.replace(/\D/g, "").slice(0, 8);
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 4) return `${digits.slice(0, 2)}.${digits.slice(2)}`;
+  return `${digits.slice(0, 2)}.${digits.slice(2, 4)}.${digits.slice(4)}`;
+};
+
+const isoToDisplayDate = (value: unknown) => {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  return formatDateInput(raw);
+};
+
+const parseDisplayDateToIso = (value: string) => {
+  const match = value.trim().match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+  if (!match) return null;
+  const day = Number(match[1]);
+  const month = Number(match[2]);
+  const year = Number(match[3]);
+  const currentYear = new Date().getFullYear();
+  if (year < 1900 || year > currentYear || month < 1 || month > 12 || day < 1) return null;
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  if (day > daysInMonth) return null;
+  return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+};
+
+const todayIso = () => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+};
+
 export default function OnboardingMedicalScreen() {
   const { activeId, activeProfile, reload } = useApp();
   const { lang } = useI18n();
@@ -32,7 +66,7 @@ export default function OnboardingMedicalScreen() {
   const [hasMental, setHasMental] = useState(initialMentalConditions.length > 0);
   const [surgeries, setSurgeries] = useState((activeProfile?.surgeries || []).map((x) => x.title).join(", "));
   const [trackCycle, setTrackCycle] = useState(currentWomen.track_cycle === true);
-  const [lastPeriod, setLastPeriod] = useState(String(currentWomen.last_period_start || ""));
+  const [lastPeriod, setLastPeriod] = useState(isoToDisplayDate(currentWomen.last_period_start));
   const [cycleLength, setCycleLength] = useState(currentWomen.cycle_length ? String(currentWomen.cycle_length) : "");
   const [periodLength, setPeriodLength] = useState(currentWomen.period_length ? String(currentWomen.period_length) : "");
   const [irregular, setIrregular] = useState(currentWomen.irregular === true);
@@ -56,6 +90,15 @@ export default function OnboardingMedicalScreen() {
       setError(ru ? "Добавьте хотя бы одно психическое расстройство по МКБ-10 или снимите галочку" : "Add at least one mental-disorder ICD-10 diagnosis or uncheck the box");
       return;
     }
+    const normalizedLastPeriod = lastPeriod.trim() ? parseDisplayDateToIso(lastPeriod) : null;
+    if (lastPeriod.trim() && !normalizedLastPeriod) {
+      setError(ru ? "Введите корректную дату начала последней менструации в формате ДД.ММ.ГГГГ" : "Enter a valid last-period date in DD.MM.YYYY format");
+      return;
+    }
+    if (normalizedLastPeriod && normalizedLastPeriod > todayIso()) {
+      setError(ru ? "Дата начала последней менструации не может быть в будущем" : "Last-period date cannot be in the future");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -72,7 +115,7 @@ export default function OnboardingMedicalScreen() {
         women_health: women ? {
           ...currentWomen,
           track_cycle: trackCycle,
-          last_period_start: lastPeriod.trim() || null,
+          last_period_start: normalizedLastPeriod,
           cycle_length: numberOrNull(cycleLength),
           period_length: numberOrNull(periodLength),
           irregular,
@@ -174,7 +217,20 @@ export default function OnboardingMedicalScreen() {
       {women ? <Section title={ru ? "Женское здоровье" : "Women's health"}>
         <Toggle label={ru ? "Отслеживать цикл" : "Track cycle"} value={trackCycle} onValueChange={setTrackCycle} />
         {trackCycle ? <>
-          <Field label={ru ? "Начало последней менструации" : "Last period start"} value={lastPeriod} onChangeText={setLastPeriod} placeholder="YYYY-MM-DD" />
+          <Field
+            label={ru ? "Начало последней менструации" : "Last period start"}
+            value={lastPeriod}
+            onChangeText={(value: string) => {
+              setLastPeriod(formatDateInput(value));
+              if (error) setError(null);
+            }}
+            placeholder={ru ? "ДД.ММ.ГГГГ" : "DD.MM.YYYY"}
+            keyboardType="number-pad"
+            inputMode="numeric"
+            maxLength={10}
+            autoComplete="off"
+            testID="last-period-date"
+          />
           <View style={s.two}><View style={s.half}><Field label={ru ? "Цикл, дней" : "Cycle, days"} value={cycleLength} onChangeText={setCycleLength} keyboardType="number-pad" /></View><View style={s.half}><Field label={ru ? "Менструация, дней" : "Period, days"} value={periodLength} onChangeText={setPeriodLength} keyboardType="number-pad" /></View></View>
           <Toggle label={ru ? "Нерегулярный цикл" : "Irregular cycle"} value={irregular} onValueChange={setIrregular} />
         </> : null}
