@@ -1,0 +1,51 @@
+name: Onboarding route quick probe
+
+on:
+  push:
+    branches: [ops/oauth-runtime-probe-20260823]
+    paths:
+      - '.github/workflows/onboarding-route-quick-probe.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      RUVDS_HOST: ${{ secrets.RUVDS_HOST }}
+      RUVDS_USER: ${{ secrets.RUVDS_USER }}
+      RUVDS_PORT: ${{ secrets.RUVDS_PORT }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare SSH
+        env:
+          RUVDS_SSH_KEY: ${{ secrets.RUVDS_SSH_KEY }}
+          RUVDS_SSH_KNOWN_HOSTS: ${{ secrets.RUVDS_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$RUVDS_SSH_KEY" > ~/.ssh/ruvds
+          printf '%s\n' "$RUVDS_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/ruvds ~/.ssh/known_hosts
+      - name: Check route-gate marker
+        run: |
+          set -euo pipefail
+          if ssh -p "$RUVDS_PORT" -i ~/.ssh/ruvds -o ConnectTimeout=10 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            "$RUVDS_USER@$RUVDS_HOST" "grep -q 'ONBOARDING_ROUTES' /opt/aida/backend/security_tests/test_onboarding_route_gate_contract.py 2>/dev/null"; then
+            value=true
+          else
+            value=false
+          fi
+          mkdir -p ops
+          printf 'onboarding_route_gate_deployed=%s\n' "$value" > ops/onboarding-route-quick-result.txt
+          cat ops/onboarding-route-quick-result.txt
+      - name: Persist result
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add ops/onboarding-route-quick-result.txt
+          git commit -m 'Record quick onboarding route deploy result' || exit 0
+          git push origin HEAD:ops/oauth-runtime-probe-20260823
