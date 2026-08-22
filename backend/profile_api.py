@@ -253,7 +253,11 @@ def build_profile_router(db, auth) -> APIRouter:
         patch["updated_at"] = _now()
         await db.profiles.update_one({"id": profile_id}, {"$set": patch})
 
-        if finishing_onboarding or goals_changed:
+        # Draft goal changes during onboarding are frequent and must not fan out
+        # into extra puzzle reads/writes. Build the goal-based puzzle once when
+        # onboarding completes; after completion, keep syncing future goal edits.
+        sync_goal_puzzle = finishing_onboarding or (was_completed and goals_changed)
+        if sync_goal_puzzle:
             existing_puzzle = await db.puzzle.find_one({"profile_id": profile_id}, {"_id": 0})
             puzzle_source = str((existing_puzzle or {}).get("source") or "")
             can_sync_goal_puzzle = not existing_puzzle or puzzle_source in {"onboarding_goals", "goals", "goals_fallback"}
