@@ -1,0 +1,134 @@
+name: OAuth runtime probe
+
+on:
+  push:
+    branches: [ops/oauth-runtime-probe-20260823]
+    paths:
+      - '.github/workflows/oauth-runtime-probe.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      RUVDS_HOST: ${{ secrets.RUVDS_HOST }}
+      RUVDS_USER: ${{ secrets.RUVDS_USER }}
+      RUVDS_PORT: ${{ secrets.RUVDS_PORT }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare SSH identity
+        env:
+          RUVDS_SSH_KEY: ${{ secrets.RUVDS_SSH_KEY }}
+          RUVDS_SSH_KNOWN_HOSTS: ${{ secrets.RUVDS_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          test -n "$RUVDS_HOST"
+          test -n "$RUVDS_USER"
+          test -n "$RUVDS_PORT"
+          test -n "$RUVDS_SSH_KEY"
+          test -n "$RUVDS_SSH_KNOWN_HOSTS"
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$RUVDS_SSH_KEY" > ~/.ssh/ruvds
+          printf '%s\n' "$RUVDS_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/ruvds ~/.ssh/known_hosts
+
+      - name: Run sanitized production probe
+        run: |
+          set -euo pipefail
+          ssh -p "$RUVDS_PORT" -i ~/.ssh/ruvds -o ConnectTimeout=10 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            "$RUVDS_USER@$RUVDS_HOST" <<'EOF' > oauth-probe-result.txt
+          set -euo pipefail
+          cd /opt/aida/backend
+          .venv/bin/python - <<'PY'
+          import asyncio
+          import os
+          import socket
+          import ssl
+          import subprocess
+
+          from dotenv import load_dotenv
+
+          load_dotenv('.env')
+
+          required = ('YANDEX_CLIENT_ID', 'YANDEX_CLIENT_SECRET', 'VK_CLIENT_ID', 'VK_CLIENT_SECRET')
+          print('credentials_present=' + str(all(bool(os.environ.get(name, '').strip()) for name in required)).lower())
+
+          try:
+              from google_storage import build_storage_from_env
+              db = build_storage_from_env()
+
+              async def check_storage():
+                  for name in ('oauth_states', 'oauth_identities', 'oauth_tickets'):
+                      await getattr(db, name).count_documents({})
+
+              asyncio.run(check_storage())
+              print('oauth_storage_ready=true')
+              print('oauth_storage_error_class=none')
+          except Exception as exc:
+              print('oauth_storage_ready=false')
+              print('oauth_storage_error_class=' + type(exc).__name__)
+
+          for host in ('oauth.yandex.ru', 'login.yandex.ru', 'id.vk.ru'):
+              key = host.replace('.', '_').replace('-', '_')
+              try:
+                  with socket.create_connection((host, 443), timeout=7) as raw:
+                      context = ssl.create_default_context()
+                      with context.wrap_socket(raw, server_hostname=host):
+                          pass
+                  print(f'{key}_tls=true')
+                  print(f'{key}_error_class=none')
+              except Exception as exc:
+                  print(f'{key}_tls=false')
+                  print(f'{key}_error_class={type(exc).__name__}')
+
+          proc = subprocess.run(
+              ['sudo', '-n', 'journalctl', '-u', 'aida-backend', '--since', '-90 minutes', '--no-pager'],
+              capture_output=True,
+              text=True,
+              timeout=20,
+          )
+          if proc.returncode != 0:
+              print('journal_available=false')
+              print('callback_500_seen=unknown')
+              print('callback_failure_classes=journal_unavailable')
+          else:
+              text = proc.stdout
+              print('journal_available=true')
+              print('callback_500_seen=' + str('oauth/yandex/callback' in text and '500 Internal Server Error' in text).lower())
+              classes = []
+              checks = (
+                  ('google_sheets_http', 'requests.exceptions.HTTPError', 'sheets.googleapis.com'),
+                  ('google_auth', 'google.auth', 'Error'),
+                  ('httpx_connect', 'httpx.ConnectError', None),
+                  ('httpx_timeout', 'httpx.', 'Timeout'),
+                  ('invalid_json', 'JSONDecodeError', None),
+                  ('key_error', 'KeyError', None),
+                  ('attribute_error', 'AttributeError', None),
+                  ('type_error', 'TypeError', None),
+                  ('asgi_exception', 'Exception in ASGI application', None),
+                  ('social_storage_failure', 'Social OAuth account persistence failed', None),
+                  ('yandex_upstream_failure', 'Yandex ID upstream request failed', None),
+              )
+              for label, first, second in checks:
+                  if first in text and (second is None or second in text):
+                      classes.append(label)
+              print('callback_failure_classes=' + (','.join(classes) if classes else 'none_detected'))
+          PY
+          EOF
+
+          mkdir -p ops
+          mv oauth-probe-result.txt ops/oauth-probe-result.txt
+          cat ops/oauth-probe-result.txt
+
+      - name: Persist sanitized probe result
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add ops/oauth-probe-result.txt
+          git commit -m 'Record sanitized OAuth runtime probe' || exit 0
+          git push origin HEAD:ops/oauth-runtime-probe-20260823
