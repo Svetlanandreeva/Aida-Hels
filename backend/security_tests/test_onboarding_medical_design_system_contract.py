@@ -12,7 +12,9 @@ def test_onboarding_medical_uses_shared_responsive_layout_and_accessible_progres
     assert 'useResponsiveLayout' in source
     assert 'paddingHorizontal: responsive.contentPadding' in source
     assert 'accessibilityRole="progressbar"' in source
-    assert 'accessibilityValue={{ min: 0, max: 3, now: 2' in source
+    assert 'accessibilityValue={{ min: 0, max: 4, now: 2' in source
+    assert 'AIDA · 2/4' in source
+    assert 'width: "50%"' in source
 
 
 def test_onboarding_medical_choices_and_actions_have_semantics_and_touch_targets():
