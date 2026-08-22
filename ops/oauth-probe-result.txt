@@ -4,11 +4,11 @@ Welcome to Ubuntu 26.04 LTS (GNU/Linux 7.0.0-30-generic x86_64)
  * Management:     https://landscape.canonical.com
  * Support:        https://ubuntu.com/pro
 
- System information as of Sat Aug 22 11:56:34 PM MSK 2026
+ System information as of Sat Aug 22 11:59:29 PM MSK 2026
 
-  System load:  0.07              Processes:             114
+  System load:  0.18              Processes:             114
   Usage of /:   5.3% of 98.33GB   Users logged in:       0
-  Memory usage: 17%               IPv4 address for ens3: 94.103.89.133
+  Memory usage: 16%               IPv4 address for ens3: 94.103.89.133
   Swap usage:   0%
 
  * Strictly confined Kubernetes makes edge and IoT secure. Learn how MicroK8s
@@ -28,6 +28,7 @@ credentials_present=true
 callback_hardening_deployed=true
 oauth_storage_startup_check_deployed=true
 sheet_metadata_cache_deployed=true
+sheets_429_backoff_deployed=false
 oauth_storage_ready=true
 oauth_storage_error_class=none
 oauth_yandex_ru_tls=true
