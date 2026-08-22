@@ -1,0 +1,60 @@
+name: Onboarding route deploy wait probe
+
+on:
+  push:
+    branches: [ops/oauth-runtime-probe-20260823]
+    paths:
+      - '.github/workflows/onboarding-route-deploy-wait.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      RUVDS_HOST: ${{ secrets.RUVDS_HOST }}
+      RUVDS_USER: ${{ secrets.RUVDS_USER }}
+      RUVDS_PORT: ${{ secrets.RUVDS_PORT }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare SSH
+        env:
+          RUVDS_SSH_KEY: ${{ secrets.RUVDS_SSH_KEY }}
+          RUVDS_SSH_KNOWN_HOSTS: ${{ secrets.RUVDS_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$RUVDS_SSH_KEY" > ~/.ssh/ruvds
+          printf '%s\n' "$RUVDS_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/ruvds ~/.ssh/known_hosts
+      - name: Wait for route-gate deployment
+        run: |
+          set -euo pipefail
+          deployed=false
+          for attempt in $(seq 1 20); do
+            if ssh -p "$RUVDS_PORT" -i ~/.ssh/ruvds -o ConnectTimeout=10 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+              "$RUVDS_USER@$RUVDS_HOST" "grep -q 'ONBOARDING_ROUTES' /opt/aida/backend/security_tests/test_onboarding_route_gate_contract.py 2>/dev/null"; then
+              deployed=true
+              break
+            fi
+            sleep 20
+          done
+          printf 'onboarding_route_gate_deployed=%s\n' "$deployed" > onboarding-route-deploy-result.txt
+          if [ "$deployed" = true ]; then
+            printf 'wait_result=deployed\n' >> onboarding-route-deploy-result.txt
+          else
+            printf 'wait_result=timeout\n' >> onboarding-route-deploy-result.txt
+          fi
+          mkdir -p ops
+          mv onboarding-route-deploy-result.txt ops/onboarding-route-deploy-result.txt
+          cat ops/onboarding-route-deploy-result.txt
+      - name: Persist result
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add ops/onboarding-route-deploy-result.txt
+          git commit -m 'Record onboarding route deploy result' || exit 0
+          git push origin HEAD:ops/oauth-runtime-probe-20260823
