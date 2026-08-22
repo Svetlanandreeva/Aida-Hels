@@ -69,7 +69,10 @@ def build_icd10_router() -> APIRouter:
             group = "all"
 
         query_name = _normalize_name(query)
-        query_code = _normalize_code(query)
+        # Treat the input as an ICD code only when it contains a digit. This keeps
+        # Cyrillic look-alike normalization useful for "А01" without letting words
+        # such as "астма" accidentally compete as code prefixes.
+        query_code = _normalize_code(query) if any(char.isdigit() for char in query) else ""
         ranked: list[tuple[int, int, str, str]] = []
         for code, name, code_norm, name_norm in _catalog():
             if group == "mental" and not code_norm.startswith("F"):
