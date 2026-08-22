@@ -25,7 +25,7 @@ if (Platform.OS !== "web") {
 }
 
 const PUBLIC_ROUTES = new Set(["", "auth", "register", "reset-password", "terms", "privacy-policy"]);
-const ONBOARDING_ROUTES = new Set(["onboarding", "onboarding-medical", "onboarding-lifestyle"]);
+const ONBOARDING_ROUTES = new Set(["onboarding", "onboarding-medical", "onboarding-lifestyle", "onboarding-medications"]);
 
 const DeferredLogProvider = lazy(async () => {
   await import("@/src/lab-runtime-compat");
@@ -110,6 +110,7 @@ function RoutedApp() {
         <Stack.Screen name="onboarding" />
         <Stack.Screen name="onboarding-medical" />
         <Stack.Screen name="onboarding-lifestyle" />
+        <Stack.Screen name="onboarding-medications" />
         <Stack.Screen name="report" options={{ presentation: "modal" }} />
       </Stack>
     </View>

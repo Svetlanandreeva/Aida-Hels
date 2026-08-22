@@ -1,0 +1,73 @@
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+def read(path: str) -> str:
+    return (ROOT / path).read_text(encoding="utf-8")
+
+
+def test_sleep_times_are_masked_and_support_irregular_ranges():
+    source = read("frontend/app/onboarding-lifestyle.tsx")
+    assert "const formatTimeInput" in source
+    assert 'value.replace(/\\D/g, "").slice(0, 4)' in source
+    assert "const normalizeTime" in source
+    assert 'keyboardType="number-pad"' in source
+    assert 'inputMode="numeric"' in source
+    assert "maxLength={5}" in source
+    assert "Нет регулярного времени сна" in source
+    assert 'sleep_schedule_mode: noRegularSleepTime ? "range" : "regular"' in source
+    for marker in ("bedtime_range_start", "bedtime_range_end", "wake_time_range_start", "wake_time_range_end"):
+        assert marker in source
+
+
+def test_wellbeing_uses_colored_zero_to_five_scale_and_not_tiles():
+    source = read("frontend/app/onboarding-lifestyle.tsx")
+    assert "const SCALE = [0, 1, 2, 3, 4, 5]" in source
+    assert "const SCALE_COLORS" in source
+    assert "colors.error" in source and "colors.success" in source
+    assert "scaleBar" in source and "scaleTicks" in source and "scaleTickSelected" in source
+    assert "scaleSegment" not in source and "scaleTrack" not in source
+    assert "0 ·" in source and "5 ·" in source
+    assert "stress_level: stressWellbeing === null ? null : 5 - stressWellbeing" in source
+
+
+def test_mental_medication_prompt_moved_off_lifestyle_step():
+    lifestyle = read("frontend/app/onboarding-lifestyle.tsx")
+    medications = read("frontend/app/onboarding-medications.tsx")
+    assert "Психическое здоровье" not in lifestyle
+    assert "Принимаемые препараты" not in lifestyle
+    assert "Принимаете ли вы на ежедневной основе какие-либо препараты?" in medications
+    assert 'router.push("/onboarding-medications"' in lifestyle
+
+
+def test_daily_medication_editor_captures_name_dose_day_parts_and_meals():
+    frontend = read("frontend/app/onboarding-medications.tsx")
+    api_source = read("frontend/src/api.ts")
+    backend = read("backend/medication_api.py")
+    assert "COMMON_MEDICATIONS" in frontend
+    assert 'testID="medication-name-dropdown"' in frontend
+    assert 'testID="onboarding-medication-dose"' in frontend
+    assert 'const DAY_PARTS = ["morning", "day", "evening"]' in frontend
+    assert '["before", ru ? "До еды"' in frontend
+    assert '["after", ru ? "После еды"' in frontend
+    assert 'dose_unit: doseUnit' in frontend
+    assert 'day_parts: dayParts' in frontend
+    assert 'meal_relation: mealRelation' in frontend
+    assert "dose_amount?: number | null" in api_source
+    assert "day_parts?: Array" in api_source
+    assert "dose_amount: Optional[float]" in backend
+    assert "day_parts: List[str]" in backend
+    assert '_ALLOWED_DAY_PARTS = {"morning", "day", "evening"}' in backend
+    assert '_ALLOWED_DOSE_UNITS = {"mg", "tablet"}' in backend
+
+
+def test_medication_day_parts_do_not_invent_clock_times():
+    frontend = read("frontend/app/onboarding-medications.tsx")
+    backend = read("backend/medication_api.py")
+    assert "times: []" in frontend
+    assert 'schedule: dayParts.join(",")' in frontend
+    assert "def _effective_times" in backend
+    assert 'times = list(med.get("times") or [])' in backend
+    assert "if not times:" in backend
+    assert "return []" in backend
