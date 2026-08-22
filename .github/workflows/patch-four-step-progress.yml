@@ -1,0 +1,54 @@
+name: Patch four-step onboarding progress
+
+on:
+  push:
+    branches: [feat/onboarding-sleep-medications]
+    paths:
+      - '.github/workflows/patch-four-step-progress.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/onboarding-sleep-medications
+
+      - name: Update step counters
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          replacements = {
+              "frontend/app/onboarding.tsx": [
+                  ("AIDA · 1/3", "AIDA · 1/4"),
+                  ('accessibilityValue={{ min: 0, max: 3, now: 1, text: ru ? "Шаг 1 из 3" : "Step 1 of 3" }}', 'accessibilityValue={{ min: 0, max: 4, now: 1, text: ru ? "Шаг 1 из 4" : "Step 1 of 4" }}'),
+                  ('progressFill:{height:4,width:"33%",backgroundColor:colors.onSurface}', 'progressFill:{height:4,width:"25%",backgroundColor:colors.onSurface}'),
+              ],
+              "frontend/app/onboarding-medical.tsx": [
+                  ("AIDA · 2/3", "AIDA · 2/4"),
+                  ('accessibilityValue={{ min: 0, max: 3, now: 2, text: ru ? "Шаг 2 из 3" : "Step 2 of 3" }}', 'accessibilityValue={{ min: 0, max: 4, now: 2, text: ru ? "Шаг 2 из 4" : "Step 2 of 4" }}'),
+                  ('<View style={[s.progressFill, { width: "66%" }]} />', '<View style={[s.progressFill, { width: "50%" }]} />'),
+              ],
+          }
+
+          for filename, pairs in replacements.items():
+              path = Path(filename)
+              text = path.read_text(encoding="utf-8")
+              for old, new in pairs:
+                  if old not in text:
+                      raise SystemExit(f"Missing expected progress marker in {filename}: {old}")
+                  text = text.replace(old, new, 1)
+              path.write_text(text, encoding="utf-8")
+          PY
+
+      - name: Commit progress update
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add frontend/app/onboarding.tsx frontend/app/onboarding-medical.tsx
+          git commit -m 'Align onboarding progress with four steps'
+          git push origin HEAD:feat/onboarding-sleep-medications
