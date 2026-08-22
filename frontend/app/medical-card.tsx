@@ -157,6 +157,8 @@ export default function MedicalCardScreen() {
     );
   }
 
+  const chronicList = activeProfile.chronic_conditions || [];
+  const mentalList = activeProfile.mental_conditions || [];
   const diagnosesList = activeProfile.diagnoses || [];
   const surgeriesList = activeProfile.surgeries || [];
 
@@ -195,9 +197,17 @@ export default function MedicalCardScreen() {
           </Pressable>
         ) : null}
 
-        <SectionCard icon="medical-outline" title={lang === "ru" ? "Диагнозы" : "Diagnoses"}>
-          {diagnosesList.length ? <TagList items={diagnosesList} /> : <Muted>{lang === "ru" ? "Нет добавленных диагнозов" : "No diagnoses added"}</Muted>}
+        <SectionCard icon="medical-outline" title={lang === "ru" ? "Хронические заболевания" : "Chronic conditions"}>
+          {chronicList.length ? <TagList items={chronicList} /> : <Muted>{lang === "ru" ? "Не указаны" : "Not specified"}</Muted>}
         </SectionCard>
+
+        <SectionCard icon="heart-outline" title={lang === "ru" ? "Психические расстройства" : "Mental disorders"}>
+          {mentalList.length ? <TagList items={mentalList} /> : <Muted>{lang === "ru" ? "Не указаны" : "Not specified"}</Muted>}
+        </SectionCard>
+
+        {diagnosesList.length ? <SectionCard icon="reader-outline" title={lang === "ru" ? "Другие диагнозы" : "Other diagnoses"}>
+          <TagList items={diagnosesList} />
+        </SectionCard> : null}
 
         <SectionCard icon="bandage-outline" title={lang === "ru" ? "Операции и вмешательства" : "Surgeries & procedures"}>
           {surgeriesList.length ? surgeriesList.map((s) => (

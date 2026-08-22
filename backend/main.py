@@ -59,6 +59,7 @@ from email_signup import build_email_signup_router  # noqa: E402
 from family_api import build_family_router  # noqa: E402
 from healthkit_api import build_healthkit_router  # noqa: E402
 from home_api import build_home_router  # noqa: E402
+from icd10_api import build_icd10_router  # noqa: E402
 from lab_pipeline import build_lab_router  # noqa: E402
 from lab_trends import build_lab_trends_router  # noqa: E402
 from medication_api import build_medication_router  # noqa: E402
@@ -139,6 +140,7 @@ app.include_router(build_email_signup_router(_google_db))
 app.include_router(build_social_auth_router(_google_db, auth_service))
 app.include_router(build_account_session_router(_google_db, auth_service))
 app.include_router(build_profile_router(_google_db, auth_service))
+app.include_router(build_icd10_router())
 app.include_router(build_family_router(_google_db, auth_service))
 app.include_router(build_secure_legacy_router(_google_db, auth_service))
 app.include_router(build_puzzle_router(_google_db, auth_service))

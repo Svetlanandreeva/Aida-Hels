@@ -63,6 +63,7 @@ class ProfileFull(BaseModel):
     blood_type: Optional[str] = None
     allergies: List[str] = Field(default_factory=list)
     chronic_conditions: List[str] = Field(default_factory=list)
+    mental_conditions: List[str] = Field(default_factory=list)
     diagnoses: List[str] = Field(default_factory=list)
     surgeries: List[Surgery] = Field(default_factory=list)
     avatar_url: Optional[str] = None
@@ -92,6 +93,7 @@ class ProfileCreate(BaseModel):
     blood_type: Optional[str] = None
     allergies: List[str] = Field(default_factory=list)
     chronic_conditions: List[str] = Field(default_factory=list)
+    mental_conditions: List[str] = Field(default_factory=list)
     diagnoses: List[str] = Field(default_factory=list)
     surgeries: List[Surgery] = Field(default_factory=list)
     avatar_url: Optional[str] = None
@@ -116,6 +118,7 @@ class ProfileUpdate(BaseModel):
     blood_type: Optional[str] = None
     allergies: Optional[List[str]] = None
     chronic_conditions: Optional[List[str]] = None
+    mental_conditions: Optional[List[str]] = None
     diagnoses: Optional[List[str]] = None
     surgeries: Optional[List[Surgery]] = None
     avatar_url: Optional[str] = None
@@ -135,6 +138,7 @@ def _normalize(doc: Dict[str, Any], access_role: Optional[str] = None) -> Dict[s
     out = dict(doc)
     out.setdefault("allergies", [])
     out.setdefault("chronic_conditions", [])
+    out.setdefault("mental_conditions", [])
     out.setdefault("diagnoses", [])
     out.setdefault("surgeries", [])
     privacy = _default_privacy()
