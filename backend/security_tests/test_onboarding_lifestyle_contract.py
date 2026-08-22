@@ -55,6 +55,18 @@ def test_lifestyle_step_covers_hierarchy_and_continues_to_medications():
     assert 'testID="continue-lifestyle-onboarding"' in lifestyle
 
 
+def test_lifestyle_scales_use_one_continuous_gradient_control():
+    lifestyle = read("frontend/app/onboarding-lifestyle.tsx")
+    assert 'import { LinearGradient } from "expo-linear-gradient"' in lifestyle
+    assert '<LinearGradient' in lifestyle
+    assert 'accessibilityRole="adjustable"' in lifestyle
+    assert 'onResponderMove=' in lifestyle
+    assert 'SCALE_THUMB_SIZE' in lifestyle
+    assert 'scaleTickSelected' not in lifestyle
+    assert 'scaleTick:{width:34' not in lifestyle
+    assert 'stress_level: stressWellbeing === null ? null : 5 - stressWellbeing' in lifestyle
+
+
 def test_daily_medications_is_the_final_onboarding_step():
     medications = read("frontend/app/onboarding-medications.tsx")
     assert "Принимаете ли вы на ежедневной основе какие-либо препараты?" in medications
