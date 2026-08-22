@@ -164,15 +164,15 @@ export default function OnboardingMedicalScreen() {
       keyboardShouldPersistTaps="handled"
     >
       <View style={s.progressRow}>
-        <Text style={s.eyebrow}>AIDA · 2/3</Text>
+        <Text style={s.eyebrow}>AIDA · 2/4</Text>
         <View
           style={s.progress}
           accessible
           accessibilityRole="progressbar"
           accessibilityLabel={ru ? "Прогресс настройки" : "Setup progress"}
-          accessibilityValue={{ min: 0, max: 3, now: 2, text: ru ? "Шаг 2 из 3" : "Step 2 of 3" }}
+          accessibilityValue={{ min: 0, max: 4, now: 2, text: ru ? "Шаг 2 из 4" : "Step 2 of 4" }}
         >
-          <View style={[s.progressFill, { width: "66%" }]} />
+          <View style={[s.progressFill, { width: "50%" }]} />
         </View>
       </View>
       <Text style={s.title}>{ru ? "Медицинская карта" : "Medical card"}</Text>

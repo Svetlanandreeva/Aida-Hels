@@ -210,13 +210,13 @@ export default function OnboardingScreen() {
     keyboardShouldPersistTaps="handled"
   >
     <View style={styles.progressWrap}>
-      <Text style={styles.eyebrow}>AIDA · 1/3</Text>
+      <Text style={styles.eyebrow}>AIDA · 1/4</Text>
       <View
         style={styles.progress}
         accessible
         accessibilityRole="progressbar"
         accessibilityLabel={ru ? "Прогресс настройки" : "Setup progress"}
-        accessibilityValue={{ min: 0, max: 3, now: 1, text: ru ? "Шаг 1 из 3" : "Step 1 of 3" }}
+        accessibilityValue={{ min: 0, max: 4, now: 1, text: ru ? "Шаг 1 из 4" : "Step 1 of 4" }}
       >
         <View style={styles.progressFill} />
       </View>
@@ -315,7 +315,7 @@ function Input(props: any) { const { label, ...rest } = props; return <View styl
 
 const styles = StyleSheet.create({
   page:{flex:1,backgroundColor:colors.surface}, content:{width:"100%",maxWidth:720,alignSelf:"center"},
-  progressWrap:{gap:8},progress:{height:4,borderRadius:2,backgroundColor:colors.surfaceSecondary,overflow:"hidden"},progressFill:{height:4,width:"33%",backgroundColor:colors.onSurface},
+  progressWrap:{gap:8},progress:{height:4,borderRadius:2,backgroundColor:colors.surfaceSecondary,overflow:"hidden"},progressFill:{height:4,width:"25%",backgroundColor:colors.onSurface},
   brand:{marginTop:spacing.lg,width:44,height:44,borderRadius:22,backgroundColor:colors.onSurface,alignItems:"center",justifyContent:"center"}, eyebrow:{fontSize:12,fontWeight:"800",letterSpacing:2,color:colors.onSurfaceSecondary},
   title:{marginTop:spacing.lg,fontSize:34,lineHeight:40,fontWeight:"800",fontFamily:fonts.display,color:colors.onSurface}, subtitle:{marginTop:spacing.sm,fontSize:fontSize.base,lineHeight:22,color:colors.onSurfaceSecondary,fontFamily:fonts.text},
   draftState:{marginTop:spacing.sm,flexDirection:"row",alignItems:"center",gap:6},draftText:{fontSize:fontSize.sm,color:colors.onSurfaceSecondary,fontFamily:fonts.text,flexShrink:1},
