@@ -25,6 +25,7 @@ if (Platform.OS !== "web") {
 }
 
 const PUBLIC_ROUTES = new Set(["", "auth", "register", "reset-password", "terms", "privacy-policy"]);
+const ONBOARDING_ROUTES = new Set(["onboarding", "onboarding-medical", "onboarding-lifestyle"]);
 
 const DeferredLogProvider = lazy(async () => {
   await import("@/src/lab-runtime-compat");
@@ -72,7 +73,7 @@ function ProfileGate({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const route = String(segments[0] || "");
     if (PUBLIC_ROUTES.has(route) || loading || !activeProfile) return;
-    const inOnboarding = route === "onboarding";
+    const inOnboarding = ONBOARDING_ROUTES.has(route);
     if (!activeProfile.onboarding_completed && !inOnboarding) router.replace("/onboarding" as any);
     if (activeProfile.onboarding_completed && inOnboarding) router.replace("/(tabs)" as any);
   }, [activeProfile, loading, segments]);
@@ -107,6 +108,8 @@ function RoutedApp() {
         <Stack.Screen name="terms" />
         <Stack.Screen name="privacy-policy" />
         <Stack.Screen name="onboarding" />
+        <Stack.Screen name="onboarding-medical" />
+        <Stack.Screen name="onboarding-lifestyle" />
         <Stack.Screen name="report" options={{ presentation: "modal" }} />
       </Stack>
     </View>
