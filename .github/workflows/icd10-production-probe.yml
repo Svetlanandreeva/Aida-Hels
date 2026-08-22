@@ -1,0 +1,102 @@
+name: ICD-10 production deploy probe
+
+on:
+  push:
+    branches: [ops/oauth-runtime-probe-20260823]
+    paths:
+      - '.github/workflows/icd10-production-probe.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      RUVDS_HOST: ${{ secrets.RUVDS_HOST }}
+      RUVDS_USER: ${{ secrets.RUVDS_USER }}
+      RUVDS_PORT: ${{ secrets.RUVDS_PORT }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare SSH
+        env:
+          RUVDS_SSH_KEY: ${{ secrets.RUVDS_SSH_KEY }}
+          RUVDS_SSH_KNOWN_HOSTS: ${{ secrets.RUVDS_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$RUVDS_SSH_KEY" > ~/.ssh/ruvds
+          printf '%s\n' "$RUVDS_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/ruvds ~/.ssh/known_hosts
+
+      - name: Wait for ICD-10 production revision and verify
+        run: |
+          set -euo pipefail
+          deployed=false
+          for attempt in $(seq 1 30); do
+            if ssh -p "$RUVDS_PORT" -i ~/.ssh/ruvds -o ConnectTimeout=10 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+              "$RUVDS_USER@$RUVDS_HOST" \
+              "test -f /opt/aida/backend/icd10_api.py && test -f /opt/aida/backend/data/icd10_ru.json && grep -q 'mental_conditions' /opt/aida/backend/profile_api.py && test -f /opt/aida/backend/security_tests/test_icd10_medical_onboarding_contract.py"; then
+              deployed=true
+              break
+            fi
+            sleep 20
+          done
+
+          mkdir -p ops
+          result=ops/icd10-production-probe-result.txt
+          : > "$result"
+
+          if [ "$deployed" != true ]; then
+            printf 'icd10_backend_deployed=false\nwait_result=timeout\n' > "$result"
+            cat "$result"
+            exit 1
+          fi
+
+          ssh -p "$RUVDS_PORT" -i ~/.ssh/ruvds -o ConnectTimeout=10 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            "$RUVDS_USER@$RUVDS_HOST" <<'EOF' > "$result"
+          set -euo pipefail
+          cd /opt/aida/backend
+          PYTHONPATH=. python3 - <<'PY'
+          import json
+          from pathlib import Path
+          from icd10_api import search_catalog
+
+          catalog = json.loads(Path('data/icd10_ru.json').read_text(encoding='utf-8'))
+          code = search_catalog('I10', 'all', 5)
+          title = search_catalog('гиперт', 'all', 12)
+          mental = search_catalog('депресс', 'mental', 12)
+
+          print('icd10_backend_deployed=true')
+          print('icd10_catalog_records=' + str(len(catalog)))
+          print('search_i10_ok=' + str(bool(code and code[0].get('code') == 'I10')).lower())
+          print('search_title_ok=' + str(bool(title)).lower())
+          print('mental_filter_ok=' + str(bool(mental) and all(str(item.get('code') or '').startswith('F') for item in mental)).lower())
+          print('web_bundle_present=' + str(Path('/opt/aida/web').exists()).lower())
+          PY
+          EOF
+
+          status=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 'https://aidaassistent.ru/api/reference/icd10/search?q=I10' || true)
+          printf 'unauth_reference_status=%s\n' "$status" >> "$result"
+          cat "$result"
+
+          grep -q '^icd10_backend_deployed=true$' "$result"
+          grep -q '^search_i10_ok=true$' "$result"
+          grep -q '^search_title_ok=true$' "$result"
+          grep -q '^mental_filter_ok=true$' "$result"
+          grep -q '^web_bundle_present=true$' "$result"
+          grep -q '^unauth_reference_status=401$' "$result"
+
+      - name: Persist result
+        if: always()
+        run: |
+          set -euo pipefail
+          result=ops/icd10-production-probe-result.txt
+          test -f "$result" || printf 'probe_result=workflow_error\n' > "$result"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add "$result"
+          git commit -m 'Record ICD-10 production probe result' || exit 0
+          git push origin HEAD:ops/oauth-runtime-probe-20260823
