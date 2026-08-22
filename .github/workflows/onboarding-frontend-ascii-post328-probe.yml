@@ -1,0 +1,76 @@
+name: Onboarding frontend ASCII post-328 probe
+
+on:
+  push:
+    branches: [ops/oauth-runtime-probe-20260823]
+    paths:
+      - '.github/workflows/onboarding-frontend-ascii-post328-probe.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      RUVDS_HOST: ${{ secrets.RUVDS_HOST }}
+      RUVDS_USER: ${{ secrets.RUVDS_USER }}
+      RUVDS_PORT: ${{ secrets.RUVDS_PORT }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare SSH
+        env:
+          RUVDS_SSH_KEY: ${{ secrets.RUVDS_SSH_KEY }}
+          RUVDS_SSH_KNOWN_HOSTS: ${{ secrets.RUVDS_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$RUVDS_SSH_KEY" > ~/.ssh/ruvds
+          printf '%s\n' "$RUVDS_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/ruvds ~/.ssh/known_hosts
+      - name: Verify frontend ASCII markers
+        run: |
+          set -euo pipefail
+          mkdir -p ops
+          result=ops/onboarding-frontend-ascii-post328-result.txt
+          check_marker() {
+            local marker="$1"
+            if ssh -p "$RUVDS_PORT" -i ~/.ssh/ruvds -o ConnectTimeout=10 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes "$RUVDS_USER@$RUVDS_HOST" "grep -R -q -- '$marker' /opt/aida/web/_expo"; then
+              echo true
+            else
+              echo false
+            fi
+          }
+          route=$(check_marker 'onboarding-medications')
+          schedule_mode=$(check_marker 'sleep_schedule_mode')
+          range_start=$(check_marker 'bedtime_range_start')
+          lifestyle_testid=$(check_marker 'continue-lifestyle-onboarding')
+          medication_testid=$(check_marker 'finish-medications-onboarding')
+          medication_dropdown=$(check_marker 'medication-name-dropdown')
+          {
+            echo "frontend_onboarding_medications_route=$route"
+            echo "frontend_sleep_schedule_mode=$schedule_mode"
+            echo "frontend_bedtime_range=$range_start"
+            echo "frontend_lifestyle_testid=$lifestyle_testid"
+            echo "frontend_medication_finish_testid=$medication_testid"
+            echo "frontend_medication_dropdown_testid=$medication_dropdown"
+          } > "$result"
+          cat "$result"
+          test "$route" = true
+          test "$schedule_mode" = true
+          test "$range_start" = true
+          test "$lifestyle_testid" = true
+          test "$medication_testid" = true
+          test "$medication_dropdown" = true
+      - name: Persist result
+        if: always()
+        run: |
+          set -euo pipefail
+          result=ops/onboarding-frontend-ascii-post328-result.txt
+          test -f "$result" || printf 'probe_result=workflow_error\n' > "$result"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add "$result"
+          git commit -m 'Record post-328 frontend ASCII probe' || exit 0
+          git push origin HEAD:ops/oauth-runtime-probe-20260823
