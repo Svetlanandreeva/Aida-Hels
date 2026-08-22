@@ -1,0 +1,39 @@
+name: Patch medication search UX
+
+on:
+  push:
+    branches: [feat/onboarding-sleep-medications]
+    paths:
+      - '.github/workflows/patch-medication-search-ux.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/onboarding-sleep-medications
+      - name: Require typed query before suggestions
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('frontend/app/onboarding-medications.tsx')
+          text = path.read_text(encoding='utf-8')
+          old = 'const filtered = query ? unique.filter((name) => name.toLocaleLowerCase().includes(query)) : unique;'
+          new = 'const filtered = query ? unique.filter((name) => name.toLocaleLowerCase().includes(query)) : [];'
+          if old not in text:
+              raise SystemExit('Medication suggestion filter marker not found')
+          text = text.replace(old, new, 1)
+          text = text.replace(',outlineStyle:"none" as any', '', 1)
+          path.write_text(text, encoding='utf-8')
+          PY
+      - name: Commit medication search UX
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add frontend/app/onboarding-medications.tsx
+          git commit -m 'Only suggest medications after typing'
+          git push origin HEAD:feat/onboarding-sleep-medications
