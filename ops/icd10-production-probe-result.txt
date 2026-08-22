@@ -4,10 +4,10 @@ Welcome to Ubuntu 26.04 LTS (GNU/Linux 7.0.0-30-generic x86_64)
  * Management:     https://landscape.canonical.com
  * Support:        https://ubuntu.com/pro
 
- System information as of Sun Aug 23 01:04:54 AM MSK 2026
+ System information as of Sun Aug 23 01:07:11 AM MSK 2026
 
-  System load:  0.13              Processes:             115
-  Usage of /:   5.3% of 98.33GB   Users logged in:       0
+  System load:  0.18              Processes:             115
+  Usage of /:   5.4% of 98.33GB   Users logged in:       0
   Memory usage: 17%               IPv4 address for ens3: 94.103.89.133
   Swap usage:   0%
 
@@ -24,3 +24,10 @@ Expanded Security Maintenance for Applications is not enabled.
 Learn more about enabling ESM Apps service at https://ubuntu.com/esm
 
 
+icd10_backend_deployed=true
+icd10_catalog_records=14644
+search_i10_ok=true
+search_title_ok=true
+mental_filter_ok=true
+web_bundle_present=true
+unauth_reference_status=401
