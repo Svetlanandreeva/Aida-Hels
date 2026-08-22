@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -27,6 +27,8 @@ const WOMEN_BRANCH = [
   ["pregnancy", "Беременность", "Pregnancy"],
 ];
 
+const DRAFT_SAVE_DEBOUNCE_MS = 900;
+
 const splitStoredDob = (value?: string | null) => {
   const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
   return match ? { day: match[3], month: match[2], year: match[1] } : { day: "", month: "", year: "" };
@@ -53,6 +55,12 @@ export default function OnboardingScreen() {
   const [draftBusy, setDraftBusy] = useState(false);
   const [draftSaved, setDraftSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const draftRequestRef = useRef<Promise<void> | null>(null);
+
+  useEffect(() => () => {
+    if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+  }, []);
 
   const canSave = useMemo(() => !!activeId && !!name.trim(), [activeId, name]);
   const womenRelevant = sex === "female" && goals.includes("women");
@@ -100,30 +108,49 @@ export default function OnboardingScreen() {
     return null;
   };
 
-  const saveDraft = async (overrides: Record<string, any> = {}) => {
-    if (!activeId) return;
+  const saveDraft = (overrides: Record<string, any> = {}) => {
+    if (!activeId) return Promise.resolve();
     const validationError = validateOptionalFields();
-    if (validationError) return;
-    setDraftBusy(true);
+    if (validationError) return Promise.resolve();
+
+    const previous = draftRequestRef.current ?? Promise.resolve();
+    const request = previous.catch(() => {}).then(async () => {
+      setDraftBusy(true);
+      setDraftSaved(false);
+      try {
+        await api.updateProfile(activeId, {
+          ...currentPayload(overrides),
+          onboarding_completed: false,
+        });
+        setDraftSaved(true);
+      } catch {
+        // Draft persistence is best-effort; final save still shows an explicit error.
+      } finally {
+        setDraftBusy(false);
+      }
+    });
+    draftRequestRef.current = request;
+    void request.finally(() => {
+      if (draftRequestRef.current === request) draftRequestRef.current = null;
+    });
+    return request;
+  };
+
+  const scheduleDraft = (overrides: Record<string, any> = {}) => {
+    if (!activeId) return;
+    if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
     setDraftSaved(false);
-    try {
-      await api.updateProfile(activeId, {
-        ...currentPayload(overrides),
-        onboarding_completed: false,
-      });
-      setDraftSaved(true);
-    } catch {
-      // Draft persistence is best-effort; final save still shows an explicit error.
-    } finally {
-      setDraftBusy(false);
-    }
+    draftTimerRef.current = setTimeout(() => {
+      draftTimerRef.current = null;
+      void saveDraft(overrides);
+    }, DRAFT_SAVE_DEBOUNCE_MS);
   };
 
   const setSexAndPersist = (value: string) => {
     setSex(value);
     const nextGoals = value === "female" ? goals : goals.filter((goal) => !["women", "cycle", "pregnancy_planning", "pregnancy"].includes(goal));
     if (value !== "female") setGoals(nextGoals);
-    saveDraft({ sex: value || null, goals: nextGoals });
+    scheduleDraft({ sex: value || null, goals: nextGoals });
   };
 
   const toggleGoal = (goal: string) => {
@@ -132,7 +159,7 @@ export default function OnboardingScreen() {
       next = next.filter((g) => !["cycle", "pregnancy_planning", "pregnancy"].includes(g));
     }
     setGoals(next);
-    saveDraft({ goals: next });
+    scheduleDraft({ goals: next });
   };
 
   const continueFlow = async (skipDetails = false) => {
@@ -140,9 +167,14 @@ export default function OnboardingScreen() {
     const validationError = validateOptionalFields();
     if (!skipDetails && validationError) return setError(validationError);
 
+    if (draftTimerRef.current) {
+      clearTimeout(draftTimerRef.current);
+      draftTimerRef.current = null;
+    }
     setBusy(true);
     setError(null);
     try {
+      if (draftRequestRef.current) await draftRequestRef.current;
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || null;
       await api.updateProfile(activeId, {
         name: name.trim(),
@@ -198,20 +230,20 @@ export default function OnboardingScreen() {
     </View>
 
     <Section title={ru ? "Основное" : "Basics"}>
-      <Input label={ru ? "Имя *" : "Name *"} value={name} onChangeText={setName} onBlur={() => saveDraft()} placeholder={ru ? "Как к вам обращаться" : "Your name"} autoCapitalize="words" textContentType="name" />
+      <Input label={ru ? "Имя *" : "Name *"} value={name} onChangeText={setName} onBlur={() => scheduleDraft()} placeholder={ru ? "Как к вам обращаться" : "Your name"} autoCapitalize="words" textContentType="name" />
       <Text style={styles.label}>{ru ? "Дата рождения" : "Date of birth"}</Text>
       <View style={styles.dateRow}>
         <View style={styles.datePart}>
           <Text style={styles.datePartLabel}>{ru ? "День" : "Day"}</Text>
-          <TextInput accessibilityLabel={ru ? "День рождения" : "Birth day"} value={dobDay} onChangeText={(value) => setDobDay(value.replace(/\D/g, "").slice(0, 2))} onBlur={() => saveDraft()} placeholder="ДД" placeholderTextColor={colors.onSurfaceSecondary} style={[styles.input, styles.dateInput]} keyboardType="number-pad" maxLength={2} />
+          <TextInput accessibilityLabel={ru ? "День рождения" : "Birth day"} value={dobDay} onChangeText={(value) => setDobDay(value.replace(/\D/g, "").slice(0, 2))} onBlur={() => scheduleDraft()} placeholder="ДД" placeholderTextColor={colors.onSurfaceSecondary} style={[styles.input, styles.dateInput]} keyboardType="number-pad" maxLength={2} />
         </View>
         <View style={styles.datePart}>
           <Text style={styles.datePartLabel}>{ru ? "Месяц" : "Month"}</Text>
-          <TextInput accessibilityLabel={ru ? "Месяц рождения" : "Birth month"} value={dobMonth} onChangeText={(value) => setDobMonth(value.replace(/\D/g, "").slice(0, 2))} onBlur={() => saveDraft()} placeholder="ММ" placeholderTextColor={colors.onSurfaceSecondary} style={[styles.input, styles.dateInput]} keyboardType="number-pad" maxLength={2} />
+          <TextInput accessibilityLabel={ru ? "Месяц рождения" : "Birth month"} value={dobMonth} onChangeText={(value) => setDobMonth(value.replace(/\D/g, "").slice(0, 2))} onBlur={() => scheduleDraft()} placeholder="ММ" placeholderTextColor={colors.onSurfaceSecondary} style={[styles.input, styles.dateInput]} keyboardType="number-pad" maxLength={2} />
         </View>
         <View style={[styles.datePart, styles.dateYear]}>
           <Text style={styles.datePartLabel}>{ru ? "Год" : "Year"}</Text>
-          <TextInput accessibilityLabel={ru ? "Год рождения" : "Birth year"} value={dobYear} onChangeText={(value) => setDobYear(value.replace(/\D/g, "").slice(0, 4))} onBlur={() => saveDraft()} placeholder="ГГГГ" placeholderTextColor={colors.onSurfaceSecondary} style={[styles.input, styles.dateInput]} keyboardType="number-pad" maxLength={4} />
+          <TextInput accessibilityLabel={ru ? "Год рождения" : "Birth year"} value={dobYear} onChangeText={(value) => setDobYear(value.replace(/\D/g, "").slice(0, 4))} onBlur={() => scheduleDraft()} placeholder="ГГГГ" placeholderTextColor={colors.onSurfaceSecondary} style={[styles.input, styles.dateInput]} keyboardType="number-pad" maxLength={4} />
         </View>
       </View>
       <Text style={styles.dateHint}>{ru ? "День · месяц · год" : "Day · month · year"}</Text>
@@ -224,7 +256,7 @@ export default function OnboardingScreen() {
         accessibilityState={{ selected: sex === v }}
         accessibilityLabel={l}
       ><Text style={[styles.chipText, sex === v && styles.chipTextActive]}>{l}</Text></Pressable>)}</View>
-      <View style={styles.two}><View style={styles.half}><Input label={ru ? "Рост, см" : "Height, cm"} value={height} onChangeText={setHeight} onBlur={() => saveDraft()} placeholder="168" keyboardType="decimal-pad" /></View><View style={styles.half}><Input label={ru ? "Вес, кг" : "Weight, kg"} value={weight} onChangeText={setWeight} onBlur={() => saveDraft()} placeholder="65" keyboardType="decimal-pad" /></View></View>
+      <View style={styles.two}><View style={styles.half}><Input label={ru ? "Рост, см" : "Height, cm"} value={height} onChangeText={setHeight} onBlur={() => scheduleDraft()} placeholder="168" keyboardType="decimal-pad" /></View><View style={styles.half}><Input label={ru ? "Вес, кг" : "Weight, kg"} value={weight} onChangeText={setWeight} onBlur={() => scheduleDraft()} placeholder="65" keyboardType="decimal-pad" /></View></View>
     </Section>
 
     <Section title={ru ? "Что важно отслеживать" : "What matters to you"}>
