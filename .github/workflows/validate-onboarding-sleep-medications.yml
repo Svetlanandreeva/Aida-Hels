@@ -7,6 +7,12 @@ on:
       - 'frontend/**'
       - 'backend/**'
       - '.github/workflows/validate-onboarding-sleep-medications.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'frontend/**'
+      - 'backend/**'
+      - '.github/workflows/validate-onboarding-sleep-medications.yml'
   workflow_dispatch:
 
 permissions:
