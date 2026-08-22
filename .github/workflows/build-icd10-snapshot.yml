@@ -1,0 +1,112 @@
+name: Build ICD-10 snapshot
+
+on:
+  push:
+    branches: [feat/icd10-medical-onboarding]
+    paths:
+      - '.github/workflows/build-icd10-snapshot.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  build-snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download and normalize ICD-10 snapshot
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import io
+          import json
+          import urllib.request
+          import zipfile
+          from pathlib import Path
+
+          SOURCE_URL = "https://data.apicrafter.ru/packages/nsimz-3720/build/nsimz-3720-2021-10-25-6-57/get"
+          OID = "1.2.643.5.1.13.13.11.1005"
+          SNAPSHOT = "2021-10-25"
+
+          req = urllib.request.Request(SOURCE_URL, headers={"User-Agent": "Aida-ICD10-Snapshot/1.0"})
+          with urllib.request.urlopen(req, timeout=60) as response:
+              payload = response.read()
+
+          with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+              names = archive.namelist()
+              data_name = next((name for name in names if name.endswith("data.jsonl")), None)
+              if not data_name:
+                  raise RuntimeError(f"data.jsonl not found in archive: {names[:20]}")
+              raw_lines = archive.read(data_name).decode("utf-8-sig").splitlines()
+
+          def field(row, suffix):
+              direct = row.get(f"table_field_{suffix}")
+              if direct is not None:
+                  return direct
+              suffix_lower = suffix.lower()
+              for key, value in row.items():
+                  if str(key).lower().endswith(suffix_lower):
+                      return value
+              return None
+
+          entries = {}
+          for line in raw_lines:
+              if not line.strip():
+                  continue
+              row = json.loads(line)
+              code = str(field(row, "MKB_CODE") or "").strip().upper().replace(" ", "")
+              name = " ".join(str(field(row, "MKB_NAME") or "").split())
+              actual = field(row, "ACTUAL")
+              actual_text = str(actual).strip().lower() if actual is not None else ""
+              if actual_text in {"0", "false", "нет", "no"}:
+                  continue
+              if not code or not name:
+                  continue
+              entries.setdefault(code, name)
+
+          items = [{"code": code, "name": entries[code]} for code in sorted(entries)]
+          if len(items) < 10000:
+              raise RuntimeError(f"Unexpectedly small ICD-10 catalog: {len(items)} records")
+
+          out = Path("backend/data")
+          out.mkdir(parents=True, exist_ok=True)
+          (out / "icd10_ru.json").write_text(
+              json.dumps(items, ensure_ascii=False, separators=(",", ":")) + "\n",
+              encoding="utf-8",
+          )
+          (out / "icd10_ru.meta.json").write_text(
+              json.dumps({
+                  "oid": OID,
+                  "snapshot_date": SNAPSHOT,
+                  "record_count": len(items),
+                  "source": "Russian Ministry of Health NSI derivative via DataCrafter/APICrafter",
+                  "source_url": SOURCE_URL,
+                  "license": "CC-BY-SA",
+              }, ensure_ascii=False, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          (out / "ICD10_SOURCE.md").write_text(
+              "# ICD-10 Russian reference snapshot\n\n"
+              f"- OID: `{OID}`\n"
+              f"- Snapshot: `{SNAPSHOT}`\n"
+              f"- Records: `{len(items)}`\n"
+              "- Origin: Russian Ministry of Health NSI (`nsi.rosminzdrav.ru`)\n"
+              "- Distribution used for the pinned build: DataCrafter / APICrafter package `nsimz-3720`\n"
+              "- License: CC-BY-SA\n\n"
+              "The application serves this pinned local reference at runtime; it does not call an external ICD service while the user types. A later catalog refresh should replace the snapshot and update this attribution file.\n",
+              encoding="utf-8",
+          )
+          print(f"Normalized ICD-10 catalog: {len(items)} records")
+          print("Sample:", items[:3])
+          PY
+
+      - name: Commit normalized snapshot
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add backend/data/icd10_ru.json backend/data/icd10_ru.meta.json backend/data/ICD10_SOURCE.md
+          git commit -m 'Add pinned Russian ICD-10 reference snapshot' || exit 0
+          git push origin HEAD:feat/icd10-medical-onboarding
