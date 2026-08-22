@@ -10,6 +10,7 @@ import asyncio
 import json
 import os
 import threading
+import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from urllib.parse import quote
@@ -20,6 +21,8 @@ from google.oauth2 import service_account
 
 SHEETS_API = "https://sheets.googleapis.com/v4/spreadsheets"
 SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets"
+SHEETS_RETRY_ATTEMPTS = 5
+SHEETS_RETRYABLE_READ_STATUSES = {429, 500, 502, 503, 504}
 
 SHEET_NAMES = {
     "profiles": "profiles",
@@ -110,21 +113,65 @@ class SheetsHTTP:
     def _base(self, suffix: str) -> str:
         return f"{SHEETS_API}/{self.spreadsheet_id}/{suffix}"
 
+    @staticmethod
+    def _retry_delay(response: requests.Response, attempt: int) -> float:
+        raw = str(response.headers.get("Retry-After") or "").strip()
+        if raw:
+            try:
+                return min(max(float(raw), 0.0), 10.0)
+            except ValueError:
+                pass
+        return min(0.75 * (2 ** attempt), 6.0)
+
+    def _request(
+        self,
+        method: str,
+        suffix: str,
+        *,
+        retry_server_errors: bool = False,
+        timeout: int = 20,
+        **kwargs: Any,
+    ) -> requests.Response:
+        """Retry quota responses without duplicating ambiguous write failures.
+
+        Google Sheets returns HTTP 429 when per-user/project quota is briefly
+        exhausted. A 429 response means the operation was rejected, so retrying both
+        reads and writes is safe. Server 5xx responses are retried only for reads;
+        retrying a POST append after an ambiguous 5xx could create a duplicate row.
+        """
+        response: Optional[requests.Response] = None
+        method_upper = method.upper()
+        for attempt in range(SHEETS_RETRY_ATTEMPTS):
+            response = requests.request(
+                method_upper,
+                self._base(suffix),
+                headers=self.headers(),
+                timeout=timeout,
+                **kwargs,
+            )
+            retryable = response.status_code == 429 or (
+                retry_server_errors and response.status_code in SHEETS_RETRYABLE_READ_STATUSES
+            )
+            if not retryable or attempt == SHEETS_RETRY_ATTEMPTS - 1:
+                return response
+            time.sleep(self._retry_delay(response, attempt))
+        assert response is not None
+        return response
+
     def ensure_sheet(self, sheet: str) -> None:
         with self.sheet_lock:
             if sheet in self.known_sheets:
                 return
-            meta = requests.get(self._base("?fields=sheets.properties.title"), headers=self.headers(), timeout=20)
+            meta = self._request("GET", "?fields=sheets.properties.title", retry_server_errors=True)
             meta.raise_for_status()
             titles = {item.get("properties", {}).get("title") for item in meta.json().get("sheets", [])}
             self.known_sheets.update(title for title in titles if isinstance(title, str) and title)
             if sheet in self.known_sheets:
                 return
-            r = requests.post(
-                self._base(":batchUpdate"),
-                headers=self.headers(),
+            r = self._request(
+                "POST",
+                ":batchUpdate",
                 json={"requests": [{"addSheet": {"properties": {"title": sheet}}}]},
-                timeout=20,
             )
             if r.status_code == 400 and "already exists" in r.text.lower():
                 self.known_sheets.add(sheet)
@@ -135,26 +182,34 @@ class SheetsHTTP:
     def get_rows(self, sheet: str) -> List[List[Any]]:
         self.ensure_sheet(sheet)
         rng = quote(f"'{sheet}'!A:ZZ", safe="")
-        r = requests.get(self._base(f"values/{rng}"), headers=self.headers(), timeout=20)
+        r = self._request("GET", f"values/{rng}", retry_server_errors=True)
         r.raise_for_status()
         return r.json().get("values", [])
 
     def update(self, sheet: str, range_a1: str, values: List[List[Any]]) -> None:
         self.ensure_sheet(sheet)
         rng = quote(f"'{sheet}'!{range_a1}", safe="")
-        r = requests.put(self._base(f"values/{rng}?valueInputOption=RAW"), headers=self.headers(), json={"majorDimension": "ROWS", "values": values}, timeout=20)
+        r = self._request(
+            "PUT",
+            f"values/{rng}?valueInputOption=RAW",
+            json={"majorDimension": "ROWS", "values": values},
+        )
         r.raise_for_status()
 
     def append(self, sheet: str, values: List[List[Any]]) -> None:
         self.ensure_sheet(sheet)
         rng = quote(f"'{sheet}'!A:ZZ", safe="")
-        r = requests.post(self._base(f"values/{rng}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS"), headers=self.headers(), json={"majorDimension": "ROWS", "values": values}, timeout=20)
+        r = self._request(
+            "POST",
+            f"values/{rng}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS",
+            json={"majorDimension": "ROWS", "values": values},
+        )
         r.raise_for_status()
 
     def clear_row(self, sheet: str, row_number: int, width: int) -> None:
         self.ensure_sheet(sheet)
         rng = quote(f"'{sheet}'!A{row_number}:{_col(max(width, 1))}{row_number}", safe="")
-        r = requests.post(self._base(f"values/{rng}:clear"), headers=self.headers(), json={}, timeout=20)
+        r = self._request("POST", f"values/{rng}:clear", json={})
         r.raise_for_status()
 
 
