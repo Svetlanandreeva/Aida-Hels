@@ -4,9 +4,9 @@ Welcome to Ubuntu 26.04 LTS (GNU/Linux 7.0.0-30-generic x86_64)
  * Management:     https://landscape.canonical.com
  * Support:        https://ubuntu.com/pro
 
- System information as of Sat Aug 22 11:55:32 PM MSK 2026
+ System information as of Sat Aug 22 11:56:34 PM MSK 2026
 
-  System load:  0.14              Processes:             117
+  System load:  0.07              Processes:             114
   Usage of /:   5.3% of 98.33GB   Users logged in:       0
   Memory usage: 17%               IPv4 address for ens3: 94.103.89.133
   Swap usage:   0%
@@ -25,6 +25,9 @@ Learn more about enabling ESM Apps service at https://ubuntu.com/esm
 
 
 credentials_present=true
+callback_hardening_deployed=true
+oauth_storage_startup_check_deployed=true
+sheet_metadata_cache_deployed=true
 oauth_storage_ready=true
 oauth_storage_error_class=none
 oauth_yandex_ru_tls=true
@@ -36,3 +39,4 @@ id_vk_ru_error_class=none
 journal_available=true
 callback_500_seen=true
 callback_failure_classes=google_sheets_http,asgi_exception
+google_sheets_http_status_codes=429
