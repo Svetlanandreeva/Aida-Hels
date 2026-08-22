@@ -1,5 +1,6 @@
 name: Onboarding route quick probe
 
+# probe revision: 2
 on:
   push:
     branches: [ops/oauth-runtime-probe-20260823]
