@@ -32,7 +32,6 @@ export default function OnboardingLifestyleScreen() {
   const [workType, setWorkType] = useState(String(current.work_type || ""));
   const [dietType, setDietType] = useState(String(current.diet_type || ""));
   const [dietRestrictions, setDietRestrictions] = useState(String(current.diet_restrictions || ""));
-  const [mentalDiagnoses, setMentalDiagnoses] = useState(String(current.mental_health?.diagnoses || ""));
   const [mentalMeds, setMentalMeds] = useState(String(current.mental_health?.medications || ""));
   const [mentalNote, setMentalNote] = useState(String(current.mental_health?.note || ""));
   const [busy, setBusy] = useState(false);
@@ -68,7 +67,7 @@ export default function OnboardingLifestyleScreen() {
           diet_type: dietType.trim() || null,
           diet_restrictions: dietRestrictions.trim() || null,
           mental_health: {
-            diagnoses: mentalDiagnoses.trim() || null,
+            diagnoses: current.mental_health?.diagnoses ?? null,
             medications: mentalMeds.trim() || null,
             note: mentalNote.trim() || null,
           },
@@ -149,8 +148,7 @@ export default function OnboardingLifestyleScreen() {
       </Section>
 
       <Section title={ru ? "Психическое здоровье" : "Mental health"}>
-        <Text style={s.sectionHint}>{ru ? "Можно пропустить. Эти данные не заменяют консультацию специалиста." : "Optional. These details do not replace professional care."}</Text>
-        <Field label={ru ? "Диагнозы" : "Diagnoses"} value={mentalDiagnoses} onChangeText={setMentalDiagnoses} placeholder={ru ? "Необязательно" : "Optional"} />
+        <Text style={s.sectionHint}>{ru ? "Психические диагнозы указываются на шаге «Медицинская карта». Здесь можно добавить препараты и комментарий." : "Mental diagnoses are selected in the Medical card step. Add medications or a note here if useful."}</Text>
         <Field label={ru ? "Принимаемые препараты" : "Medications"} value={mentalMeds} onChangeText={setMentalMeds} placeholder={ru ? "Необязательно" : "Optional"} />
         <Field label={ru ? "Комментарий" : "Comment"} value={mentalNote} onChangeText={setMentalNote} multiline styleOverride={s.noteInput} placeholder={ru ? "Необязательно" : "Optional"} />
       </Section>

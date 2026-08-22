@@ -7,6 +7,7 @@ import { api, Surgery } from "@/src/api";
 import { useApp } from "@/src/store";
 import { useI18n } from "@/src/i18n";
 import { useResponsiveLayout } from "@/src/hooks/use-responsive-layout";
+import { DiagnosisPicker } from "@/src/components/DiagnosisPicker";
 import { colors, fontSize, fonts, radius, spacing } from "@/src/theme";
 
 const splitList = (value: string) => value.split(",").map((item) => item.trim()).filter(Boolean);
@@ -21,10 +22,14 @@ export default function OnboardingMedicalScreen() {
   const women = activeProfile?.sex === "female";
   const currentWomen = activeProfile?.women_health || {};
 
+  const legacyMentalConditions = splitList(String(activeProfile?.lifestyle?.mental_health?.diagnoses || ""));
+  const initialMentalConditions = activeProfile?.mental_conditions?.length ? activeProfile.mental_conditions : legacyMentalConditions;
   const [blood, setBlood] = useState(activeProfile?.blood_type || "");
   const [allergies, setAllergies] = useState((activeProfile?.allergies || []).join(", "));
-  const [chronic, setChronic] = useState((activeProfile?.chronic_conditions || []).join(", "));
-  const [diagnoses, setDiagnoses] = useState((activeProfile?.diagnoses || []).join(", "));
+  const [chronicConditions, setChronicConditions] = useState<string[]>(activeProfile?.chronic_conditions || []);
+  const [mentalConditions, setMentalConditions] = useState<string[]>(initialMentalConditions);
+  const [hasChronic, setHasChronic] = useState((activeProfile?.chronic_conditions || []).length > 0);
+  const [hasMental, setHasMental] = useState(initialMentalConditions.length > 0);
   const [surgeries, setSurgeries] = useState((activeProfile?.surgeries || []).map((x) => x.title).join(", "));
   const [trackCycle, setTrackCycle] = useState(currentWomen.track_cycle === true);
   const [lastPeriod, setLastPeriod] = useState(String(currentWomen.last_period_start || ""));
@@ -43,6 +48,14 @@ export default function OnboardingMedicalScreen() {
 
   const continueToLifestyle = async () => {
     if (!activeId || !activeProfile) return;
+    if (hasChronic && chronicConditions.length === 0) {
+      setError(ru ? "Добавьте хотя бы один хронический диагноз по МКБ-10 или снимите галочку" : "Add at least one chronic ICD-10 diagnosis or uncheck the box");
+      return;
+    }
+    if (hasMental && mentalConditions.length === 0) {
+      setError(ru ? "Добавьте хотя бы одно психическое расстройство по МКБ-10 или снимите галочку" : "Add at least one mental-disorder ICD-10 diagnosis or uncheck the box");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -53,8 +66,8 @@ export default function OnboardingMedicalScreen() {
       await api.updateProfile(activeId, {
         blood_type: blood.trim() || null,
         allergies: splitList(allergies),
-        chronic_conditions: splitList(chronic),
-        diagnoses: splitList(diagnoses),
+        chronic_conditions: hasChronic ? chronicConditions : [],
+        mental_conditions: hasMental ? mentalConditions : [],
         surgeries: surgeryItems,
         women_health: women ? {
           ...currentWomen,
@@ -125,8 +138,6 @@ export default function OnboardingMedicalScreen() {
       <Section title={ru ? "Основные медицинские данные" : "Core medical data"}>
         <Field label={ru ? "Группа крови и резус" : "Blood type and Rh"} value={blood} onChangeText={setBlood} placeholder={ru ? "Напр. A(II) Rh+" : "e.g. A+"} />
         <Field label={ru ? "Аллергии" : "Allergies"} value={allergies} onChangeText={setAllergies} placeholder={ru ? "Через запятую" : "Comma separated"} />
-        <Field label={ru ? "Хронические заболевания" : "Chronic conditions"} value={chronic} onChangeText={setChronic} placeholder={ru ? "Через запятую" : "Comma separated"} />
-        <Field label={ru ? "Диагнозы" : "Diagnoses"} value={diagnoses} onChangeText={setDiagnoses} placeholder={ru ? "Через запятую" : "Comma separated"} />
         <Field label={ru ? "Операции / вмешательства" : "Surgeries / procedures"} value={surgeries} onChangeText={setSurgeries} placeholder={ru ? "Через запятую" : "Comma separated"} />
         <Pressable
           style={({ pressed }) => [s.linkRow, pressed && s.pressed]}
@@ -140,6 +151,24 @@ export default function OnboardingMedicalScreen() {
           <View style={{ flex: 1 }}><Text style={s.linkTitle}>{ru ? "Постоянные препараты" : "Regular medications"}</Text><Text style={s.linkHint}>{ru ? "Добавить препараты и расписание" : "Add medications and schedule"}</Text></View>
           <Ionicons name="chevron-forward" size={18} color={colors.onSurfaceSecondary} accessible={false} />
         </Pressable>
+      </Section>
+
+      <Section title={ru ? "Хронические заболевания" : "Chronic conditions"}>
+        <CheckQuestion
+          label={ru ? "У меня есть хронические заболевания" : "I have chronic conditions"}
+          checked={hasChronic}
+          onPress={() => setHasChronic((value) => !value)}
+        />
+        {hasChronic ? <DiagnosisPicker selected={chronicConditions} onChange={setChronicConditions} ru={ru} testID="chronic-diagnosis-picker" /> : <Text style={s.help}>{ru ? "Поставьте галочку, если хронический диагноз уже установлен." : "Check this if you have an established chronic diagnosis."}</Text>}
+      </Section>
+
+      <Section title={ru ? "Психические расстройства" : "Mental disorders"}>
+        <CheckQuestion
+          label={ru ? "У меня есть диагностированные психические расстройства" : "I have diagnosed mental disorders"}
+          checked={hasMental}
+          onPress={() => setHasMental((value) => !value)}
+        />
+        {hasMental ? <DiagnosisPicker selected={mentalConditions} onChange={setMentalConditions} mentalOnly ru={ru} testID="mental-diagnosis-picker" /> : <Text style={s.help}>{ru ? "Поставьте галочку только для ранее установленного диагноза. Аида не ставит диагнозы по этой анкете." : "Check this only for a previously established diagnosis. Aida does not diagnose from this form."}</Text>}
       </Section>
 
       {women ? <Section title={ru ? "Женское здоровье" : "Women's health"}>
@@ -198,8 +227,9 @@ export default function OnboardingMedicalScreen() {
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) { return <View style={s.section}><Text style={s.sectionTitle}>{title}</Text>{children}</View>; }
 function Field({ label, ...props }: any) { return <View style={{ marginBottom: spacing.md }}><Text style={s.label}>{label}</Text><TextInput {...props} accessibilityLabel={props.accessibilityLabel || label} placeholderTextColor={colors.onSurfaceSecondary} style={s.input} /></View>; }
+function CheckQuestion({ label, checked, onPress }: { label: string; checked: boolean; onPress: () => void }) { return <Pressable style={({ pressed }) => [s.checkRow, pressed && s.pressed]} onPress={onPress} accessibilityRole="checkbox" accessibilityState={{ checked }} accessibilityLabel={label}><Ionicons name={checked ? "checkbox" : "square-outline"} size={23} color={colors.onSurface} /><Text style={s.checkText}>{label}</Text></Pressable>; }
 function Toggle({ label, value, onValueChange }: any) { return <View style={s.toggle}><Text style={s.toggleText}>{label}</Text><Switch value={value} onValueChange={onValueChange} accessibilityLabel={label} accessibilityRole="switch" accessibilityState={{ checked: value }} /></View>; }
 
 const s = StyleSheet.create({
-  page:{flex:1,backgroundColor:colors.surface},content:{width:"100%",maxWidth:720,alignSelf:"center"},progressRow:{gap:8},eyebrow:{fontSize:12,fontWeight:"800",letterSpacing:1.5,color:colors.onSurfaceSecondary},progress:{height:4,borderRadius:2,backgroundColor:colors.surfaceSecondary,overflow:"hidden"},progressFill:{height:4,backgroundColor:colors.onSurface},title:{marginTop:spacing.lg,fontSize:34,lineHeight:40,fontWeight:"800",fontFamily:fonts.display,color:colors.onSurface},subtitle:{marginTop:spacing.sm,fontSize:fontSize.base,lineHeight:22,color:colors.onSurfaceSecondary,fontFamily:fonts.text},section:{marginTop:spacing.xl,backgroundColor:colors.surfaceSecondary,borderRadius:radius.lg,borderWidth:1,borderColor:colors.border,padding:spacing.lg},sectionTitle:{fontSize:fontSize.lg,fontWeight:"800",color:colors.onSurface,marginBottom:spacing.lg,fontFamily:fonts.display},label:{fontSize:fontSize.sm,fontWeight:"700",color:colors.onSurfaceSecondary,marginBottom:7,fontFamily:fonts.text},input:{minHeight:50,borderRadius:radius.md,borderWidth:1,borderColor:colors.border,backgroundColor:colors.surface,paddingHorizontal:spacing.md,color:colors.onSurface,fontSize:fontSize.base,fontFamily:fonts.text},two:{flexDirection:"row",gap:spacing.md,flexWrap:"wrap"},half:{flex:1,minWidth:180},toggle:{minHeight:54,flexDirection:"row",alignItems:"center",gap:spacing.md,borderBottomWidth:1,borderBottomColor:colors.divider},toggleText:{flex:1,color:colors.onSurface,fontWeight:"700",fontFamily:fonts.text},chips:{flexDirection:"row",flexWrap:"wrap",gap:8,marginBottom:spacing.md},chip:{minHeight:44,paddingHorizontal:12,paddingVertical:9,borderRadius:radius.pill,backgroundColor:colors.surface,borderWidth:1,borderColor:colors.border,alignItems:"center",justifyContent:"center"},chipActive:{backgroundColor:colors.onSurface},chipText:{color:colors.onSurface,fontWeight:"700",fontFamily:fonts.text},chipTextActive:{color:colors.onSurfaceInverse},linkRow:{minHeight:68,flexDirection:"row",alignItems:"center",gap:spacing.md,paddingTop:spacing.sm,borderRadius:radius.md},icon:{width:42,height:42,borderRadius:21,backgroundColor:colors.surface,alignItems:"center",justifyContent:"center"},linkTitle:{fontWeight:"800",color:colors.onSurface,fontFamily:fonts.text},linkHint:{fontSize:fontSize.sm,color:colors.onSurfaceSecondary,marginTop:2,fontFamily:fonts.text},actions:{flexDirection:"row",gap:spacing.md,marginTop:spacing.xl},actionsCompact:{flexDirection:"column"},actionCompact:{width:"100%",flex:0},primary:{flex:1,minHeight:54,borderRadius:radius.pill,backgroundColor:colors.onSurface,alignItems:"center",justifyContent:"center",paddingHorizontal:spacing.lg},primaryText:{color:colors.onSurfaceInverse,fontWeight:"800",fontFamily:fonts.text,textAlign:"center"},secondary:{minWidth:110,minHeight:54,borderRadius:radius.pill,borderWidth:1,borderColor:colors.border,alignItems:"center",justifyContent:"center",paddingHorizontal:spacing.lg},secondaryText:{color:colors.onSurface,fontWeight:"800",fontFamily:fonts.text,textAlign:"center"},skip:{minHeight:50,alignItems:"center",justifyContent:"center",borderRadius:radius.pill},skipText:{color:colors.onSurfaceSecondary,fontWeight:"700",fontFamily:fonts.text,textAlign:"center"},error:{color:colors.error,marginTop:spacing.lg,fontFamily:fonts.text},pressed:{opacity:.72}
+  page:{flex:1,backgroundColor:colors.surface},content:{width:"100%",maxWidth:720,alignSelf:"center"},progressRow:{gap:8},eyebrow:{fontSize:12,fontWeight:"800",letterSpacing:1.5,color:colors.onSurfaceSecondary},progress:{height:4,borderRadius:2,backgroundColor:colors.surfaceSecondary,overflow:"hidden"},progressFill:{height:4,backgroundColor:colors.onSurface},title:{marginTop:spacing.lg,fontSize:34,lineHeight:40,fontWeight:"800",fontFamily:fonts.display,color:colors.onSurface},subtitle:{marginTop:spacing.sm,fontSize:fontSize.base,lineHeight:22,color:colors.onSurfaceSecondary,fontFamily:fonts.text},section:{marginTop:spacing.xl,backgroundColor:colors.surfaceSecondary,borderRadius:radius.lg,borderWidth:1,borderColor:colors.border,padding:spacing.lg},sectionTitle:{fontSize:fontSize.lg,fontWeight:"800",color:colors.onSurface,marginBottom:spacing.lg,fontFamily:fonts.display},label:{fontSize:fontSize.sm,fontWeight:"700",color:colors.onSurfaceSecondary,marginBottom:7,fontFamily:fonts.text},input:{minHeight:50,borderRadius:radius.md,borderWidth:1,borderColor:colors.border,backgroundColor:colors.surface,paddingHorizontal:spacing.md,color:colors.onSurface,fontSize:fontSize.base,fontFamily:fonts.text},two:{flexDirection:"row",gap:spacing.md,flexWrap:"wrap"},half:{flex:1,minWidth:180},checkRow:{minHeight:52,flexDirection:"row",alignItems:"center",gap:10,borderRadius:radius.md,backgroundColor:colors.surface,paddingHorizontal:spacing.md,paddingVertical:10,marginBottom:spacing.sm},checkText:{flex:1,color:colors.onSurface,fontWeight:"800",fontFamily:fonts.text},help:{fontSize:fontSize.sm,lineHeight:19,color:colors.onSurfaceSecondary,fontFamily:fonts.text},toggle:{minHeight:54,flexDirection:"row",alignItems:"center",gap:spacing.md,borderBottomWidth:1,borderBottomColor:colors.divider},toggleText:{flex:1,color:colors.onSurface,fontWeight:"700",fontFamily:fonts.text},chips:{flexDirection:"row",flexWrap:"wrap",gap:8,marginBottom:spacing.md},chip:{minHeight:44,paddingHorizontal:12,paddingVertical:9,borderRadius:radius.pill,backgroundColor:colors.surface,borderWidth:1,borderColor:colors.border,alignItems:"center",justifyContent:"center"},chipActive:{backgroundColor:colors.onSurface},chipText:{color:colors.onSurface,fontWeight:"700",fontFamily:fonts.text},chipTextActive:{color:colors.onSurfaceInverse},linkRow:{minHeight:68,flexDirection:"row",alignItems:"center",gap:spacing.md,paddingTop:spacing.sm,borderRadius:radius.md},icon:{width:42,height:42,borderRadius:21,backgroundColor:colors.surface,alignItems:"center",justifyContent:"center"},linkTitle:{fontWeight:"800",color:colors.onSurface,fontFamily:fonts.text},linkHint:{fontSize:fontSize.sm,color:colors.onSurfaceSecondary,marginTop:2,fontFamily:fonts.text},actions:{flexDirection:"row",gap:spacing.md,marginTop:spacing.xl},actionsCompact:{flexDirection:"column"},actionCompact:{width:"100%",flex:0},primary:{flex:1,minHeight:54,borderRadius:radius.pill,backgroundColor:colors.onSurface,alignItems:"center",justifyContent:"center",paddingHorizontal:spacing.lg},primaryText:{color:colors.onSurfaceInverse,fontWeight:"800",fontFamily:fonts.text,textAlign:"center"},secondary:{minWidth:110,minHeight:54,borderRadius:radius.pill,borderWidth:1,borderColor:colors.border,alignItems:"center",justifyContent:"center",paddingHorizontal:spacing.lg},secondaryText:{color:colors.onSurface,fontWeight:"800",fontFamily:fonts.text,textAlign:"center"},skip:{minHeight:50,alignItems:"center",justifyContent:"center",borderRadius:radius.pill},skipText:{color:colors.onSurfaceSecondary,fontWeight:"700",fontFamily:fonts.text,textAlign:"center"},error:{color:colors.error,marginTop:spacing.lg,fontFamily:fonts.text},pressed:{opacity:.72}
 });

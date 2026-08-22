@@ -105,6 +105,7 @@ async def build_ai_context(db, profile_id: str, *, as_json: bool = True) -> str 
             "weight_kg": profile.get("weight_kg"),
             "allergies": profile.get("allergies") or [],
             "chronic_conditions": (profile.get("chronic_conditions") or []) if _module_enabled(modules, "chronic") else [],
+            "mental_conditions": (profile.get("mental_conditions") or []) if _module_enabled(modules, "mental") else [],
             "diagnoses": (profile.get("diagnoses") or []) if _module_enabled(modules, "chronic") else [],
             "goals": profile.get("goals") or [],
             "women_health": (profile.get("women_health") or {}) if _module_enabled(modules, "women") else {},

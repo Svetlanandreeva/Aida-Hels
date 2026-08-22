@@ -16,10 +16,11 @@ export async function apiFetch(path: string, options?: RequestInit) {
 }
 
 export type Surgery = { id: string; title: string; date?: string | null; note?: string | null };
+export type Icd10Item = { code: string; name: string };
 export type Profile = {
   id: string; name: string; kind: "me" | "child" | "relative"; dob?: string | null; sex?: string | null;
   height_cm?: number | null; weight_kg?: number | null; blood_type?: string | null; allergies: string[];
-  chronic_conditions: string[]; diagnoses?: string[]; surgeries?: Surgery[];
+  chronic_conditions: string[]; mental_conditions?: string[]; diagnoses?: string[]; surgeries?: Surgery[];
   privacy?: { include_in_ai_context?: boolean; share_documents?: boolean; show_notification_details?: boolean; allow_wearable_ai?: boolean; [key: string]: any };
   module_settings?: Record<string, boolean>; goals?: string[]; onboarding_completed?: boolean; women_health?: Record<string, any>;
   lifestyle?: Record<string, any>; emergency_contacts?: Array<{ name?: string; relation?: string; phone?: string; note?: string }>;
@@ -99,6 +100,10 @@ export const api = {
   createProfile: (data: Partial<Profile>): Promise<Profile> => req("/profiles", { method: "POST", body: JSON.stringify(data) }),
   updateProfile: (id: string, data: Partial<Profile>): Promise<Profile> => req(`/profiles/${id}`, { method: "PUT", body: JSON.stringify(data) }),
   deleteProfile: (id: string) => req(`/profiles/${id}`, { method: "DELETE" }),
+  searchIcd10: async (q: string, group: "all" | "mental" = "all"): Promise<Icd10Item[]> => {
+    const result = await req(`/reference/icd10/search?q=${encodeURIComponent(q)}&group=${encodeURIComponent(group)}&limit=12`);
+    return Array.isArray(result?.items) ? result.items : [];
+  },
   listLabs: (pid: string): Promise<LabTest[]> => req(`/labs?profile_id=${pid}`),
   createLab: (data: any): Promise<LabTest> => req("/labs", { method: "POST", body: JSON.stringify(data) }),
   deleteLab: (id: string) => req(`/labs/${id}`, { method: "DELETE" }),
