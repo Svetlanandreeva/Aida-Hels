@@ -1,0 +1,7 @@
+backend_day_parts=true
+backend_structured_dose=true
+backend_regression_contract=true
+frontend_irregular_sleep=false
+frontend_daily_medications=false
+root_status=200
+unauth_auth_me_status=401
