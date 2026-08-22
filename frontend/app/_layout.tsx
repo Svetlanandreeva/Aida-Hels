@@ -92,7 +92,7 @@ function RoutedApp() {
   useEffect(() => {
     if (loading) return;
     if (!hasAppAccess && !publicRoute) router.replace("/auth" as any);
-    if (hasAppAccess && (route === "" || route === "auth" || route === "register" || route === "reset-password")) router.replace("/(tabs)" as any);
+    if (hasAppAccess && route === "") router.replace("/(tabs)" as any);
   }, [hasAppAccess, loading, publicRoute, route]);
 
   const stack = (
@@ -112,7 +112,7 @@ function RoutedApp() {
     </View>
   );
 
-  if (publicRoute) return stack;
+  if (publicRoute && !hasAppAccess) return stack;
   if (loading) return <StartupPreview />;
   if (!hasAppAccess) return stack;
   return (
