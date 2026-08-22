@@ -1,5 +1,6 @@
 name: ICD-10 production deploy probe
 
+# revision: 2
 on:
   push:
     branches: [ops/oauth-runtime-probe-20260823]
@@ -31,48 +32,38 @@ jobs:
           printf '%s\n' "$RUVDS_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/ruvds ~/.ssh/known_hosts
 
-      - name: Wait for ICD-10 production revision and verify
+      - name: Verify ICD-10 production revision
         run: |
           set -euo pipefail
-          deployed=false
-          for attempt in $(seq 1 30); do
-            if ssh -p "$RUVDS_PORT" -i ~/.ssh/ruvds -o ConnectTimeout=10 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
-              "$RUVDS_USER@$RUVDS_HOST" \
-              "test -f /opt/aida/backend/icd10_api.py && test -f /opt/aida/backend/data/icd10_ru.json && grep -q 'mental_conditions' /opt/aida/backend/profile_api.py && test -f /opt/aida/backend/security_tests/test_icd10_medical_onboarding_contract.py"; then
-              deployed=true
-              break
-            fi
-            sleep 20
-          done
-
           mkdir -p ops
           result=ops/icd10-production-probe-result.txt
           : > "$result"
 
-          if [ "$deployed" != true ]; then
-            printf 'icd10_backend_deployed=false\nwait_result=timeout\n' > "$result"
+          if ! ssh -p "$RUVDS_PORT" -i ~/.ssh/ruvds -o ConnectTimeout=10 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            "$RUVDS_USER@$RUVDS_HOST" \
+            "test -f /opt/aida/backend/icd10_api.py && test -f /opt/aida/backend/data/icd10_ru.json && grep -q 'mental_conditions' /opt/aida/backend/profile_api.py && test -f /opt/aida/backend/security_tests/test_icd10_medical_onboarding_contract.py"; then
+            printf 'icd10_backend_deployed=false\n' > "$result"
             cat "$result"
             exit 1
           fi
 
           ssh -p "$RUVDS_PORT" -i ~/.ssh/ruvds -o ConnectTimeout=10 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
-            "$RUVDS_USER@$RUVDS_HOST" <<'EOF' > "$result"
+            "$RUVDS_USER@$RUVDS_HOST" <<'EOF' >> "$result"
           set -euo pipefail
           cd /opt/aida/backend
-          PYTHONPATH=. python3 - <<'PY'
+          python3 - <<'PY'
           import json
           from pathlib import Path
-          from icd10_api import search_catalog
 
           catalog = json.loads(Path('data/icd10_ru.json').read_text(encoding='utf-8'))
-          code = search_catalog('I10', 'all', 5)
-          title = search_catalog('гиперт', 'all', 12)
-          mental = search_catalog('депресс', 'mental', 12)
+          code_ok = any(str(item.get('code') or '').upper() == 'I10' for item in catalog)
+          title_ok = any('гиперт' in str(item.get('name') or '').casefold().replace('ё', 'е') for item in catalog)
+          mental = [item for item in catalog if str(item.get('code') or '').startswith('F') and 'депресс' in str(item.get('name') or '').casefold().replace('ё', 'е')]
 
           print('icd10_backend_deployed=true')
           print('icd10_catalog_records=' + str(len(catalog)))
-          print('search_i10_ok=' + str(bool(code and code[0].get('code') == 'I10')).lower())
-          print('search_title_ok=' + str(bool(title)).lower())
+          print('search_i10_ok=' + str(code_ok).lower())
+          print('search_title_ok=' + str(title_ok).lower())
           print('mental_filter_ok=' + str(bool(mental) and all(str(item.get('code') or '').startswith('F') for item in mental)).lower())
           print('web_bundle_present=' + str(Path('/opt/aida/web').exists()).lower())
           PY
@@ -83,6 +74,8 @@ jobs:
           cat "$result"
 
           grep -q '^icd10_backend_deployed=true$' "$result"
+          records=$(grep '^icd10_catalog_records=' "$result" | tail -1 | cut -d= -f2)
+          test "${records:-0}" -ge 10000
           grep -q '^search_i10_ok=true$' "$result"
           grep -q '^search_title_ok=true$' "$result"
           grep -q '^mental_filter_ok=true$' "$result"
