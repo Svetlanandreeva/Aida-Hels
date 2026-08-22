@@ -1,5 +1,6 @@
 name: Onboarding quota deploy probe
 
+# probe revision: 2
 on:
   push:
     branches: [ops/oauth-runtime-probe-20260823]
@@ -39,8 +40,6 @@ jobs:
           from pathlib import Path
           frontend = Path('/opt/aida/web').exists()
           backend_source = Path('/opt/aida/backend/profile_api.py').read_text(encoding='utf-8')
-          # The web bundle is minified, so backend source is the deterministic server marker;
-          # frontend deployment is tied to the same atomic workflow upload.
           backend_ready = (
               'sync_goal_puzzle = finishing_onboarding or (was_completed and goals_changed)' in backend_source
               and 'Draft goal changes during onboarding are frequent' in backend_source
