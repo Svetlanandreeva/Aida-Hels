@@ -1,0 +1,83 @@
+name: Onboarding redesign production probe
+
+on:
+  push:
+    branches: [ops/oauth-runtime-probe-20260823]
+    paths:
+      - '.github/workflows/onboarding-sleep-medications-production-probe.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    env:
+      RUVDS_HOST: ${{ secrets.RUVDS_HOST }}
+      RUVDS_USER: ${{ secrets.RUVDS_USER }}
+      RUVDS_PORT: ${{ secrets.RUVDS_PORT }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare SSH
+        env:
+          RUVDS_SSH_KEY: ${{ secrets.RUVDS_SSH_KEY }}
+          RUVDS_SSH_KNOWN_HOSTS: ${{ secrets.RUVDS_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$RUVDS_SSH_KEY" > ~/.ssh/ruvds
+          printf '%s\n' "$RUVDS_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/ruvds ~/.ssh/known_hosts
+
+      - name: Wait for onboarding redesign on production
+        run: |
+          set -euo pipefail
+          deployed=false
+          for attempt in $(seq 1 40); do
+            if ssh -p "$RUVDS_PORT" -i ~/.ssh/ruvds -o ConnectTimeout=10 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+              "$RUVDS_USER@$RUVDS_HOST" \
+              "grep -q '_ALLOWED_DAY_PARTS' /opt/aida/backend/medication_api.py && grep -q 'dose_amount: Optional\\[float\\]' /opt/aida/backend/medication_api.py && test -f /opt/aida/backend/security_tests/test_onboarding_sleep_medications_contract.py && grep -R -q 'Нет регулярного времени сна' /opt/aida/web/_expo && grep -R -q 'Ежедневные препараты' /opt/aida/web/_expo"; then
+              deployed=true
+              break
+            fi
+            sleep 20
+          done
+
+          mkdir -p ops
+          result=ops/onboarding-sleep-medications-production-probe-result.txt
+          if [ "$deployed" = true ]; then
+            root_status=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 https://aidaassistent.ru/ || true)
+            auth_status=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 https://aidaassistent.ru/api/auth/me || true)
+            {
+              echo 'onboarding_sleep_medications_deployed=true'
+              echo 'backend_day_parts=true'
+              echo 'backend_structured_dose=true'
+              echo 'frontend_irregular_sleep_copy=true'
+              echo 'frontend_daily_medications_copy=true'
+              echo "root_status=$root_status"
+              echo "unauth_auth_me_status=$auth_status"
+            } > "$result"
+          else
+            {
+              echo 'onboarding_sleep_medications_deployed=false'
+              echo 'wait_result=timeout'
+            } > "$result"
+          fi
+          cat "$result"
+          test "$deployed" = true
+          grep -q '^root_status=200$' "$result"
+          grep -q '^unauth_auth_me_status=401$' "$result"
+
+      - name: Persist result
+        if: always()
+        run: |
+          set -euo pipefail
+          result=ops/onboarding-sleep-medications-production-probe-result.txt
+          test -f "$result" || printf 'probe_result=workflow_error\n' > "$result"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add "$result"
+          git commit -m 'Record onboarding redesign production probe result' || exit 0
+          git push origin HEAD:ops/oauth-runtime-probe-20260823
