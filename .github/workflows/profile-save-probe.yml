@@ -1,0 +1,94 @@
+name: Profile save runtime probe
+
+on:
+  push:
+    branches: [ops/oauth-runtime-probe-20260823]
+    paths:
+      - '.github/workflows/profile-save-probe.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      RUVDS_HOST: ${{ secrets.RUVDS_HOST }}
+      RUVDS_USER: ${{ secrets.RUVDS_USER }}
+      RUVDS_PORT: ${{ secrets.RUVDS_PORT }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare SSH
+        env:
+          RUVDS_SSH_KEY: ${{ secrets.RUVDS_SSH_KEY }}
+          RUVDS_SSH_KNOWN_HOSTS: ${{ secrets.RUVDS_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$RUVDS_SSH_KEY" > ~/.ssh/ruvds
+          printf '%s\n' "$RUVDS_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/ruvds ~/.ssh/known_hosts
+      - name: Collect sanitized profile save diagnostics
+        run: |
+          set -euo pipefail
+          ssh -p "$RUVDS_PORT" -i ~/.ssh/ruvds -o ConnectTimeout=10 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            "$RUVDS_USER@$RUVDS_HOST" <<'EOF' > profile-save-probe-result.txt
+          set -euo pipefail
+          . /opt/aida/backend/.venv/bin/activate
+          python - <<'PY'
+          import re
+          import subprocess
+
+          proc = subprocess.run(
+              ['sudo', '-n', 'journalctl', '-u', 'aida-backend', '--since', '-20 minutes', '--no-pager'],
+              capture_output=True,
+              text=True,
+              timeout=20,
+          )
+          if proc.returncode != 0:
+              print('journal_available=false')
+              raise SystemExit(0)
+
+          text = proc.stdout
+          print('journal_available=true')
+
+          profile_statuses = re.findall(r'PUT /api/profiles/[^ ]+ HTTP/1\.1" (\d{3})', text)
+          print('profile_put_count=' + str(len(profile_statuses)))
+          print('profile_put_statuses=' + (','.join(profile_statuses[-10:]) if profile_statuses else 'none'))
+
+          sheets_codes = sorted(set(re.findall(
+              r'\b([45]\d{2}) Client Error:[^\n]*for url: https://sheets\.googleapis\.com',
+              text,
+          )))
+          print('google_sheets_http_status_codes=' + (','.join(sheets_codes) if sheets_codes else 'none'))
+
+          checks = {
+              'asgi_exception': 'Exception in ASGI application',
+              'response_validation': 'ResponseValidationError',
+              'pydantic_validation': 'ValidationError',
+              'google_sheets_http': 'requests.exceptions.HTTPError',
+              'google_auth_error': 'google.auth',
+              'key_error': 'KeyError',
+              'type_error': 'TypeError',
+              'attribute_error': 'AttributeError',
+              'timeout_error': 'TimeoutError',
+          }
+          hit = [name for name, needle in checks.items() if needle in text]
+          print('failure_classes=' + (','.join(hit) if hit else 'none_detected'))
+
+          retry_hits = len(re.findall(r'429 Client Error', text))
+          print('sheets_429_log_hits=' + str(retry_hits))
+          PY
+          EOF
+          mkdir -p ops
+          mv profile-save-probe-result.txt ops/profile-save-probe-result.txt
+          cat ops/profile-save-probe-result.txt
+      - name: Persist sanitized result
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add ops/profile-save-probe-result.txt
+          git commit -m 'Record sanitized profile save probe' || exit 0
+          git push origin HEAD:ops/oauth-runtime-probe-20260823
