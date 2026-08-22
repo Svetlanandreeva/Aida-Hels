@@ -16,6 +16,22 @@ def test_pinned_icd10_catalog_is_present_and_large_enough():
     assert all(item.get("code") and item.get("name") for item in catalog[:100])
 
 
+def test_icd10_search_works_by_code_and_russian_title_fragment():
+    from icd10_api import search_catalog
+
+    code_results = search_catalog("I10", "all", 5)
+    assert code_results
+    assert code_results[0]["code"] == "I10"
+
+    title_results = search_catalog("гиперт", "all", 12)
+    assert title_results
+    assert any("гиперт" in item["name"].casefold().replace("ё", "е") for item in title_results)
+
+    mental_results = search_catalog("депресс", "mental", 12)
+    assert mental_results
+    assert all(item["code"].startswith("F") for item in mental_results)
+
+
 def test_production_exposes_authenticated_local_icd10_search():
     main_source = read("backend/main.py")
     search_source = read("backend/icd10_api.py")
