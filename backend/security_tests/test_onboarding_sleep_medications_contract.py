@@ -21,14 +21,17 @@ def test_sleep_times_are_masked_and_support_irregular_ranges():
         assert marker in source
 
 
-def test_wellbeing_uses_colored_zero_to_five_scale_and_not_tiles():
+def test_wellbeing_uses_colored_zero_to_five_continuous_scale():
     source = read("frontend/app/onboarding-lifestyle.tsx")
     assert "const SCALE = [0, 1, 2, 3, 4, 5]" in source
     assert "const SCALE_COLORS" in source
     assert "colors.error" in source and "colors.success" in source
-    assert "scaleBar" in source and "scaleTicks" in source and "scaleTickSelected" in source
-    assert "scaleSegment" not in source and "scaleTrack" not in source
-    assert "0 ·" in source and "5 ·" in source
+    assert 'import { LinearGradient } from "expo-linear-gradient"' in source
+    assert "<LinearGradient" in source
+    assert "scaleTrack" in source and "scaleTickRow" in source and "scaleThumb" in source
+    assert 'accessibilityRole="adjustable"' in source
+    assert "onResponderMove=" in source
+    assert "scaleBar" not in source and "scaleTickSelected" not in source and "scaleSegment" not in source
     assert "stress_level: stressWellbeing === null ? null : 5 - stressWellbeing" in source
 
 
