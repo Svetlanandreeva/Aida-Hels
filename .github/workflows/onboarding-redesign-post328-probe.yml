@@ -1,0 +1,76 @@
+name: Onboarding redesign post-328 verification
+
+on:
+  push:
+    branches: [ops/oauth-runtime-probe-20260823]
+    paths:
+      - '.github/workflows/onboarding-redesign-post328-probe.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      RUVDS_HOST: ${{ secrets.RUVDS_HOST }}
+      RUVDS_USER: ${{ secrets.RUVDS_USER }}
+      RUVDS_PORT: ${{ secrets.RUVDS_PORT }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare SSH
+        env:
+          RUVDS_SSH_KEY: ${{ secrets.RUVDS_SSH_KEY }}
+          RUVDS_SSH_KNOWN_HOSTS: ${{ secrets.RUVDS_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$RUVDS_SSH_KEY" > ~/.ssh/ruvds
+          printf '%s\n' "$RUVDS_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/ruvds ~/.ssh/known_hosts
+      - name: Verify deployed backend and web markers
+        run: |
+          set -euo pipefail
+          mkdir -p ops
+          result=ops/onboarding-redesign-post328-result.txt
+          backend_day_parts=false
+          backend_dose=false
+          backend_test=false
+          frontend_sleep=false
+          frontend_meds=false
+          if ssh -p "$RUVDS_PORT" -i ~/.ssh/ruvds -o ConnectTimeout=10 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes "$RUVDS_USER@$RUVDS_HOST" "grep -q '_ALLOWED_DAY_PARTS' /opt/aida/backend/medication_api.py"; then backend_day_parts=true; fi
+          if ssh -p "$RUVDS_PORT" -i ~/.ssh/ruvds -o ConnectTimeout=10 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes "$RUVDS_USER@$RUVDS_HOST" "grep -q 'dose_amount: Optional\\[float\\]' /opt/aida/backend/medication_api.py"; then backend_dose=true; fi
+          if ssh -p "$RUVDS_PORT" -i ~/.ssh/ruvds -o ConnectTimeout=10 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes "$RUVDS_USER@$RUVDS_HOST" "test -f /opt/aida/backend/security_tests/test_onboarding_sleep_medications_contract.py"; then backend_test=true; fi
+          if ssh -p "$RUVDS_PORT" -i ~/.ssh/ruvds -o ConnectTimeout=10 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes "$RUVDS_USER@$RUVDS_HOST" "grep -R -q 'Нет регулярного времени сна' /opt/aida/web/_expo"; then frontend_sleep=true; fi
+          if ssh -p "$RUVDS_PORT" -i ~/.ssh/ruvds -o ConnectTimeout=10 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes "$RUVDS_USER@$RUVDS_HOST" "grep -R -q 'Ежедневные препараты' /opt/aida/web/_expo"; then frontend_meds=true; fi
+          root_status=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 https://aidaassistent.ru/ || true)
+          auth_status=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 https://aidaassistent.ru/api/auth/me || true)
+          {
+            echo "backend_day_parts=$backend_day_parts"
+            echo "backend_structured_dose=$backend_dose"
+            echo "backend_regression_contract=$backend_test"
+            echo "frontend_irregular_sleep=$frontend_sleep"
+            echo "frontend_daily_medications=$frontend_meds"
+            echo "root_status=$root_status"
+            echo "unauth_auth_me_status=$auth_status"
+          } > "$result"
+          cat "$result"
+          test "$backend_day_parts" = true
+          test "$backend_dose" = true
+          test "$backend_test" = true
+          test "$frontend_sleep" = true
+          test "$frontend_meds" = true
+          test "$root_status" = 200
+          test "$auth_status" = 401
+      - name: Persist result
+        if: always()
+        run: |
+          set -euo pipefail
+          result=ops/onboarding-redesign-post328-result.txt
+          test -f "$result" || printf 'probe_result=workflow_error\n' > "$result"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add "$result"
+          git commit -m 'Record post-328 onboarding VDS verification' || exit 0
+          git push origin HEAD:ops/oauth-runtime-probe-20260823
