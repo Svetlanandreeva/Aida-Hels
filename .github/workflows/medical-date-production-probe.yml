@@ -1,0 +1,69 @@
+name: Medical date production probe
+
+on:
+  push:
+    branches: [ops/oauth-runtime-probe-20260823]
+    paths:
+      - '.github/workflows/medical-date-production-probe.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      RUVDS_HOST: ${{ secrets.RUVDS_HOST }}
+      RUVDS_USER: ${{ secrets.RUVDS_USER }}
+      RUVDS_PORT: ${{ secrets.RUVDS_PORT }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare SSH
+        env:
+          RUVDS_SSH_KEY: ${{ secrets.RUVDS_SSH_KEY }}
+          RUVDS_SSH_KNOWN_HOSTS: ${{ secrets.RUVDS_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$RUVDS_SSH_KEY" > ~/.ssh/ruvds
+          printf '%s\n' "$RUVDS_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/ruvds ~/.ssh/known_hosts
+
+      - name: Wait for production bundle and verify date mask
+        run: |
+          set -euo pipefail
+          deployed=false
+          for attempt in $(seq 1 30); do
+            if ssh -p "$RUVDS_PORT" -i ~/.ssh/ruvds -o ConnectTimeout=10 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+              "$RUVDS_USER@$RUVDS_HOST" \
+              "grep -R -q 'last-period-date' /opt/aida/web && grep -R -q 'ДД.ММ.ГГГГ' /opt/aida/web && grep -R -q 'Дата начала последней менструации не может быть в будущем' /opt/aida/web"; then
+              deployed=true
+              break
+            fi
+            sleep 20
+          done
+
+          mkdir -p ops
+          result=ops/medical-date-production-probe-result.txt
+          if [ "$deployed" = true ]; then
+            printf 'medical_date_mask_deployed=true\ndisplay_format=DD.MM.YYYY\nnumeric_mask_marker=true\nfuture_date_validation_marker=true\n' > "$result"
+          else
+            printf 'medical_date_mask_deployed=false\nwait_result=timeout\n' > "$result"
+            cat "$result"
+            exit 1
+          fi
+          cat "$result"
+
+      - name: Persist result
+        if: always()
+        run: |
+          set -euo pipefail
+          result=ops/medical-date-production-probe-result.txt
+          test -f "$result" || printf 'probe_result=workflow_error\n' > "$result"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add "$result"
+          git commit -m 'Record medical date production probe result' || exit 0
+          git push origin HEAD:ops/oauth-runtime-probe-20260823
