@@ -46,9 +46,11 @@ jobs:
           .venv/bin/python - <<'PY'
           import asyncio
           import os
+          import re
           import socket
           import ssl
           import subprocess
+          from pathlib import Path
 
           from dotenv import load_dotenv
 
@@ -56,6 +58,13 @@ jobs:
 
           required = ('YANDEX_CLIENT_ID', 'YANDEX_CLIENT_SECRET', 'VK_CLIENT_ID', 'VK_CLIENT_SECRET')
           print('credentials_present=' + str(all(bool(os.environ.get(name, '').strip()) for name in required)).lower())
+
+          social_source = Path('social_auth.py').read_text(encoding='utf-8') if Path('social_auth.py').exists() else ''
+          main_source = Path('main.py').read_text(encoding='utf-8') if Path('main.py').exists() else ''
+          storage_source = Path('google_storage.py').read_text(encoding='utf-8') if Path('google_storage.py').exists() else ''
+          print('callback_hardening_deployed=' + str('Social OAuth account persistence failed' in social_source and 'Yandex ID is temporarily unavailable' in social_source).lower())
+          print('oauth_storage_startup_check_deployed=' + str('_validate_social_auth_storage' in main_source).lower())
+          print('sheet_metadata_cache_deployed=' + str('self.known_sheets' in storage_source).lower())
 
           try:
               from google_storage import build_storage_from_env
@@ -86,7 +95,7 @@ jobs:
                   print(f'{key}_error_class={type(exc).__name__}')
 
           proc = subprocess.run(
-              ['sudo', '-n', 'journalctl', '-u', 'aida-backend', '--since', '-90 minutes', '--no-pager'],
+              ['sudo', '-n', 'journalctl', '-u', 'aida-backend', '--since', '-120 minutes', '--no-pager'],
               capture_output=True,
               text=True,
               timeout=20,
@@ -95,6 +104,7 @@ jobs:
               print('journal_available=false')
               print('callback_500_seen=unknown')
               print('callback_failure_classes=journal_unavailable')
+              print('google_sheets_http_status_codes=unknown')
           else:
               text = proc.stdout
               print('journal_available=true')
@@ -117,6 +127,12 @@ jobs:
                   if first in text and (second is None or second in text):
                       classes.append(label)
               print('callback_failure_classes=' + (','.join(classes) if classes else 'none_detected'))
+
+              status_codes = sorted(set(re.findall(
+                  r'\b([45]\d{2}) Client Error:[^\n]*for url: https://sheets\.googleapis\.com',
+                  text,
+              )))
+              print('google_sheets_http_status_codes=' + (','.join(status_codes) if status_codes else 'none_detected'))
           PY
           EOF
 
