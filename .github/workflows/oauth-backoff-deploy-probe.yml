@@ -1,0 +1,60 @@
+name: OAuth backoff deploy probe
+
+on:
+  push:
+    branches: [ops/oauth-runtime-probe-20260823]
+    paths:
+      - '.github/workflows/oauth-backoff-deploy-probe.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      RUVDS_HOST: ${{ secrets.RUVDS_HOST }}
+      RUVDS_USER: ${{ secrets.RUVDS_USER }}
+      RUVDS_PORT: ${{ secrets.RUVDS_PORT }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare SSH
+        env:
+          RUVDS_SSH_KEY: ${{ secrets.RUVDS_SSH_KEY }}
+          RUVDS_SSH_KNOWN_HOSTS: ${{ secrets.RUVDS_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$RUVDS_SSH_KEY" > ~/.ssh/ruvds
+          printf '%s\n' "$RUVDS_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/ruvds ~/.ssh/known_hosts
+      - name: Check deployed code marker
+        run: |
+          set -euo pipefail
+          ssh -p "$RUVDS_PORT" -i ~/.ssh/ruvds -o ConnectTimeout=10 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            "$RUVDS_USER@$RUVDS_HOST" <<'EOF' > oauth-backoff-probe-result.txt
+          set -euo pipefail
+          cd /opt/aida/backend
+          .venv/bin/python - <<'PY'
+          from pathlib import Path
+          source = Path('google_storage.py').read_text(encoding='utf-8')
+          ready = (
+              'SHEETS_RETRY_ATTEMPTS = 5' in source
+              and 'response.status_code == 429' in source
+              and 'Retry-After' in source
+          )
+          print('sheets_429_backoff_deployed=' + str(ready).lower())
+          PY
+          EOF
+          mkdir -p ops
+          mv oauth-backoff-probe-result.txt ops/oauth-backoff-probe-result.txt
+          cat ops/oauth-backoff-probe-result.txt
+      - name: Persist result
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add ops/oauth-backoff-probe-result.txt
+          git commit -m 'Record Sheets backoff deploy probe' || exit 0
+          git push origin HEAD:ops/oauth-runtime-probe-20260823
