@@ -68,6 +68,12 @@ export default function OnboardingLifestyleScreen() {
   const [error, setError] = useState<string | null>(null);
 
   const canSave = useMemo(() => !!activeId, [activeId]);
+  const scaleInstruction = ru
+    ? "Потяните бегунок или нажмите на шкалу"
+    : "Drag the slider or tap the scale";
+  const scaleEmptyAccessibilityText = ru
+    ? "Значение не выбрано. Потяните бегунок или нажмите на шкалу"
+    : "No value selected. Drag the slider or tap the scale";
   const numberOrNull = (value: string) => value.trim() ? Number(value.replace(",", ".")) : null;
 
   const toggleSleepIssue = (id: string) => {
@@ -189,7 +195,7 @@ export default function OnboardingLifestyleScreen() {
       <Text style={s.subtitle}>{ru ? "Это помогает Аиде учитывать ваш обычный ритм. Все поля необязательные." : "This helps Aida understand your usual rhythm. Every field is optional."}</Text>
 
       <Section title={ru ? "Сон" : "Sleep"}>
-        <ScaleField label={ru ? "Качество сна" : "Sleep quality"} value={sleepQuality} onChange={setSleepQuality} low={ru ? "Плохо" : "Poor"} high={ru ? "Отлично" : "Great"} />
+        <ScaleField label={ru ? "Качество сна" : "Sleep quality"} value={sleepQuality} onChange={setSleepQuality} low={ru ? "Плохо" : "Poor"} high={ru ? "Отлично" : "Great"} instruction={scaleInstruction} emptyAccessibilityText={scaleEmptyAccessibilityText} />
         <Field label={ru ? "Средняя продолжительность сна, часов" : "Average sleep duration, hours"} value={sleepHours} onChangeText={setSleepHours} keyboardType="decimal-pad" placeholder={ru ? "Напр. 7,5" : "e.g. 7.5"} />
 
         <CheckQuestion
@@ -228,9 +234,9 @@ export default function OnboardingLifestyleScreen() {
       </Section>
 
       <Section title={ru ? "Самочувствие" : "Wellbeing"}>
-        <ScaleField label={ru ? "Стресс / внутреннее спокойствие" : "Stress / calmness"} value={stressWellbeing} onChange={setStressWellbeing} low={ru ? "Очень высокий стресс" : "Very stressed"} high={ru ? "Спокойно" : "Calm"} />
-        <ScaleField label={ru ? "Настроение" : "Mood"} value={mood} onChange={setMood} low={ru ? "Очень плохо" : "Very low"} high={ru ? "Отлично" : "Great"} />
-        <ScaleField label={ru ? "Уровень энергии" : "Energy level"} value={energy} onChange={setEnergy} low={ru ? "Нет сил" : "No energy"} high={ru ? "Много сил" : "High energy"} />
+        <ScaleField label={ru ? "Стресс / внутреннее спокойствие" : "Stress / calmness"} value={stressWellbeing} onChange={setStressWellbeing} low={ru ? "Очень высокий стресс" : "Very stressed"} high={ru ? "Спокойно" : "Calm"} instruction={scaleInstruction} emptyAccessibilityText={scaleEmptyAccessibilityText} />
+        <ScaleField label={ru ? "Настроение" : "Mood"} value={mood} onChange={setMood} low={ru ? "Очень плохо" : "Very low"} high={ru ? "Отлично" : "Great"} instruction={scaleInstruction} emptyAccessibilityText={scaleEmptyAccessibilityText} />
+        <ScaleField label={ru ? "Уровень энергии" : "Energy level"} value={energy} onChange={setEnergy} low={ru ? "Нет сил" : "No energy"} high={ru ? "Много сил" : "High energy"} instruction={scaleInstruction} emptyAccessibilityText={scaleEmptyAccessibilityText} />
       </Section>
 
       <Section title={ru ? "Образ жизни" : "Lifestyle"}>
@@ -259,12 +265,13 @@ function TimeField({ label, value, onChange, placeholder }: { label: string; val
 function CheckQuestion({ label, checked, onPress }: { label: string; checked: boolean; onPress: () => void }) { return <Pressable style={({ pressed }) => [s.checkRow, pressed && s.pressed]} onPress={onPress} accessibilityRole="checkbox" accessibilityState={{ checked }} accessibilityLabel={label}><Ionicons name={checked ? "checkbox" : "square-outline"} size={23} color={colors.onSurface} /><Text style={s.checkText}>{label}</Text></Pressable>; }
 function Choice({ label, active, onPress, accessibilityLabel }: { label: string; active: boolean; onPress: () => void; accessibilityLabel?: string }) { return <Pressable style={({ pressed }) => [s.chip, active && s.chipActive, pressed && s.pressed]} onPress={onPress} accessibilityRole="button" accessibilityLabel={accessibilityLabel || label} accessibilityState={{ selected: active }}><Text style={[s.chipText, active && s.chipTextActive]}>{label}</Text></Pressable>; }
 function ChoiceField({ label, value, onChange, options }: any) { return <View style={{ marginBottom: spacing.lg }}><Text style={s.label}>{label}</Text><View style={s.chips}>{options.map(([id, text]: string[]) => <Choice key={id} label={text} accessibilityLabel={`${label}: ${text}`} active={value === id} onPress={() => onChange(value === id ? "" : id)} />)}</View></View>; }
-function ScaleField({ label, value, onChange, low, high }: { label: string; value: number | null; onChange: (value: number | null) => void; low: string; high: string }) {
+function ScaleField({ label, value, onChange, low, high, instruction, emptyAccessibilityText }: { label: string; value: number | null; onChange: (value: number | null) => void; low: string; high: string; instruction?: string; emptyAccessibilityText?: string }) {
   const [trackWidth, setTrackWidth] = useState(0);
+  const displayValue = value ?? 0;
   const usableWidth = Math.max(0, trackWidth - SCALE_TRACK_INSET * 2);
-  const thumbLeft = value === null || usableWidth <= 0
+  const thumbLeft = usableWidth <= 0
     ? 0
-    : SCALE_TRACK_INSET + (value / 5) * usableWidth - SCALE_THUMB_SIZE / 2;
+    : SCALE_TRACK_INSET + (displayValue / 5) * usableWidth - SCALE_THUMB_SIZE / 2;
 
   const updateFromPosition = (locationX: number) => {
     if (usableWidth <= 0) return;
@@ -284,7 +291,7 @@ function ScaleField({ label, value, onChange, low, high }: { label: string; valu
         onResponderMove={(event) => updateFromPosition(event.nativeEvent.locationX)}
         accessibilityRole="adjustable"
         accessibilityLabel={label}
-        accessibilityValue={value === null ? { min: 0, max: 5, text: "Not selected" } : { min: 0, max: 5, now: value, text: `${value} / 5` }}
+        accessibilityValue={value === null ? { min: 0, max: 5, text: emptyAccessibilityText || "No value selected" } : { min: 0, max: 5, now: value, text: `${value} / 5` }}
         accessibilityActions={[{ name: "increment" }, { name: "decrement" }]}
         onAccessibilityAction={({ nativeEvent }) => {
           const base = value ?? 0;
@@ -299,9 +306,13 @@ function ScaleField({ label, value, onChange, low, high }: { label: string; valu
           style={s.scaleTrack}
           pointerEvents="none"
         />
-        {value !== null && usableWidth > 0 ? (
-          <View pointerEvents="none" style={[s.scaleThumb, { left: thumbLeft }]}>
-            <Text style={s.scaleThumbText}>{value}</Text>
+        {usableWidth > 0 ? (
+          <View pointerEvents="none" style={[s.scaleThumb, value === null && s.scaleThumbIdle, { left: thumbLeft }]}>
+            {value === null ? (
+              <Ionicons name="swap-horizontal" size={16} color={colors.onSurfaceSecondary} />
+            ) : (
+              <Text style={s.scaleThumbText}>{value}</Text>
+            )}
           </View>
         ) : null}
       </View>
@@ -317,10 +328,11 @@ function ScaleField({ label, value, onChange, low, high }: { label: string; valu
         <Text style={s.scaleHint}>{low}</Text>
         <Text style={[s.scaleHint, s.scaleHintRight]}>{high}</Text>
       </View>
+      {instruction ? <Text style={s.scaleInstruction}>{instruction}</Text> : null}
     </View>
   );
 }
 
 const s = StyleSheet.create({
-  page:{flex:1,backgroundColor:colors.surface},content:{width:"100%",maxWidth:720,alignSelf:"center",paddingHorizontal:spacing.xl},progressRow:{gap:8},eyebrow:{fontSize:12,fontWeight:"800",letterSpacing:1.5,color:colors.onSurfaceSecondary},progress:{height:4,borderRadius:2,backgroundColor:colors.surfaceSecondary,overflow:"hidden"},progressFill:{height:4,backgroundColor:colors.onSurface},title:{marginTop:spacing.lg,fontSize:34,lineHeight:40,fontWeight:"800",fontFamily:fonts.display,color:colors.onSurface},subtitle:{marginTop:spacing.sm,fontSize:fontSize.base,lineHeight:22,color:colors.onSurfaceSecondary,fontFamily:fonts.text},section:{marginTop:spacing.xl,backgroundColor:colors.surfaceSecondary,borderRadius:radius.lg,borderWidth:1,borderColor:colors.border,padding:spacing.lg},sectionTitle:{fontSize:fontSize.lg,fontWeight:"800",color:colors.onSurface,marginBottom:spacing.md,fontFamily:fonts.display},label:{fontSize:fontSize.sm,fontWeight:"700",color:colors.onSurfaceSecondary,marginBottom:7,fontFamily:fonts.text},input:{minHeight:50,borderRadius:radius.md,borderWidth:1,borderColor:colors.border,backgroundColor:colors.surface,paddingHorizontal:spacing.md,color:colors.onSurface,fontSize:fontSize.base},two:{flexDirection:"row",gap:spacing.md,flexWrap:"wrap"},half:{flex:1,minWidth:180},rangeBlock:{marginTop:spacing.sm},rangeTitle:{fontSize:fontSize.sm,fontWeight:"800",color:colors.onSurface,marginTop:spacing.sm,marginBottom:spacing.sm,fontFamily:fonts.text},help:{fontSize:fontSize.sm,lineHeight:19,color:colors.onSurfaceSecondary,fontFamily:fonts.text,marginBottom:spacing.sm},checkRow:{minHeight:52,flexDirection:"row",alignItems:"center",gap:10,borderRadius:radius.md,backgroundColor:colors.surface,paddingHorizontal:spacing.md,paddingVertical:10,marginBottom:spacing.md},checkText:{flex:1,color:colors.onSurface,fontWeight:"800",fontFamily:fonts.text},chips:{flexDirection:"row",flexWrap:"wrap",gap:8},chip:{paddingHorizontal:12,paddingVertical:10,borderRadius:radius.pill,backgroundColor:colors.surface,borderWidth:1,borderColor:colors.border,minHeight:44,justifyContent:"center"},chipActive:{backgroundColor:colors.onSurface},chipText:{color:colors.onSurface,fontWeight:"700",fontFamily:fonts.text},chipTextActive:{color:colors.onSurfaceInverse},scaleField:{marginBottom:spacing.lg},scaleControl:{height:46,justifyContent:"center",position:"relative"},scaleTrack:{position:"absolute",left:SCALE_TRACK_INSET,right:SCALE_TRACK_INSET,height:14,borderRadius:radius.pill,borderWidth:1,borderColor:colors.borderStrong},scaleThumb:{position:"absolute",top:5,width:SCALE_THUMB_SIZE,height:SCALE_THUMB_SIZE,borderRadius:SCALE_THUMB_SIZE/2,backgroundColor:colors.surface,alignItems:"center",justifyContent:"center",borderWidth:1,borderColor:colors.borderStrong,shadowColor:"#000",shadowOpacity:.16,shadowRadius:8,shadowOffset:{width:0,height:3},elevation:4},scaleThumbText:{fontWeight:"900",fontSize:fontSize.sm,color:colors.onSurface,fontFamily:fonts.text},scaleTickRow:{flexDirection:"row",justifyContent:"space-between",alignItems:"flex-start",marginTop:4},scaleTickItem:{width:32,alignItems:"center"},scaleTickMark:{width:2,height:8,borderRadius:1,backgroundColor:colors.borderStrong,marginBottom:5},scaleTickMarkActive:{height:10,backgroundColor:colors.onSurface},scaleTickText:{fontWeight:"700",fontSize:12,color:colors.onSurfaceSecondary,fontFamily:fonts.text},scaleTickTextActive:{fontWeight:"900",color:colors.onSurface},scaleLabels:{flexDirection:"row",justifyContent:"space-between",marginTop:7,gap:spacing.sm},scaleHint:{fontSize:12,color:colors.onSurfaceSecondary,flexShrink:1},scaleHintRight:{textAlign:"right"},pressed:{opacity:.82},actions:{flexDirection:"row",flexWrap:"wrap",gap:spacing.md,marginTop:spacing.xl},primary:{flex:1,minWidth:150,minHeight:54,borderRadius:radius.pill,backgroundColor:colors.onSurface,alignItems:"center",justifyContent:"center",paddingHorizontal:spacing.md,paddingVertical:10},primaryText:{color:colors.onSurfaceInverse,fontWeight:"800",textAlign:"center",flexShrink:1},secondary:{minWidth:110,minHeight:54,borderRadius:radius.pill,borderWidth:1,borderColor:colors.border,alignItems:"center",justifyContent:"center",paddingHorizontal:spacing.md},secondaryText:{color:colors.onSurface,fontWeight:"800",textAlign:"center"},skip:{minHeight:50,alignItems:"center",justifyContent:"center"},skipText:{color:colors.onSurfaceSecondary,fontWeight:"700"},error:{color:colors.error,marginTop:spacing.lg}
+  page:{flex:1,backgroundColor:colors.surface},content:{width:"100%",maxWidth:720,alignSelf:"center",paddingHorizontal:spacing.xl},progressRow:{gap:8},eyebrow:{fontSize:12,fontWeight:"800",letterSpacing:1.5,color:colors.onSurfaceSecondary},progress:{height:4,borderRadius:2,backgroundColor:colors.surfaceSecondary,overflow:"hidden"},progressFill:{height:4,backgroundColor:colors.onSurface},title:{marginTop:spacing.lg,fontSize:34,lineHeight:40,fontWeight:"800",fontFamily:fonts.display,color:colors.onSurface},subtitle:{marginTop:spacing.sm,fontSize:fontSize.base,lineHeight:22,color:colors.onSurfaceSecondary,fontFamily:fonts.text},section:{marginTop:spacing.xl,backgroundColor:colors.surfaceSecondary,borderRadius:radius.lg,borderWidth:1,borderColor:colors.border,padding:spacing.lg},sectionTitle:{fontSize:fontSize.lg,fontWeight:"800",color:colors.onSurface,marginBottom:spacing.md,fontFamily:fonts.display},label:{fontSize:fontSize.sm,fontWeight:"700",color:colors.onSurfaceSecondary,marginBottom:7,fontFamily:fonts.text},input:{minHeight:50,borderRadius:radius.md,borderWidth:1,borderColor:colors.border,backgroundColor:colors.surface,paddingHorizontal:spacing.md,color:colors.onSurface,fontSize:fontSize.base},two:{flexDirection:"row",gap:spacing.md,flexWrap:"wrap"},half:{flex:1,minWidth:180},rangeBlock:{marginTop:spacing.sm},rangeTitle:{fontSize:fontSize.sm,fontWeight:"800",color:colors.onSurface,marginTop:spacing.sm,marginBottom:spacing.sm,fontFamily:fonts.text},help:{fontSize:fontSize.sm,lineHeight:19,color:colors.onSurfaceSecondary,fontFamily:fonts.text,marginBottom:spacing.sm},checkRow:{minHeight:52,flexDirection:"row",alignItems:"center",gap:10,borderRadius:radius.md,backgroundColor:colors.surface,paddingHorizontal:spacing.md,paddingVertical:10,marginBottom:spacing.md},checkText:{flex:1,color:colors.onSurface,fontWeight:"800",fontFamily:fonts.text},chips:{flexDirection:"row",flexWrap:"wrap",gap:8},chip:{paddingHorizontal:12,paddingVertical:10,borderRadius:radius.pill,backgroundColor:colors.surface,borderWidth:1,borderColor:colors.border,minHeight:44,justifyContent:"center"},chipActive:{backgroundColor:colors.onSurface},chipText:{color:colors.onSurface,fontWeight:"700",fontFamily:fonts.text},chipTextActive:{color:colors.onSurfaceInverse},scaleField:{marginBottom:spacing.lg},scaleControl:{height:46,justifyContent:"center",position:"relative"},scaleTrack:{position:"absolute",left:SCALE_TRACK_INSET,right:SCALE_TRACK_INSET,height:14,borderRadius:radius.pill,borderWidth:1,borderColor:colors.borderStrong},scaleThumb:{position:"absolute",top:5,width:SCALE_THUMB_SIZE,height:SCALE_THUMB_SIZE,borderRadius:SCALE_THUMB_SIZE/2,backgroundColor:colors.surface,alignItems:"center",justifyContent:"center",borderWidth:1,borderColor:colors.borderStrong,shadowColor:"#000",shadowOpacity:.16,shadowRadius:8,shadowOffset:{width:0,height:3},elevation:4},scaleThumbIdle:{borderColor:colors.onSurfaceSecondary,backgroundColor:colors.surface},scaleThumbText:{fontWeight:"900",fontSize:fontSize.sm,color:colors.onSurface,fontFamily:fonts.text},scaleTickRow:{flexDirection:"row",justifyContent:"space-between",alignItems:"flex-start",marginTop:4},scaleTickItem:{width:32,alignItems:"center"},scaleTickMark:{width:2,height:8,borderRadius:1,backgroundColor:colors.borderStrong,marginBottom:5},scaleTickMarkActive:{height:10,backgroundColor:colors.onSurface},scaleTickText:{fontWeight:"700",fontSize:12,color:colors.onSurfaceSecondary,fontFamily:fonts.text},scaleTickTextActive:{fontWeight:"900",color:colors.onSurface},scaleLabels:{flexDirection:"row",justifyContent:"space-between",marginTop:7,gap:spacing.sm},scaleHint:{fontSize:12,color:colors.onSurfaceSecondary,flexShrink:1},scaleHintRight:{textAlign:"right"},scaleInstruction:{marginTop:6,fontSize:12,color:colors.onSurfaceSecondary,fontFamily:fonts.text},pressed:{opacity:.82},actions:{flexDirection:"row",flexWrap:"wrap",gap:spacing.md,marginTop:spacing.xl},primary:{flex:1,minWidth:150,minHeight:54,borderRadius:radius.pill,backgroundColor:colors.onSurface,alignItems:"center",justifyContent:"center",paddingHorizontal:spacing.md,paddingVertical:10},primaryText:{color:colors.onSurfaceInverse,fontWeight:"800",textAlign:"center",flexShrink:1},secondary:{minWidth:110,minHeight:54,borderRadius:radius.pill,borderWidth:1,borderColor:colors.border,alignItems:"center",justifyContent:"center",paddingHorizontal:spacing.md},secondaryText:{color:colors.onSurface,fontWeight:"800",textAlign:"center"},skip:{minHeight:50,alignItems:"center",justifyContent:"center"},skipText:{color:colors.onSurfaceSecondary,fontWeight:"700"},error:{color:colors.error,marginTop:spacing.lg}
 });
