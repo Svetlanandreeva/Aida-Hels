@@ -112,7 +112,8 @@ def effective_module_map(profile: Dict[str, Any] | None) -> Dict[str, Dict[str, 
     legacy = profile.get("module_settings") if isinstance(profile.get("module_settings"), dict) else {}
     legacy_source = str(profile.get("module_settings_source") or "")
     goals = {str(goal) for goal in (profile.get("goals") or []) if goal}
-    goal_projection = module_settings_for_goals(goals) if goals else {}
+    goal_derived = bool(goals) or legacy_source == "goals"
+    goal_projection = module_settings_for_goals(goals) if goal_derived else {}
     result: Dict[str, Dict[str, Any]] = {}
 
     for definition in MODULE_REGISTRY:
@@ -131,7 +132,7 @@ def effective_module_map(profile: Dict[str, Any] | None) -> Dict[str, Dict[str, 
                 source = "goals"
             else:
                 source = "migration"
-        elif goals:
+        elif goal_derived:
             config["enabled"] = bool(goal_projection.get(code, False))
             source = "goals"
 
