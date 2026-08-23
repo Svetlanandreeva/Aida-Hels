@@ -36,6 +36,25 @@ function numberOrUndefined(value: string) {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
 }
 
+function twoDigits(value: number) {
+  return String(value).padStart(2, "0");
+}
+
+function deviceLocalStamp(now = new Date()) {
+  return {
+    eaten_at: now.toISOString(),
+    local_date: `${now.getFullYear()}-${twoDigits(now.getMonth() + 1)}-${twoDigits(now.getDate())}`,
+    local_time: `${twoDigits(now.getHours())}:${twoDigits(now.getMinutes())}`,
+    timezone_offset_min: -now.getTimezoneOffset(),
+  };
+}
+
+function mealLabel(value: string, lang: string) {
+  const row = MEALS.find(([key]) => key === value);
+  if (!row) return value;
+  return lang === "ru" ? row[1] : row[2];
+}
+
 function nutrientText(entry: NutritionEntry, lang: string) {
   const n = entry.nutrients || {};
   const parts = [
@@ -44,6 +63,21 @@ function nutrientText(entry: NutritionEntry, lang: string) {
     n.fiber_g != null ? `${lang === "ru" ? "клетч." : "fiber"} ${n.fiber_g.toFixed(1)} г` : null,
   ].filter(Boolean);
   return parts.join(" · ");
+}
+
+function entryTimeLabel(entry: NutritionEntry, lang: string) {
+  if (entry.local_date && entry.local_time) {
+    const [year, month, day] = entry.local_date.split("-");
+    return lang === "ru"
+      ? `${day}.${month}.${year} ${entry.local_time}`
+      : `${month}/${day}/${year} ${entry.local_time}`;
+  }
+  return new Date(entry.eaten_at).toLocaleString(lang === "ru" ? "ru-RU" : "en-US", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 export default function NutritionScreen() {
@@ -93,7 +127,7 @@ export default function NutritionScreen() {
         setEntries([]);
         setSummary(null);
       }
-    } catch (e) {
+    } catch {
       setError(lang === "ru" ? "Не удалось обновить дневник питания." : "Could not refresh nutrition diary.");
     } finally {
       setLoading(false);
@@ -123,9 +157,9 @@ export default function NutritionScreen() {
   const todayStats = useMemo(() => {
     if (!latestDay) return [];
     return [
-      [lang === "ru" ? "Энергия" : "Energy", latestDay.calories ? `${Math.round(latestDay.calories)} ${lang === "ru" ? "ккал" : "kcal"}` : "—"],
-      [lang === "ru" ? "Белок" : "Protein", latestDay.protein_g ? `${Number(latestDay.protein_g).toFixed(1)} г` : "—"],
-      [lang === "ru" ? "Клетчатка" : "Fiber", latestDay.fiber_g ? `${Number(latestDay.fiber_g).toFixed(1)} г` : "—"],
+      [lang === "ru" ? "Энергия" : "Energy", latestDay.calories != null ? `${Math.round(Number(latestDay.calories))} ${lang === "ru" ? "ккал" : "kcal"}` : "—"],
+      [lang === "ru" ? "Белок" : "Protein", latestDay.protein_g != null ? `${Number(latestDay.protein_g).toFixed(1)} г` : "—"],
+      [lang === "ru" ? "Клетчатка" : "Fiber", latestDay.fiber_g != null ? `${Number(latestDay.fiber_g).toFixed(1)} г` : "—"],
     ];
   }, [latestDay, lang]);
 
@@ -137,7 +171,12 @@ export default function NutritionScreen() {
     setSelected(null);
     setLabel("");
     setQuantity("1");
-    setCalories(""); setProtein(""); setCarbs(""); setFat(""); setFiber(""); setSugar("");
+    setCalories("");
+    setProtein("");
+    setCarbs("");
+    setFat("");
+    setFiber("");
+    setSugar("");
     setError("");
     setSheetOpen(true);
   };
@@ -174,11 +213,12 @@ export default function NutritionScreen() {
     setSavingEntry(true);
     setError("");
     try {
+      const local = deviceLocalStamp();
       await nutritionApi.createEntry({
         profile_id: activeId,
         label: finalLabel,
         meal_type: meal,
-        eaten_at: new Date().toISOString(),
+        ...local,
         source,
         quantity: Math.max(0.01, numberOrUndefined(quantity) || 1),
         external_food_id: source === "fatsecret" ? selected?.food_id : undefined,
@@ -300,7 +340,7 @@ export default function NutritionScreen() {
                   <View style={styles.mealIcon}><Ionicons name="restaurant" size={17} color={colors.onSurface} /></View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.entryTitle}>{entry.label}</Text>
-                    <Text style={styles.entryMeta}>{new Date(entry.eaten_at).toLocaleString(lang === "ru" ? "ru-RU" : "en-US", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })} · {MEALS.find(([key]) => key === entry.meal_type)?.[lang === "ru" ? 1 : 2] || entry.meal_type}</Text>
+                    <Text style={styles.entryMeta}>{entryTimeLabel(entry, lang)} · {mealLabel(entry.meal_type, lang)}</Text>
                     {nutrientText(entry, lang) ? <Text style={styles.entryNutrients}>{nutrientText(entry, lang)}</Text> : <Muted style={{ marginTop: 4 }}>{lang === "ru" ? "Нутриенты пока недоступны" : "Nutrients unavailable"}</Muted>}
                   </View>
                   <Pressable onPress={() => void removeEntry(entry.id)} hitSlop={10}><Ionicons name="trash-outline" size={18} color={colors.onSurfaceSecondary} /></Pressable>
