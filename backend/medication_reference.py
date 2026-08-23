@@ -147,6 +147,8 @@ def _finalize_candidate(item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 def _merge_candidates(items: Iterable[Dict[str, Any]]) -> list[Dict[str, Any]]:
     merged: dict[tuple[str, str], Dict[str, Any]] = {}
     for raw in items:
+        if not raw:
+            continue
         item = _finalize_candidate(raw)
         if not item:
             continue
@@ -227,8 +229,6 @@ class MedicationReferenceService:
 
     @property
     def configured(self) -> bool:
-        # Kept for compatibility with callers/tests from the paid-provider version.
-        # The free catalogue needs no provider credentials.
         return True
 
     async def _load_cache(self, *, force: bool = False) -> None:
@@ -244,7 +244,6 @@ class MedicationReferenceService:
             try:
                 rows = await self.db.medication_catalog.find({}).to_list(_MAX_CACHE_ROWS)
             except Exception:
-                # Existing RAM entries remain usable if Google is briefly unavailable.
                 self._cache_loaded_at = now
                 return
             loaded: dict[str, Dict[str, Any]] = {}
@@ -280,7 +279,6 @@ class MedicationReferenceService:
                     upsert=True,
                 )
             except Exception:
-                # Lookup still works from RAM; persistence can recover on a later hit.
                 continue
 
     async def _lookup_pubchem(self, client: httpx.AsyncClient, query: str) -> tuple[list[Dict[str, Any]], bool]:
@@ -572,7 +570,6 @@ class MedicationReferenceService:
         }
 
     async def resolve_reference(self, reference_source: str, reference_id: str) -> Optional[Dict[str, Any]]:
-        """Resolve a selected Aida catalogue id from trusted server-side storage."""
         if reference_source != _PROVIDER:
             return None
         reference_id = str(reference_id or "").strip()
@@ -594,7 +591,6 @@ class MedicationReferenceService:
         return item
 
     async def resolve_exact_trade_name(self, name: str) -> Optional[Dict[str, Any]]:
-        """Resolve an exact cached/internet match without guessing a fuzzy drug."""
         name = " ".join(str(name or "").strip().split())
         if len(name) < _MIN_QUERY_LENGTH:
             return None
@@ -614,6 +610,13 @@ _services: dict[int, MedicationReferenceService] = {}
 
 
 def medication_reference_service(db: Any = None) -> MedicationReferenceService:
+    if db is None:
+        # main.py constructs the medication router with the real GoogleSheetsDB.
+        # Reference routes are declared earlier, so resolve their service lazily
+        # at request time and reuse that already-created Sheets-backed instance.
+        for key, service in reversed(list(_services.items())):
+            if key != 0:
+                return service
     key = id(db) if db is not None else 0
     service = _services.get(key)
     if service is None:
@@ -624,13 +627,12 @@ def medication_reference_service(db: Any = None) -> MedicationReferenceService:
 
 def build_medication_reference_router(db: Any = None) -> APIRouter:
     router = APIRouter(prefix="/api/reference/medications", tags=["reference"])
-    service = medication_reference_service(db)
 
     @router.get("/search")
     async def search_medications(
         q: str = Query(..., min_length=_MIN_QUERY_LENGTH, max_length=120),
         limit: int = Query(12, ge=1, le=20),
     ) -> Dict[str, Any]:
-        return await service.search(q, limit)
+        return await medication_reference_service(db).search(q, limit)
 
     return router
