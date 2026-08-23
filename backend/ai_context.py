@@ -11,6 +11,8 @@ import json
 from datetime import date, datetime, timezone
 from typing import Any, Dict, Iterable
 
+from nutrition_api import build_nutrition_context
+
 
 def _iso_now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -94,6 +96,15 @@ async def build_ai_context(db, profile_id: str, *, as_json: bool = True) -> str 
     labs = await db.labs.find({"profile_id": profile_id}, {"_id": 0}).sort("date", -1).to_list(12) if _module_enabled(modules, "labs") else []
     vitals = await db.vitals.find({"profile_id": profile_id}, {"_id": 0}).sort("observed_at", -1).to_list(80) if _module_enabled(modules, "pressure") else []
     checkins = await db.checkins.find({"profile_id": profile_id}, {"_id": 0}).sort("date", -1).to_list(14) if _module_enabled(modules, "mental") else []
+    # Nutrition is new and therefore opt-in. Unlike legacy modules, a missing
+    # setting must not silently expose a user's food diary to AI context.
+    nutrition = await build_nutrition_context(db, profile_id) if modules.get("nutrition") is True else {
+        "enabled": False,
+        "entries": [],
+        "daily": [],
+        "insights": [],
+        "food_medication_flags": [],
+    }
 
     context: Dict[str, Any] = {
         "schema_version": "aida-context-v1",
@@ -148,6 +159,7 @@ async def build_ai_context(db, profile_id: str, *, as_json: bool = True) -> str 
             for row in vitals
         ],
         "recent_checkins": [_compact("checkin", row, ("mood", "energy", "stress", "anxiety", "sleep", "triggers", "note", "date")) for row in checkins],
+        "nutrition": nutrition,
         "rules": {
             "missing_data_is_not_zero": True,
             "do_not_infer_medical_facts_without_evidence": True,
@@ -158,6 +170,11 @@ async def build_ai_context(db, profile_id: str, *, as_json: bool = True) -> str 
             "medication_interactions_require_normalized_active_substances": True,
             "probable_medication_normalization_requires_uncertainty_warning": True,
             "manual_unverified_medication_names_are_not_active_substance_evidence": True,
+            "nutrition_module_is_explicit_opt_in": True,
+            "nutrition_patterns_are_associations_not_causation": True,
+            "food_medication_advice_requires_evidence_url": True,
+            "never_recommend_stopping_or_changing_medication_dose_from_nutrition_data": True,
+            "warfarin_vitamin_k_advice_prefers_consistency_not_blanket_avoidance": True,
         },
     }
     return json.dumps(context, ensure_ascii=False, default=str) if as_json else context
