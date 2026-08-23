@@ -6,6 +6,8 @@ ROOT = Path(__file__).resolve().parents[2]
 def test_successful_profile_update_refreshes_navigation_cache():
     source = (ROOT / "frontend" / "src" / "api.ts").read_text(encoding="utf-8")
     assert 'PROFILE_CACHE_KEY = "aida.profileCache.v1"' in source
+    assert "setProfileCacheAccountId" in source
+    assert '`${PROFILE_CACHE_KEY}.${PROFILE_CACHE_ACCOUNT_ID}`' in source
     assert "async function cacheUpdatedProfile(profile: Profile)" in source
     assert "await cacheUpdatedProfile(updated);" in source
 
