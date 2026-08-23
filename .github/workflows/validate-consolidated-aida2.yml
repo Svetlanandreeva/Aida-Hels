@@ -1,11 +1,10 @@
 name: Validate consolidated Aida2
 
-# Temporary branch-only trigger used to validate the ModuleConfig v2 CI fix.
-# Restore workflow_dispatch-only before merging.
+# GitHub-hosted minutes are currently unavailable for this private repository.
+# Keep this workflow available for an explicit manual run, but do not create
+# automatic red PR checks that never reach a runner. Production main is still
+# validated by deploy-ruvds.yml on the trusted self-hosted aida-prod runner.
 on:
-  push:
-    branches:
-      - fix/module-config-v2-ci
   workflow_dispatch: {}
 
 permissions:
