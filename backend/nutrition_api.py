@@ -9,9 +9,10 @@ are Aida user data and may be stored normally.
 from __future__ import annotations
 
 import os
+import re
 import statistics
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -25,6 +26,8 @@ _ALLOWED_MEALS = {"breakfast", "lunch", "dinner", "snack", "other"}
 _ALLOWED_SOURCES = {"manual", "fatsecret"}
 _PROVIDER_CACHE_HOURS = 20  # below FatSecret's 24-hour maximum cache window
 _TOKEN_SKEW_SECONDS = 120
+_TIME_RE = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 _TOKEN_CACHE: Dict[str, Any] = {"token": None, "expires_at": None}
 
@@ -181,14 +184,15 @@ async def _fatsecret_snapshot(food_id: str, serving_id: Optional[str] = None) ->
         "potassium_mg": _as_float(selected.get("potassium")),
     }
     nutrients = {key: value for key, value in nutrients.items() if value is not None}
+    fetched_at = _now()
     return {
         "food_name": str(food.get("food_name") or "").strip(),
         "brand_name": str(food.get("brand_name") or "").strip() or None,
         "serving_id": str(selected.get("serving_id") or "").strip() or None,
         "serving_description": str(selected.get("serving_description") or "").strip() or None,
         "nutrients": nutrients,
-        "fetched_at": _now(),
-        "expires_at": _now() + timedelta(hours=_PROVIDER_CACHE_HOURS),
+        "fetched_at": fetched_at,
+        "expires_at": fetched_at + timedelta(hours=_PROVIDER_CACHE_HOURS),
     }
 
 
@@ -256,11 +260,26 @@ def _public_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
-def _minutes_of_day(value: Any) -> Optional[int]:
-    dt = _parse_dt(value)
+def _minutes_of_day(entry: Dict[str, Any]) -> Optional[int]:
+    local_time = str(entry.get("local_time") or "").strip()
+    if _TIME_RE.match(local_time):
+        hour, minute = local_time.split(":", 1)
+        return int(hour) * 60 + int(minute)
+    dt = _parse_dt(entry.get("eaten_at"))
     if not dt:
         return None
     return dt.hour * 60 + dt.minute
+
+
+def _entry_local_date(entry: Dict[str, Any]) -> Optional[str]:
+    local_date = str(entry.get("local_date") or "").strip()
+    if _DATE_RE.match(local_date):
+        try:
+            return date.fromisoformat(local_date).isoformat()
+        except ValueError:
+            pass
+    dt = _parse_dt(entry.get("eaten_at"))
+    return dt.date().isoformat() if dt else None
 
 
 def _med_time_minutes(value: str) -> Optional[int]:
@@ -344,7 +363,7 @@ def _food_medication_flags(entries: List[Dict[str, Any]], medications: List[Dict
                         })
 
             if "levothyroxine" in ingredient or "левотироксин" in ingredient:
-                meal_minute = _minutes_of_day(entry.get("eaten_at"))
+                meal_minute = _minutes_of_day(entry)
                 if meal_minute is not None:
                     close = any(0 <= meal_minute - med_minute < 60 for med_minute in med_times)
                     if close:
@@ -368,10 +387,9 @@ def _daily_totals(entries: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     days: Dict[str, Dict[str, Any]] = {}
     nutrient_keys = ("calories", "protein_g", "carbs_g", "fat_g", "fiber_g", "sugar_g", "saturated_fat_g", "sodium_mg", "potassium_mg")
     for entry in entries:
-        dt = _parse_dt(entry.get("eaten_at"))
-        if not dt:
+        day = _entry_local_date(entry)
+        if not day:
             continue
-        day = dt.date().isoformat()
         bucket = days.setdefault(day, {"date": day, "entries": 0, "entries_with_nutrients": 0, **{key: 0.0 for key in nutrient_keys}})
         bucket["entries"] += 1
         nutrients = entry.get("nutrients") or _entry_nutrients(entry)
@@ -414,9 +432,10 @@ def _pattern_insights(entries: List[Dict[str, Any]], daily: List[Dict[str, Any]]
     # a pattern detector, not a claim of causality.
     by_day: Dict[str, List[int]] = {}
     for entry in entries:
-        dt = _parse_dt(entry.get("eaten_at"))
-        if dt:
-            by_day.setdefault(dt.date().isoformat(), []).append(dt.hour * 60 + dt.minute)
+        local_day = _entry_local_date(entry)
+        minute = _minutes_of_day(entry)
+        if local_day and minute is not None:
+            by_day.setdefault(local_day, []).append(minute)
     long_gap_days = 0
     for minutes in by_day.values():
         points = sorted(value for value in minutes if 6 * 60 <= value <= 23 * 60)
@@ -467,6 +486,9 @@ async def build_nutrition_context(db, profile_id: str, *, limit: int = 80) -> Di
                 "label": row.get("label"),
                 "meal_type": row.get("meal_type"),
                 "eaten_at": row.get("eaten_at"),
+                "local_date": row.get("local_date"),
+                "local_time": row.get("local_time"),
+                "timezone_offset_min": row.get("timezone_offset_min"),
                 "source": row.get("source"),
                 "nutrients": row.get("nutrients") or {},
                 "external_food_id": row.get("external_food_id"),
@@ -485,6 +507,9 @@ class NutritionEntryCreate(BaseModel):
     label: str
     meal_type: str = "other"
     eaten_at: datetime = Field(default_factory=_now)
+    local_date: Optional[str] = None
+    local_time: Optional[str] = None
+    timezone_offset_min: Optional[int] = None
     source: str = "manual"
     quantity: float = 1.0
     external_food_id: Optional[str] = None
@@ -499,6 +524,27 @@ class NutritionEntryCreate(BaseModel):
     sodium_mg: Optional[float] = None
     potassium_mg: Optional[float] = None
     note: Optional[str] = None
+
+
+def _validated_local_date(value: Optional[str], fallback: datetime) -> str:
+    text = str(value or "").strip()
+    if text:
+        if not _DATE_RE.match(text):
+            raise HTTPException(400, "local_date must be YYYY-MM-DD")
+        try:
+            return date.fromisoformat(text).isoformat()
+        except ValueError as exc:
+            raise HTTPException(400, "local_date is invalid") from exc
+    return fallback.date().isoformat()
+
+
+def _validated_local_time(value: Optional[str], fallback: datetime) -> str:
+    text = str(value or "").strip()
+    if text:
+        if not _TIME_RE.match(text):
+            raise HTTPException(400, "local_time must be HH:MM")
+        return text
+    return f"{fallback.hour:02d}:{fallback.minute:02d}"
 
 
 def build_nutrition_router(db, auth) -> APIRouter:
@@ -553,6 +599,7 @@ def build_nutrition_router(db, auth) -> APIRouter:
             raise HTTPException(400, "Invalid meal type")
         if data.quantity <= 0 or data.quantity > 100:
             raise HTTPException(400, "Quantity must be between 0 and 100")
+        offset = None if data.timezone_offset_min is None else max(-840, min(840, int(data.timezone_offset_min)))
 
         payload: Dict[str, Any] = {
             "id": str(uuid.uuid4()),
@@ -560,6 +607,9 @@ def build_nutrition_router(db, auth) -> APIRouter:
             "label": label,  # user-confirmed diary label, not provider cache
             "meal_type": meal,
             "eaten_at": data.eaten_at,
+            "local_date": _validated_local_date(data.local_date, data.eaten_at),
+            "local_time": _validated_local_time(data.local_time, data.eaten_at),
+            "timezone_offset_min": offset,
             "source": source,
             "quantity": float(data.quantity),
             "note": (data.note or "").strip() or None,
@@ -567,7 +617,7 @@ def build_nutrition_router(db, auth) -> APIRouter:
             "external_serving_id": str(data.external_serving_id or "").strip() or None,
             "created_at": _now(),
             "updated_at": _now(),
-            "verification_status": "provider" if source == "fatsecret" else "user_entered",
+            "verification_status": "verified" if source == "fatsecret" else "unverified",
         }
         if source == "fatsecret":
             if not payload["external_food_id"]:
