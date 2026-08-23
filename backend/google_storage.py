@@ -30,6 +30,7 @@ SHEET_NAMES = {
     "symptoms": "symptoms",
     "medications": "medications",
     "medication_events": "medication_events",
+    "nutrition_entries": "nutrition_entries",
     "vitals": "vitals",
     "checkins": "checkins",
     "tasks": "tasks",
@@ -147,7 +148,7 @@ class SheetsHTTP:
                 self._base(suffix),
                 headers=self.headers(),
                 timeout=timeout,
-                **kwargs,
+                **kwargs: Any,
             )
             retryable = response.status_code == 429 or (
                 retry_server_errors and response.status_code in SHEETS_RETRYABLE_READ_STATUSES
