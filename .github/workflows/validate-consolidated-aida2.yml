@@ -1,10 +1,11 @@
 name: Validate consolidated Aida2
 
-# GitHub-hosted minutes are currently unavailable for this private repository.
-# Keep this workflow available for an explicit manual run, but do not create
-# automatic red PR checks that never reach a runner. Production main is still
-# validated by deploy-ruvds.yml on the trusted self-hosted aida-prod runner.
+# Temporary branch-only trigger used to validate PR #170 before merge.
+# Remove the push trigger after the branch validation completes.
 on:
+  push:
+    branches:
+      - feature/module-config-v2
   workflow_dispatch: {}
 
 permissions:
