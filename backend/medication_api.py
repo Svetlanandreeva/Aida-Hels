@@ -393,7 +393,7 @@ def build_medication_router(db, auth) -> APIRouter:
         scheduled_at = data.scheduled_at.strip()
         if not scheduled_at:
             raise HTTPException(400, "scheduled_at is required")
-        existing = await db.medication_events.find_one({"medication_id": medication_id, "scheduled_at": scheduled_at}, {"_id": 0)
+        existing = await db.medication_events.find_one({"medication_id": medication_id, "scheduled_at": scheduled_at}, {"_id": 0})
         occurred_at = _now()
         if existing:
             patch = {"status": status, "occurred_at": occurred_at, "updated_at": occurred_at}
