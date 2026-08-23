@@ -1,33 +1,27 @@
 import React, { useState } from "react";
-import {
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Linking,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { ActivityIndicator, Linking, Platform, Pressable, StyleSheet, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { StatusBar } from "expo-status-bar";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
+import Animated, { FadeIn } from "react-native-reanimated";
 
 import { withTimeout } from "@/src/async";
 import { SocialProvider, useAuth } from "@/src/auth";
-import { useI18n } from "@/src/i18n";
-import { colors, fontSize, fonts, radius, spacing } from "@/src/theme";
+import { useApp } from "@/src/emergent/AppContext";
+import { CONTENT_MAX, FORM_MAX, font, fontSize, radius, spacing } from "@/src/emergent/tokens";
+import { LangToggle, ThemeToggle, Txt } from "@/src/emergent/ui";
 
 type FieldErrors = Partial<Record<"email" | "password" | "confirm" | "consent", string>>;
 
 export default function RegisterScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { lang } = useI18n();
-  const { register, startSocialLogin } = useAuth();
+  const { colors, theme, lang, t } = useApp();
+  const { register, resendVerification, startSocialLogin } = useAuth();
   const ru = lang === "ru";
+  const a = t.auth;
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -38,10 +32,13 @@ export default function RegisterScreen() {
   const [socialBusy, setSocialBusy] = useState<SocialProvider | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [verificationEmail, setVerificationEmail] = useState<string | null>(null);
+  const [resendMessage, setResendMessage] = useState<string | null>(null);
 
   const cleanEmail = email.trim().toLowerCase();
   const passwordReady = password.length >= 8;
   const passwordsMatch = password.length > 0 && password === confirm;
+  const unavailable = busy || socialBusy !== null;
 
   const validate = () => {
     const next: FieldErrors = {};
@@ -59,10 +56,29 @@ export default function RegisterScreen() {
     if (!validate()) return;
     setBusy(true);
     try {
-      await withTimeout(register("Мой профиль", cleanEmail, password, null), 8000, "register");
+      const result = await withTimeout(register("Мой профиль", cleanEmail, password, null), 8000, "register");
+      if (result.verification_required) {
+        setVerificationEmail(result.email);
+        return;
+      }
       router.replace("/onboarding" as any);
-    } catch (e: any) {
-      setError(friendlyError(String(e?.message || ""), ru));
+    } catch (cause: any) {
+      setError(friendlyError(String(cause?.message || ""), ru));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const resend = async () => {
+    if (!verificationEmail) return;
+    setBusy(true);
+    setError(null);
+    setResendMessage(null);
+    try {
+      await withTimeout(resendVerification(verificationEmail), 8000, "resend_verification");
+      setResendMessage(ru ? "Новое письмо отправлено." : "A new email has been sent.");
+    } catch (cause: any) {
+      setError(friendlyError(String(cause?.message || ""), ru));
     } finally {
       setBusy(false);
     }
@@ -72,273 +88,144 @@ export default function RegisterScreen() {
     setError(null);
     setSocialBusy(provider);
     try {
-      const returnUri = Platform.OS === "web" && typeof window !== "undefined"
-        ? `${window.location.origin}/auth`
-        : "https://aidaassistent.ru/auth";
+      const returnUri = Platform.OS === "web" && typeof window !== "undefined" ? `${window.location.origin}/auth` : "https://aidaassistent.ru/auth";
       const authorizationUrl = await withTimeout(startSocialLogin(provider, returnUri), 6500, `register_${provider}`);
       if (Platform.OS === "web" && typeof window !== "undefined") window.location.assign(authorizationUrl);
       else await Linking.openURL(authorizationUrl);
-    } catch (e: any) {
-      const slow = String(e?.message || "").includes("timeout");
-      setError(
-        slow
-          ? (ru ? "Сервис регистрации отвечает слишком долго. Попробуйте ещё раз." : "The registration provider is taking too long. Try again.")
-          : (ru ? "Не удалось начать регистрацию через внешний аккаунт." : "Could not start social registration.")
-      );
+    } catch (cause: any) {
+      const slow = String(cause?.message || "").includes("timeout");
+      setError(slow ? (ru ? "Сервис регистрации отвечает слишком долго. Попробуйте ещё раз." : "The registration provider is taking too long. Try again.") : (ru ? "Не удалось начать регистрацию через внешний аккаунт." : "Could not start social registration."));
       setSocialBusy(null);
     }
   };
 
+  if (verificationEmail) {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.surface }}>
+        <StatusBar style={theme === "dark" ? "light" : "dark"} />
+        <Header top={insets.top} onBack={() => setVerificationEmail(null)} />
+        <KeyboardAwareScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+          <Animated.View entering={FadeIn.duration(250)} style={styles.formWrap}>
+            <Brand />
+            <View style={[styles.successIcon, { backgroundColor: colors.brandSecondary }]}><Ionicons name="mail-outline" size={30} color={colors.brand} /></View>
+            <Txt variant="h1" style={{ marginTop: spacing.xl }}>{ru ? "Подтвердите email" : "Verify your email"}</Txt>
+            <Txt variant="body" color={colors.muted} style={{ marginTop: spacing.sm }}>
+              {ru ? `Мы отправили письмо на ${verificationEmail}. Перейдите по ссылке в письме, а затем войдите.` : `We sent an email to ${verificationEmail}. Follow the link, then sign in.`}
+            </Txt>
+            {error ? <Notice kind="error" text={error} /> : null}
+            {resendMessage ? <Notice kind="success" text={resendMessage} /> : null}
+            <Pressable testID="register-go-login" onPress={() => router.replace("/auth")} style={[styles.primary, { backgroundColor: colors.brandPrimary }]} accessibilityRole="button">
+              <Txt variant="body" weight="bold" color={colors.onBrandPrimary}>{ru ? "Перейти ко входу" : "Go to sign in"}</Txt>
+              <Ionicons name="arrow-forward" size={18} color={colors.onBrandPrimary} />
+            </Pressable>
+            <Pressable testID="register-resend" onPress={resend} disabled={busy} style={[styles.secondary, { borderColor: colors.border }, busy && styles.disabled]} accessibilityRole="button">
+              {busy ? <ActivityIndicator color={colors.onSurface} /> : <Txt variant="body" weight="bold">{ru ? "Отправить письмо повторно" : "Resend email"}</Txt>}
+            </Pressable>
+          </Animated.View>
+        </KeyboardAwareScrollView>
+      </View>
+    );
+  }
+
   const emailLabel = ru ? "Электронная почта" : "Email";
-  const passwordLabel = ru ? "Пароль" : "Password";
   const confirmLabel = ru ? "Повтор пароля" : "Repeat password";
-  const submitLabel = ru ? "Продолжить" : "Continue";
   const consentLabel = ru ? "Я принимаю пользовательское соглашение и политику конфиденциальности" : "I accept the Terms of Use and Privacy Policy";
 
   return (
-    <KeyboardAvoidingView style={styles.page} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-      <ScrollView
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
-        contentContainerStyle={[styles.content, { paddingTop: insets.top + 22, paddingBottom: insets.bottom + 26 }]}
-      >
-        <View style={styles.header}>
-          <View style={styles.brandIcon} accessible={false}>
-            <Ionicons name="sparkles" size={20} color={colors.onSurfaceInverse} />
+    <View style={{ flex: 1, backgroundColor: colors.surface }}>
+      <StatusBar style={theme === "dark" ? "light" : "dark"} />
+      <Header top={insets.top} onBack={() => router.back()} />
+      <KeyboardAwareScrollView bottomOffset={24} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+        <View style={styles.formWrap}>
+          <Brand />
+          <View style={[styles.segment, { backgroundColor: colors.surfaceTertiary }]}>
+            <Pressable testID="register-tab-login" onPress={() => router.replace("/auth")} style={styles.segmentBtn}><Txt variant="label" weight="bold" color={colors.muted}>{a.loginTab}</Txt></Pressable>
+            <Pressable testID="register-tab-register" style={[styles.segmentBtn, { backgroundColor: colors.surfaceSecondary }]}><Txt variant="label" weight="bold">{a.registerTab}</Txt></Pressable>
           </View>
-          <Text style={styles.eyebrow}>AIDA · 1/2</Text>
-          <Text style={styles.title}>{ru ? "Создать аккаунт" : "Create account"}</Text>
-          <Text style={styles.subtitle}>
-            {ru
-              ? "Выберите способ регистрации. Личные данные подтвердим следующим шагом."
-              : "Choose how to register. You will confirm your profile details on the next step."}
-          </Text>
-        </View>
 
-        <View style={styles.form}>
-          <View style={styles.authCard}>
-            <Text style={styles.sectionTitle}>{ru ? "Быстрый вход" : "Quick sign up"}</Text>
-            <View style={styles.socialRow}>
-              <View style={styles.socialCell}>
-                <SocialButton
-                  provider="yandex"
-                  label={ru ? "Яндекс ID" : "Yandex ID"}
-                  busy={socialBusy === "yandex"}
-                  disabled={busy || (socialBusy !== null && socialBusy !== "yandex")}
-                  onPress={() => socialRegister("yandex")}
-                />
-              </View>
-              <View style={styles.socialCell}>
-                <SocialButton
-                  provider="vk"
-                  label="VK ID"
-                  busy={socialBusy === "vk"}
-                  disabled={busy || (socialBusy !== null && socialBusy !== "vk")}
-                  onPress={() => socialRegister("vk")}
-                />
-              </View>
-            </View>
+          <Animated.View entering={FadeIn.duration(250)}>
+            <Txt variant="h1" style={{ marginTop: spacing.xl }}>{a.registerTitle}</Txt>
+            <Txt variant="body" color={colors.muted} style={{ marginTop: 6 }}>{ru ? "Создайте аккаунт — личные данные добавим следующим шагом." : "Create an account — we will add personal details next."}</Txt>
 
-            <View style={styles.dividerRow}>
-              <View style={styles.divider} />
-              <Text style={styles.dividerText}>{ru ? "или по email" : "or with email"}</Text>
-              <View style={styles.divider} />
-            </View>
-
-            <Text style={styles.sectionTitle}>{ru ? "Регистрация по email" : "Register with email"}</Text>
-            <View style={styles.emailFields}>
-              <Field label={emailLabel} icon="mail-outline" error={fieldErrors.email}>
-                <TextInput
-                  value={email}
-                  onChangeText={(v) => { setEmail(v); clearField(setFieldErrors, "email"); }}
-                  style={[styles.input, fieldErrors.email && styles.inputError]}
-                  placeholder={ru ? "Электронная почта" : "Email address"}
-                  placeholderTextColor={colors.onSurfaceSecondary}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  autoComplete="email"
-                  keyboardType="email-address"
-                  textContentType="emailAddress"
-                  returnKeyType="next"
-                  accessibilityLabel={emailLabel}
-                  accessibilityHint={fieldErrors.email}
-                  testID="register-email"
-                />
+            <View style={styles.fields}>
+              <Field label={emailLabel} error={fieldErrors.email}>
+                <TextInput value={email} onChangeText={(value) => { setEmail(value); clearField(setFieldErrors, "email"); }} style={[styles.input, { backgroundColor: colors.surfaceSecondary, borderColor: fieldErrors.email ? colors.error : colors.border, color: colors.onSurface }]} placeholder={a.emailPlaceholder} placeholderTextColor={colors.muted} autoCapitalize="none" autoCorrect={false} autoComplete="email" keyboardType="email-address" textContentType="emailAddress" returnKeyType="next" accessibilityLabel={emailLabel} testID="register-email" />
               </Field>
 
-              <Field label={passwordLabel} icon="lock-closed-outline" error={fieldErrors.password}>
+              <Field label={a.password} error={fieldErrors.password}>
                 <View style={styles.passwordWrap}>
-                  <TextInput
-                    value={password}
-                    onChangeText={(v) => { setPassword(v); clearField(setFieldErrors, "password"); }}
-                    style={[styles.input, styles.passwordInput, fieldErrors.password && styles.inputError]}
-                    placeholder={ru ? "Пароль" : "Password"}
-                    placeholderTextColor={colors.onSurfaceSecondary}
-                    secureTextEntry={!showPassword}
-                    autoComplete="new-password"
-                    textContentType="newPassword"
-                    returnKeyType="next"
-                    accessibilityLabel={passwordLabel}
-                    accessibilityHint={fieldErrors.password}
-                    testID="register-password"
-                  />
-                  <Pressable
-                    onPress={() => setShowPassword((value) => !value)}
-                    style={styles.eyeButton}
-                    accessibilityRole="button"
-                    accessibilityLabel={showPassword ? (ru ? "Скрыть пароль" : "Hide password") : (ru ? "Показать пароль" : "Show password")}
-                    accessibilityState={{ selected: showPassword }}
-                  >
-                    <Ionicons name={showPassword ? "eye-off-outline" : "eye-outline"} size={20} color={colors.onSurfaceSecondary} />
-                  </Pressable>
+                  <TextInput value={password} onChangeText={(value) => { setPassword(value); clearField(setFieldErrors, "password"); }} style={[styles.input, styles.passwordInput, { backgroundColor: colors.surfaceSecondary, borderColor: fieldErrors.password ? colors.error : colors.border, color: colors.onSurface }]} placeholder={a.passwordPlaceholder} placeholderTextColor={colors.muted} secureTextEntry={!showPassword} autoComplete="new-password" textContentType="newPassword" returnKeyType="next" accessibilityLabel={a.password} testID="register-password" />
+                  <Pressable onPress={() => setShowPassword((value) => !value)} style={styles.eyeButton} accessibilityRole="button" accessibilityLabel={showPassword ? (ru ? "Скрыть пароль" : "Hide password") : (ru ? "Показать пароль" : "Show password")}><Ionicons name={showPassword ? "eye-off-outline" : "eye-outline"} size={20} color={colors.muted} /></Pressable>
                 </View>
                 <Requirement ready={passwordReady} label={ru ? "8 или больше символов" : "8 or more characters"} />
               </Field>
 
-              <Field label={confirmLabel} icon="shield-checkmark-outline" error={fieldErrors.confirm}>
-                <View style={styles.passwordWrap}>
-                  <TextInput
-                    value={confirm}
-                    onChangeText={(v) => { setConfirm(v); clearField(setFieldErrors, "confirm"); }}
-                    style={[styles.input, styles.passwordInput, fieldErrors.confirm && styles.inputError]}
-                    placeholder={ru ? "Повторите пароль" : "Repeat password"}
-                    placeholderTextColor={colors.onSurfaceSecondary}
-                    secureTextEntry={!showPassword}
-                    autoComplete="new-password"
-                    textContentType="newPassword"
-                    returnKeyType="done"
-                    onSubmitEditing={() => { if (consent && !busy) submitEmail(); }}
-                    accessibilityLabel={confirmLabel}
-                    accessibilityHint={fieldErrors.confirm}
-                    testID="register-confirm"
-                  />
-                  <View style={styles.eyeSpacer} />
-                </View>
-                {confirm.length > 0 ? (
-                  <Requirement
-                    ready={passwordsMatch}
-                    label={passwordsMatch ? (ru ? "Пароли совпадают" : "Passwords match") : (ru ? "Пароли должны совпадать" : "Passwords must match")}
-                  />
-                ) : null}
+              <Field label={confirmLabel} error={fieldErrors.confirm}>
+                <TextInput value={confirm} onChangeText={(value) => { setConfirm(value); clearField(setFieldErrors, "confirm"); }} style={[styles.input, { backgroundColor: colors.surfaceSecondary, borderColor: fieldErrors.confirm ? colors.error : colors.border, color: colors.onSurface }]} placeholder={ru ? "Повторите пароль" : "Repeat password"} placeholderTextColor={colors.muted} secureTextEntry={!showPassword} autoComplete="new-password" textContentType="newPassword" returnKeyType="done" onSubmitEditing={() => { if (consent && !busy) submitEmail(); }} accessibilityLabel={confirmLabel} testID="register-confirm" />
+                {confirm ? <Requirement ready={passwordsMatch} label={passwordsMatch ? (ru ? "Пароли совпадают" : "Passwords match") : (ru ? "Пароли должны совпадать" : "Passwords must match")} /> : null}
               </Field>
-            </View>
 
-            <View style={styles.consentBlock}>
-              <Pressable
-                onPress={() => { setConsent((v) => !v); clearField(setFieldErrors, "consent"); }}
-                style={styles.consentRow}
-                accessibilityRole="checkbox"
-                accessibilityLabel={consentLabel}
-                accessibilityHint={fieldErrors.consent}
-                accessibilityState={{ checked: consent }}
-                testID="register-consent"
-              >
-                <View style={[styles.checkbox, consent && styles.checkboxChecked]} accessible={false}>
-                  {consent ? <Ionicons name="checkmark" size={13} color={colors.onSurfaceInverse} /> : null}
-                </View>
-                <Text style={styles.consentText}>{consentLabel}</Text>
+              <Pressable onPress={() => { setConsent((value) => !value); clearField(setFieldErrors, "consent"); }} style={styles.consentRow} accessibilityRole="checkbox" accessibilityLabel={consentLabel} accessibilityState={{ checked: consent }} testID="register-consent">
+                <View style={[styles.checkbox, { borderColor: consent ? colors.brand : colors.borderStrong, backgroundColor: consent ? colors.brand : "transparent" }]}>{consent ? <Ionicons name="checkmark" size={14} color={colors.onBrandPrimary} /> : null}</View>
+                <Txt variant="label" color={colors.muted} style={{ flex: 1 }}>{consentLabel}</Txt>
               </Pressable>
-              <View style={styles.legalRow}>
-                <Pressable onPress={() => router.push("/terms" as any)} accessibilityRole="link">
-                  <Text style={styles.legalLink}>{ru ? "Условия" : "Terms"}</Text>
-                </Pressable>
-                <Text style={styles.dot}>·</Text>
-                <Pressable onPress={() => router.push("/privacy-policy" as any)} accessibilityRole="link">
-                  <Text style={styles.legalLink}>{ru ? "Конфиденциальность" : "Privacy"}</Text>
-                </Pressable>
-              </View>
-              {fieldErrors.consent ? <Text style={styles.fieldError} accessibilityRole="alert" accessibilityLiveRegion="polite">{fieldErrors.consent}</Text> : null}
+              {fieldErrors.consent ? <ErrorText text={fieldErrors.consent} /> : null}
+              <View style={styles.legalLinks}><Pressable onPress={() => router.push("/terms")} accessibilityRole="link"><Txt variant="label" weight="bold" color={colors.brand}>{ru ? "Условия использования" : "Terms of Use"}</Txt></Pressable><Txt variant="label" color={colors.muted}>{ru ? "и" : "and"}</Txt><Pressable onPress={() => router.push("/privacy-policy")} accessibilityRole="link"><Txt variant="label" weight="bold" color={colors.brand}>{ru ? "Политика конфиденциальности" : "Privacy Policy"}</Txt></Pressable></View>
             </View>
 
-            {error ? <Notice text={error} /> : null}
-
-            <Pressable
-              style={[styles.primary, (busy || socialBusy !== null) && styles.disabled]}
-              onPress={submitEmail}
-              disabled={busy || socialBusy !== null}
-              accessibilityRole="button"
-              accessibilityLabel={submitLabel}
-              accessibilityState={{ disabled: busy || socialBusy !== null, busy }}
-              testID="register-submit"
-            >
-              {busy ? <ActivityIndicator color={colors.onSurfaceInverse} /> : <Text style={styles.primaryText}>{submitLabel}</Text>}
+            {error ? <Notice kind="error" text={error} /> : null}
+            <Pressable testID="register-submit" onPress={submitEmail} disabled={unavailable} style={[styles.primary, { backgroundColor: colors.brandPrimary }, unavailable && styles.disabled]} accessibilityRole="button" accessibilityState={{ disabled: busy || socialBusy !== null, busy }}>
+              {busy ? <ActivityIndicator color={colors.onBrandPrimary} /> : <><Txt variant="body" weight="bold" color={colors.onBrandPrimary}>{a.registerCta}</Txt><Ionicons name="arrow-forward" size={18} color={colors.onBrandPrimary} /></>}
             </Pressable>
-          </View>
 
-          <Pressable
-            style={styles.loginLink}
-            onPress={() => router.replace("/auth")}
-            accessibilityRole="link"
-            accessibilityLabel={ru ? "Уже есть аккаунт? Войти" : "Already have an account? Sign in"}
-          >
-            <Text style={styles.loginCopy}>
-              {ru ? "Уже есть аккаунт? " : "Already have an account? "}
-              <Text style={styles.loginStrong}>{ru ? "Войти" : "Sign in"}</Text>
-            </Text>
-          </Pressable>
+            <View style={styles.dividerRow}><View style={[styles.divider, { backgroundColor: colors.border }]} /><Txt variant="label" weight="semibold" color={colors.muted}>{a.or}</Txt><View style={[styles.divider, { backgroundColor: colors.border }]} /></View>
+            <View style={{ gap: spacing.md }}><SocialButton provider="yandex" label={a.yandex} busy={socialBusy === "yandex"} disabled={unavailable && socialBusy !== "yandex"} onPress={() => socialRegister("yandex")} /><SocialButton provider="vk" label={a.vk} busy={socialBusy === "vk"} disabled={unavailable && socialBusy !== "vk"} onPress={() => socialRegister("vk")} /></View>
+            <View style={styles.switchRow}><Txt variant="caption" color={colors.muted}>{a.switchToLoginQ}</Txt><Pressable onPress={() => router.replace("/auth")} accessibilityRole="link" style={{ marginLeft: 6 }}><Txt variant="caption" weight="bold" color={colors.brand}>{a.switchToLogin}</Txt></Pressable></View>
+          </Animated.View>
         </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
-  );
-}
-
-function clearField(setter: React.Dispatch<React.SetStateAction<FieldErrors>>, field: keyof FieldErrors) {
-  setter((prev) => ({ ...prev, [field]: undefined }));
-}
-
-function Field({ label, icon, error, children }: { label: string; icon: any; error?: string; children: React.ReactNode }) {
-  return (
-    <View style={styles.field}>
-      <View style={styles.labelRow}>
-        <Ionicons name={icon} size={14} color={colors.onSurfaceSecondary} />
-        <Text style={styles.label}>{label}</Text>
-      </View>
-      {children}
-      {error ? <Text style={styles.fieldError} accessibilityRole="alert" accessibilityLiveRegion="polite">{error}</Text> : null}
+      </KeyboardAwareScrollView>
     </View>
   );
+}
+
+function Header({ top, onBack }: { top: number; onBack: () => void }) {
+  const { colors } = useApp();
+  return <View style={[styles.header, { paddingTop: top + spacing.sm }]}><View style={styles.headerInner}><Pressable onPress={onBack} hitSlop={8} style={[styles.iconBtn, { backgroundColor: colors.surfaceTertiary }]} accessibilityRole="button"><Ionicons name="chevron-back" size={22} color={colors.onSurface} /></Pressable><View style={styles.headerControls}><LangToggle /><ThemeToggle /></View></View></View>;
+}
+
+function Brand() {
+  const { colors, t } = useApp();
+  return <View style={styles.brandRow}><View style={[styles.logoDot, { backgroundColor: colors.brand }]}><Ionicons name="pulse" size={18} color={colors.onBrandPrimary} /></View><Txt variant="h2" weight="extrabold">{t.brand}</Txt></View>;
+}
+
+function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
+  const { colors } = useApp();
+  return <View><Txt variant="label" weight="semibold" color={colors.muted} style={styles.fieldLabel}>{label}</Txt>{children}{error ? <ErrorText text={error} /> : null}</View>;
+}
+
+function ErrorText({ text }: { text: string }) {
+  const { colors } = useApp();
+  return <Txt variant="label" color={colors.error} style={styles.errorText} accessibilityRole="alert" accessibilityLiveRegion="polite">{text}</Txt>;
 }
 
 function Requirement({ ready, label }: { ready: boolean; label: string }) {
-  return (
-    <View style={styles.requirement} accessible accessibilityLabel={`${label}: ${ready ? "OK" : "not complete"}`}>
-      <Ionicons name={ready ? "checkmark-circle" : "ellipse-outline"} size={14} color={ready ? colors.success : colors.onSurfaceSecondary} />
-      <Text style={[styles.requirementText, ready && styles.requirementReady]}>{label}</Text>
-    </View>
-  );
+  const { colors } = useApp();
+  return <View style={styles.requirement}><Ionicons name={ready ? "checkmark-circle" : "ellipse-outline"} size={14} color={ready ? colors.success : colors.muted} /><Txt variant="label" color={ready ? colors.success : colors.muted}>{label}</Txt></View>;
 }
 
 function SocialButton({ provider, label, busy, disabled, onPress }: { provider: SocialProvider; label: string; busy: boolean; disabled: boolean; onPress: () => void }) {
-  return (
-    <Pressable
-      style={[styles.socialButton, disabled && styles.disabled]}
-      onPress={onPress}
-      disabled={busy || disabled}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ disabled: busy || disabled, busy }}
-    >
-      {busy ? (
-        <ActivityIndicator color={colors.onSurface} />
-      ) : (
-        <>
-          <View style={styles.providerMark}>
-            <Text style={styles.providerMarkText}>{provider === "yandex" ? "Я" : "VK"}</Text>
-          </View>
-          <Text style={styles.socialText}>{label}</Text>
-        </>
-      )}
-    </Pressable>
-  );
+  const { colors } = useApp();
+  return <Pressable onPress={onPress} disabled={busy || disabled} style={[styles.socialButton, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }, disabled && styles.disabled]} accessibilityRole="button" accessibilityState={{ disabled: busy || disabled, busy }}>{busy ? <ActivityIndicator color={colors.onSurface} /> : <><View style={[styles.providerMark, { backgroundColor: provider === "yandex" ? "#FC3F1D" : "#0077FF" }]}><Txt variant="label" weight="extrabold" color="#FFFFFF" style={{ fontSize: provider === "yandex" ? 16 : 12 }}>{provider === "yandex" ? "Я" : "VK"}</Txt></View><Txt variant="body" weight="bold" style={{ marginLeft: spacing.md }}>{label}</Txt></>}</Pressable>;
 }
 
-function Notice({ text }: { text: string }) {
-  return (
-    <View style={[styles.notice, styles.noticeError]} accessibilityRole="alert" accessibilityLiveRegion="polite">
-      <Ionicons name="alert-circle-outline" size={17} color={colors.error} />
-      <Text style={styles.noticeText}>{text}</Text>
-    </View>
-  );
+function Notice({ kind, text }: { kind: "error" | "success"; text: string }) {
+  const { colors } = useApp();
+  const accent = kind === "error" ? colors.error : colors.success;
+  return <View style={[styles.notice, { borderColor: accent, backgroundColor: colors.surfaceSecondary }]} accessibilityRole="alert" accessibilityLiveRegion="polite"><Ionicons name={kind === "error" ? "alert-circle-outline" : "checkmark-circle-outline"} size={18} color={accent} /><Txt variant="label" style={{ flex: 1 }}>{text}</Txt></View>;
+}
+
+function clearField(setter: React.Dispatch<React.SetStateAction<FieldErrors>>, field: keyof FieldErrors) {
+  setter((previous) => ({ ...previous, [field]: undefined }));
 }
 
 function friendlyError(raw: string, ru: boolean) {
@@ -349,54 +236,35 @@ function friendlyError(raw: string, ru: boolean) {
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: colors.surface },
-  content: { width: "100%", maxWidth: 620, alignSelf: "center", paddingHorizontal: spacing.xl },
-  header: { alignItems: "center" },
-  brandIcon: { width: 46, height: 46, borderRadius: 23, backgroundColor: colors.onSurface, alignItems: "center", justifyContent: "center" },
-  eyebrow: { marginTop: spacing.md, color: colors.onSurfaceSecondary, fontFamily: fonts.text, fontSize: 11, fontWeight: "900", letterSpacing: 2 },
-  title: { marginTop: 6, color: colors.onSurface, fontFamily: fonts.display, fontSize: 38, lineHeight: 43, fontWeight: "800", letterSpacing: -1.1, textAlign: "center" },
-  subtitle: { marginTop: spacing.sm, maxWidth: 520, color: colors.onSurfaceSecondary, fontFamily: fonts.text, fontSize: fontSize.sm, lineHeight: 20, textAlign: "center" },
-  form: { marginTop: spacing.xl, gap: spacing.md },
-  authCard: { borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceSecondary, padding: spacing.lg, gap: spacing.md },
-  sectionTitle: { color: colors.onSurface, fontFamily: fonts.text, fontSize: fontSize.sm, fontWeight: "900" },
-  socialRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  socialCell: { flex: 1, minWidth: 220 },
-  socialButton: { minHeight: 50, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, paddingHorizontal: spacing.md },
-  providerMark: { minWidth: 28, height: 28, paddingHorizontal: 6, borderRadius: 14, backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center" },
-  providerMarkText: { color: colors.onSurface, fontFamily: fonts.text, fontSize: 12, fontWeight: "900" },
-  socialText: { color: colors.onSurface, fontFamily: fonts.text, fontSize: fontSize.sm, fontWeight: "800" },
-  dividerRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, marginVertical: 2 },
-  divider: { flex: 1, height: 1, backgroundColor: colors.border },
-  dividerText: { color: colors.onSurfaceSecondary, fontFamily: fonts.text, fontSize: 12 },
-  emailFields: { gap: 11 },
-  field: { gap: 6 },
-  labelRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  label: { color: colors.onSurface, fontFamily: fonts.text, fontSize: 12, fontWeight: "800" },
-  input: { minHeight: 50, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, paddingHorizontal: spacing.md, color: colors.onSurface, fontFamily: fonts.text, fontSize: fontSize.sm },
-  inputError: { borderColor: colors.error },
-  passwordWrap: { position: "relative" },
-  passwordInput: { paddingRight: 50 },
-  eyeButton: { position: "absolute", right: 0, top: 0, width: 48, height: 50, alignItems: "center", justifyContent: "center" },
-  eyeSpacer: { position: "absolute", right: 0, top: 0, width: 48, height: 50 },
-  fieldError: { color: colors.error, fontFamily: fonts.text, fontSize: 11, lineHeight: 15 },
-  requirement: { flexDirection: "row", alignItems: "center", gap: 6 },
-  requirementText: { color: colors.onSurfaceSecondary, fontFamily: fonts.text, fontSize: 11 },
-  requirementReady: { color: colors.success },
-  consentBlock: { gap: 6, paddingTop: 2 },
-  consentRow: { minHeight: 44, flexDirection: "row", alignItems: "flex-start", gap: spacing.sm, paddingVertical: 2 },
-  checkbox: { width: 20, height: 20, borderRadius: 6, borderWidth: 1, borderColor: colors.borderStrong, alignItems: "center", justifyContent: "center", flexShrink: 0 },
-  checkboxChecked: { backgroundColor: colors.onSurface, borderColor: colors.onSurface },
-  consentText: { flex: 1, color: colors.onSurfaceSecondary, fontFamily: fonts.text, fontSize: 12, lineHeight: 18 },
-  legalRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 6, paddingLeft: 28, marginTop: -6 },
-  legalLink: { color: colors.onSurface, fontFamily: fonts.text, fontSize: 11, fontWeight: "800", textDecorationLine: "underline" },
-  dot: { color: colors.onSurfaceSecondary },
-  primary: { minHeight: 50, paddingHorizontal: spacing.lg, borderRadius: radius.md, backgroundColor: colors.onSurface, alignItems: "center", justifyContent: "center" },
-  primaryText: { color: colors.onSurfaceInverse, fontFamily: fonts.text, fontWeight: "800", fontSize: fontSize.sm, textAlign: "center" },
+  header: { paddingHorizontal: spacing.xl, paddingBottom: spacing.sm },
+  headerInner: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", width: "100%", maxWidth: CONTENT_MAX, alignSelf: "center" },
+  headerControls: { flexDirection: "row", gap: spacing.sm },
+  iconBtn: { width: 40, height: 40, borderRadius: radius.pill, alignItems: "center", justifyContent: "center" },
+  scrollContent: { padding: spacing.xl, paddingBottom: spacing["3xl"], alignItems: "center" },
+  formWrap: { width: "100%", maxWidth: FORM_MAX },
+  brandRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.xl },
+  logoDot: { width: 34, height: 34, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  segment: { flexDirection: "row", padding: 4, borderRadius: radius.pill },
+  segmentBtn: { flex: 1, paddingVertical: 12, borderRadius: radius.pill, alignItems: "center", justifyContent: "center" },
+  fields: { marginTop: spacing.xl, gap: spacing.md },
+  fieldLabel: { marginBottom: 8 },
+  input: { height: 54, borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth * 2, paddingHorizontal: spacing.lg, fontSize: fontSize.lg, fontFamily: font.medium },
+  passwordWrap: { justifyContent: "center" },
+  passwordInput: { paddingRight: 48 },
+  eyeButton: { position: "absolute", right: spacing.lg, height: 54, justifyContent: "center" },
+  requirement: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 6 },
+  errorText: { marginTop: 6 },
+  consentRow: { minHeight: 44, flexDirection: "row", alignItems: "flex-start", gap: spacing.sm, paddingVertical: spacing.sm },
+  checkbox: { width: 22, height: 22, borderRadius: 7, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  legalLinks: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", justifyContent: "center", gap: 6 },
+  primary: { minHeight: 54, marginTop: spacing.lg, borderRadius: radius.pill, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, paddingHorizontal: spacing.xl },
+  secondary: { minHeight: 54, marginTop: spacing.md, borderRadius: radius.pill, borderWidth: StyleSheet.hairlineWidth * 2, alignItems: "center", justifyContent: "center", paddingHorizontal: spacing.xl },
   disabled: { opacity: 0.55 },
-  loginLink: { minHeight: 44, alignItems: "center", justifyContent: "center" },
-  loginCopy: { color: colors.onSurfaceSecondary, fontFamily: fonts.text, fontSize: fontSize.sm, textAlign: "center" },
-  loginStrong: { color: colors.onSurface, fontWeight: "800" },
-  notice: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm, padding: spacing.sm, borderRadius: radius.md, borderWidth: 1 },
-  noticeError: { borderColor: "rgba(190, 54, 54, 0.25)", backgroundColor: "rgba(190, 54, 54, 0.06)" },
-  noticeText: { flex: 1, color: colors.onSurface, fontFamily: fonts.text, fontSize: 12, lineHeight: 17 },
+  dividerRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, marginVertical: spacing.xl },
+  divider: { flex: 1, height: StyleSheet.hairlineWidth * 2 },
+  socialButton: { minHeight: 54, flexDirection: "row", alignItems: "center", borderRadius: radius.pill, paddingVertical: 12, paddingHorizontal: spacing.lg, borderWidth: StyleSheet.hairlineWidth * 2 },
+  providerMark: { width: 30, height: 30, borderRadius: 8, alignItems: "center", justifyContent: "center" },
+  switchRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", marginTop: spacing.xl },
+  notice: { marginTop: spacing.md, borderRadius: radius.md, borderWidth: 1, padding: spacing.md, flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  successIcon: { width: 64, height: 64, borderRadius: 20, alignItems: "center", justifyContent: "center", marginTop: spacing.xl },
 });
