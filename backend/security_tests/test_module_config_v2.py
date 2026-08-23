@@ -37,6 +37,16 @@ def test_legacy_settings_migrate_without_losing_old_ai_behavior():
     assert config["labs"]["allow_ai_analytics"] is False
 
 
+def test_legacy_noncanonical_flags_survive_projection_without_becoming_modules():
+    legacy = {"general": True, "labs": False}
+    config = effective_module_map({"module_settings": legacy})
+    projected = module_settings_projection(config, legacy)
+    assert projected["general"] is True
+    assert projected["labs"] is False
+    assert "general" not in config
+    assert "general" not in {item["module_code"] for item in MODULE_REGISTRY}
+
+
 def test_scopes_are_independent_and_enabled_is_required():
     profile = {}
     config = apply_module_patches(profile, [

@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 def test_nutrition_is_explicit_opt_in_in_ai_context():
     source = (ROOT / "backend/ai_context.py").read_text(encoding="utf-8")
-    assert 'modules.get("nutrition") is True' in source
+    assert 'module_ai_allowed(profile, "nutrition")' in source
     assert '"nutrition_module_is_explicit_opt_in": True' in source
     assert '"never_recommend_stopping_or_changing_medication_dose_from_nutrition_data": True' in source
 

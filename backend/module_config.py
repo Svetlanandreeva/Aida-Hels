@@ -132,8 +132,29 @@ def effective_module_map(profile: Dict[str, Any] | None) -> Dict[str, Dict[str, 
     return result
 
 
-def module_settings_projection(config: Dict[str, Dict[str, Any]]) -> Dict[str, bool]:
-    return {code: item.get("enabled") is not False for code, item in config.items() if code in _REGISTRY_BY_CODE}
+def module_settings_projection(
+    config: Dict[str, Dict[str, Any]],
+    legacy_settings: Optional[Dict[str, Any]] = None,
+) -> Dict[str, bool]:
+    """Expose canonical enabled flags without dropping old compatibility keys.
+
+    Keys such as ``general`` are onboarding/legacy concepts, not ModuleConfig
+    modules. They remain in ``profile.module_settings`` for older clients and
+    contracts, while canonical module codes always win over stale legacy values.
+    """
+    projection: Dict[str, bool] = {}
+    if isinstance(legacy_settings, dict):
+        projection.update({
+            str(code): value is not False
+            for code, value in legacy_settings.items()
+            if str(code) not in _REGISTRY_BY_CODE
+        })
+    projection.update({
+        code: item.get("enabled") is not False
+        for code, item in config.items()
+        if code in _REGISTRY_BY_CODE
+    })
+    return projection
 
 
 def module_enabled(profile: Dict[str, Any] | None, code: str) -> bool:
@@ -161,7 +182,7 @@ def apply_legacy_module_settings(profile: Dict[str, Any], settings: Dict[str, An
 
     This keeps older clients (including the existing Nutrition opt-in screen)
     functional during the migration without letting them overwrite Home/AI/
-    notification scopes.
+    notification scopes. Noncanonical legacy keys remain outside ModuleConfig.
     """
     config = effective_module_map(profile)
     now = _now()
@@ -214,7 +235,7 @@ def module_config_response(profile_id: str, profile: Dict[str, Any]) -> Dict[str
     return {
         "profile_id": profile_id,
         "modules": modules,
-        "module_settings": module_settings_projection(config),
+        "module_settings": module_settings_projection(config, profile.get("module_settings")),
         "schema_version": "module-config-v2",
     }
 
@@ -241,7 +262,7 @@ def build_module_config_router(db, auth) -> APIRouter:
         if not profile:
             raise HTTPException(404, "Profile not found")
         config = apply_module_patches(profile, request.modules)
-        projection = module_settings_projection(config)
+        projection = module_settings_projection(config, profile.get("module_settings"))
         await db.profiles.update_one(
             {"id": profile_id},
             {"$set": {

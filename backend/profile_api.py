@@ -150,8 +150,9 @@ def _normalize(doc: Dict[str, Any], access_role: Optional[str] = None) -> Dict[s
     privacy.update(out.get("privacy") or {})
     out["privacy"] = privacy
     out.setdefault("module_settings", {})
+    legacy_module_settings = dict(out.get("module_settings") or {})
     out["module_config"] = effective_module_map(out)
-    out["module_settings"] = module_settings_projection(out["module_config"])
+    out["module_settings"] = module_settings_projection(out["module_config"], legacy_module_settings)
     out.setdefault("goals", [])
     out.setdefault("onboarding_completed", False)
     out.setdefault("women_health", {})
@@ -232,8 +233,9 @@ def build_profile_router(db, auth) -> APIRouter:
         privacy.update(payload.get("privacy") or {})
         payload["privacy"] = privacy
         if payload.get("module_settings"):
-            payload["module_config"] = apply_legacy_module_settings(payload, payload["module_settings"])
-            payload["module_settings"] = module_settings_projection(payload["module_config"])
+            legacy_settings = dict(payload["module_settings"])
+            payload["module_config"] = apply_legacy_module_settings(payload, legacy_settings)
+            payload["module_settings"] = module_settings_projection(payload["module_config"], legacy_settings)
             payload["module_settings_source"] = "user"
         p = ProfileFull(**payload, access_role="owner", is_owner=True)
         doc = p.model_dump(exclude={"access_role", "is_owner"})
@@ -275,9 +277,12 @@ def build_profile_router(db, auth) -> APIRouter:
             patch["privacy"] = merged
 
         if "module_settings" in patch and patch["module_settings"] is not None:
-            config = apply_legacy_module_settings(current, patch["module_settings"])
+            incoming_settings = dict(patch["module_settings"] or {})
+            legacy_settings = dict(current.get("module_settings") or {})
+            legacy_settings.update(incoming_settings)
+            config = apply_legacy_module_settings(current, incoming_settings)
             patch["module_config"] = config
-            patch["module_settings"] = module_settings_projection(config)
+            patch["module_settings"] = module_settings_projection(config, legacy_settings)
             patch["module_settings_source"] = "user"
 
         was_completed = bool(current.get("onboarding_completed"))
