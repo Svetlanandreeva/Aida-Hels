@@ -54,7 +54,7 @@ def test_open_sources_are_persistent_sources_and_fatsecret_is_not_analysis_depen
     assert '"license": "ODbL-1.0"' in source
     assert "USDA_FDC_API_KEY" in env
     assert "platform.fatsecret.com" not in source
-    assert "standard API terms restrict" in source
+    assert "FatSecret is intentionally not part" in source
 
 
 def test_open_source_cross_check_compares_macros_without_copying_secondary_product():
