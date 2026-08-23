@@ -20,7 +20,6 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-# The order and codes are the canonical Puzzle v2 registry documented in Notion.
 MODULE_REGISTRY: List[Dict[str, Any]] = [
     {"module_code": "nutrition", "order": 0, "enabled": False, "show_on_home": False, "allow_ai_analytics": False, "notifications_enabled": False},
     {"module_code": "labs", "order": 1, "enabled": True, "show_on_home": True, "allow_ai_analytics": True, "notifications_enabled": False},
@@ -78,10 +77,15 @@ def effective_module_map(profile: Dict[str, Any] | None) -> Dict[str, Dict[str, 
     Resolution order is: stored ModuleConfig -> explicit legacy module_settings
     -> onboarding goals -> registry defaults. A missing nutrition preference is
     deliberately opt-in/fail-closed.
+
+    Legacy ``module_settings`` previously controlled both module availability
+    and AI inclusion, so migration preserves that behavior until the user makes
+    the new scopes explicit.
     """
     profile = profile or {}
     stored = _stored_config_map(profile.get("module_config"))
     legacy = profile.get("module_settings") if isinstance(profile.get("module_settings"), dict) else {}
+    legacy_source = str(profile.get("module_settings_source") or "")
     goals = {str(goal) for goal in (profile.get("goals") or []) if goal}
     result: Dict[str, Dict[str, Any]] = {}
 
@@ -91,8 +95,16 @@ def effective_module_map(profile: Dict[str, Any] | None) -> Dict[str, Dict[str, 
         source = "preset"
 
         if code in legacy:
-            config["enabled"] = legacy.get(code) is not False
-            source = "migration"
+            enabled = legacy.get(code) is not False
+            config["enabled"] = enabled
+            if code not in {"documents", "tasks"}:
+                config["allow_ai_analytics"] = enabled
+            if legacy_source == "user":
+                source = "user"
+            elif legacy_source == "goals":
+                source = "goals"
+            else:
+                source = "migration"
         elif code in _GOAL_MAP and goals:
             config["enabled"] = bool(goals & _GOAL_MAP[code])
             source = "goals"
