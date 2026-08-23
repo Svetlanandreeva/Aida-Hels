@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import os
 from datetime import datetime, timezone
@@ -18,10 +19,19 @@ COMMON_PETS = ("cat", "bunny", "fox", "panda")
 RARE_PETS = ("dragon", "phoenix", "moon_fox", "star_cat")
 CARE_COSTS = {"feed": 5, "play": 8, "groom": 6}
 DAILY_JOURNAL_REWARD = 10
+_CARE_LOCKS: Dict[str, asyncio.Lock] = {}
 
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _care_lock(profile_id: str) -> asyncio.Lock:
+    lock = _CARE_LOCKS.get(profile_id)
+    if lock is None:
+        lock = asyncio.Lock()
+        _CARE_LOCKS[profile_id] = lock
+    return lock
 
 
 def _rare_percent() -> int:
@@ -80,29 +90,24 @@ async def coin_balance(db, profile_id: str) -> int:
 
 
 async def award_daily_journal_coins(db, profile_id: str, local_day: str) -> bool:
-    """Award at most one +10 journal transaction for a profile/local day."""
+    """Atomically upsert at most one +10 journal transaction per local day."""
     tx_id = f"journal:{profile_id}:{local_day}"
-    existing = await db.game_coin_ledger.find_one({"id": tx_id}, {"_id": 0})
-    if existing:
-        return False
-    await db.game_coin_ledger.insert_one({
-        "id": tx_id,
-        "profile_id": profile_id,
-        "kind": "daily_journal",
-        "amount": DAILY_JOURNAL_REWARD,
-        "local_day": local_day,
-        "created_at": _now(),
-    })
-    return True
+    result = await db.game_coin_ledger.update_one(
+        {"id": tx_id},
+        {"$set": {
+            "id": tx_id,
+            "profile_id": profile_id,
+            "kind": "daily_journal",
+            "amount": DAILY_JOURNAL_REWARD,
+            "local_day": local_day,
+        }},
+        upsert=True,
+    )
+    return bool(result.get("upserted"))
 
 
 async def reconcile_journal_rewards(db, profile: Dict[str, Any]) -> None:
-    """Backfill one journal reward per local day from saved check-ins.
-
-    This keeps rewards correct even when the pet screen was offline on the day
-    the journal was filled. Multiple check-ins or edits on one day collapse to
-    the same deterministic ledger transaction.
-    """
+    """Backfill one journal reward per local day from saved check-ins."""
     profile_id = str(profile.get("id") or "")
     if not profile_id:
         return
@@ -211,30 +216,32 @@ def build_game_router(db, auth) -> APIRouter:
         action = str(data.action or "")
         if action not in CARE_COSTS:
             raise HTTPException(422, "Unknown care action")
-        state = await _game_state(db, profile_id)
-        if not state["pet"]["claimed"]:
-            raise HTTPException(409, "Pet is not claimed")
-        cost = CARE_COSTS[action]
-        if int(state.get("coins") or 0) < cost:
-            raise HTTPException(409, "Not enough coins")
 
-        now = _now()
-        tx_id = f"care:{profile_id}:{now.timestamp()}:{action}"
-        await db.game_coin_ledger.insert_one({
-            "id": tx_id,
-            "profile_id": profile_id,
-            "kind": f"care_{action}",
-            "amount": -cost,
-            "created_at": now,
-        })
-        game = await db.pet_games.find_one({"profile_id": profile_id}, {"_id": 0}) or {}
-        care = dict(game.get("care") or {"feed": 0, "play": 0, "groom": 0})
-        care[action] = int(care.get(action) or 0) + 1
-        await db.pet_games.update_one(
-            {"profile_id": profile_id},
-            {"$set": {"care": care, "updated_at": now}},
-            upsert=True,
-        )
+        async with _care_lock(profile_id):
+            state = await _game_state(db, profile_id)
+            if not state["pet"]["claimed"]:
+                raise HTTPException(409, "Pet is not claimed")
+            cost = CARE_COSTS[action]
+            if int(state.get("coins") or 0) < cost:
+                raise HTTPException(409, "Not enough coins")
+
+            now = _now()
+            tx_id = f"care:{profile_id}:{now.timestamp()}:{action}"
+            await db.game_coin_ledger.insert_one({
+                "id": tx_id,
+                "profile_id": profile_id,
+                "kind": f"care_{action}",
+                "amount": -cost,
+                "created_at": now,
+            })
+            game = await db.pet_games.find_one({"profile_id": profile_id}, {"_id": 0}) or {}
+            care = dict(game.get("care") or {"feed": 0, "play": 0, "groom": 0})
+            care[action] = int(care.get(action) or 0) + 1
+            await db.pet_games.update_one(
+                {"profile_id": profile_id},
+                {"$set": {"care": care, "updated_at": now}},
+                upsert=True,
+            )
         return await _game_state(db, profile_id)
 
     return router
