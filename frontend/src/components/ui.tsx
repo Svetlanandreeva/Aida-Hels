@@ -256,13 +256,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.glassBorder,
   },
-  gradientCard: { borderColor: "rgba(255,255,255,0.4)", overflow: "hidden" },
+  gradientCard: { borderColor: colors.borderStrong, overflow: "hidden" },
   display: {
     fontFamily: fonts.display,
     fontSize: fontSize["3xl"],
     color: colors.onSurface,
-    fontWeight: "700",
-    letterSpacing: -0.5,
+    fontWeight: "600",
+    letterSpacing: -0.8,
   },
   title: {
     fontFamily: fonts.text,
@@ -293,7 +293,7 @@ const styles = StyleSheet.create({
   btnPrimary: { backgroundColor: colors.brandPrimary },
   btnAccent: { backgroundColor: colors.accent },
   btnSecondary: {
-    backgroundColor: colors.surfaceSecondary,
+    backgroundColor: colors.surfaceTertiary,
     borderWidth: 1,
     borderColor: colors.borderStrong,
   },

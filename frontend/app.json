@@ -24,7 +24,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#EAEAE8"
+        "backgroundColor": "#09090B"
       },
       "edgeToEdgeEnabled": true,
       "package": "com.emergent.lifehealthhub.b7m5uj",
@@ -62,7 +62,7 @@
           "image": "./assets/images/splash-image.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#EAEAE8"
+          "backgroundColor": "#09090B"
         }
       ]
     ],

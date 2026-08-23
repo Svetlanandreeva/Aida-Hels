@@ -133,7 +133,7 @@ const styles = StyleSheet.create({
     height: 118,
     borderRadius: 59,
     borderWidth: 1,
-    borderColor: "rgba(27,27,29,0.10)",
+    borderColor: colors.borderStrong,
     alignItems: "center",
   },
   orbitDot: {
