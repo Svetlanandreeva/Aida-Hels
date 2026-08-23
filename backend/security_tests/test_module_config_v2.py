@@ -95,6 +95,18 @@ def test_settings_ui_separates_modules_from_home_cards():
     assert 'settings-module-notifications-' in source
 
 
+def test_all_medical_module_cards_have_explicit_collapse_control_and_home_order_is_distinct():
+    repo_root = Path(__file__).resolve().parents[2]
+    source = (repo_root / "frontend" / "app" / "settings.tsx").read_text()
+    assert 'const [expandedModules' in source
+    assert 'settings-module-collapse-' in source
+    assert 'chevron-up' in source
+    assert 'chevron-down' in source
+    assert 'arrow-up-outline' in source
+    assert 'arrow-down-outline' in source
+    assert 'Порядок' in source
+
+
 def test_home_and_ai_use_canonical_module_permissions():
     repo_root = Path(__file__).resolve().parents[2]
     ai_source = (repo_root / "backend" / "ai_context.py").read_text()
