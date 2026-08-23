@@ -322,6 +322,7 @@ def build_profile_router(db, auth) -> APIRouter:
             db.labs, db.symptoms, db.medications, db.medication_events, db.chat_messages,
             db.vitals, db.checkins, db.tasks, db.files, db.candidates, db.puzzle,
             db.circadian_events, db.circadian_plans, db.nutrition_entries, db.access_grants,
+            db.pet_games, db.game_coin_ledger, db.game_entitlements,
         ):
             await collection.delete_many({"profile_id": profile_id})
         return {"ok": True}
