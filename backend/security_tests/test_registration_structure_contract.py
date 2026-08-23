@@ -5,9 +5,9 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_landing_signup_ctas_open_dedicated_registration_screen():
-    landing = (ROOT / "frontend" / "app" / "index.tsx").read_text(encoding="utf-8")
-    assert 'router.push("/register")' in landing
-    assert landing.count('router.push("/register")') >= 3
+    landing = (ROOT / "frontend" / "src" / "emergent" / "screens" / "Landing.tsx").read_text(encoding="utf-8")
+    assert 'mode === "register" ? "/register" : "/auth"' in landing
+    assert landing.count('goAuth("register")') >= 2
 
 
 def test_registration_screen_is_auth_first_and_profile_second():

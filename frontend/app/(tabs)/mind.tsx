@@ -1,1 +1,2 @@
-export { default } from "../mind";
+export { default } from "@/src/emergent/screens/Mind";
+

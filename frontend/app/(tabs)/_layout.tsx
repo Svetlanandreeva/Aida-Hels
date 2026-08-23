@@ -6,6 +6,8 @@ import { ResponsiveTabBar } from "@/src/components/ResponsiveTabBar";
 import { useApp } from "@/src/store";
 import { getModuleConfig } from "@/src/moduleConfigApi";
 import { getPetGame } from "@/src/gameApi";
+import { HealthProvider } from "@/src/emergent/health-context";
+import { AddSheetProvider } from "@/src/emergent/AddSheet";
 
 const PRIMARY_TAB_MODULES: Record<string, string | null> = {
   index: null,
@@ -61,7 +63,9 @@ export default function TabsLayout() {
   };
 
   return (
-    <Tabs
+    <HealthProvider>
+      <AddSheetProvider>
+        <Tabs
       detachInactiveScreens
       tabBar={(props) => {
         const visibleRoutes = props.state.routes.filter((route) => routeVisible(route.name));
@@ -93,6 +97,8 @@ export default function TabsLayout() {
       <Tabs.Screen name="companion" options={{ title: lang === "ru" ? "Питомец" : "Pet" }} />
       <Tabs.Screen name="health" options={{ href: null }} />
       <Tabs.Screen name="profile" options={{ href: null }} />
-    </Tabs>
+        </Tabs>
+      </AddSheetProvider>
+    </HealthProvider>
   );
 }

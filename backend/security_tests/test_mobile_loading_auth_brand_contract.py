@@ -39,7 +39,7 @@ def test_organism_does_not_fail_whole_screen_for_one_request():
 
 
 def test_promo_uses_the_emergent_compact_brand_mark():
-    source = read("frontend/app/index.tsx")
+    source = read("frontend/src/emergent/screens/Landing.tsx")
     assert '<Ionicons name="pulse" size={16}' in source
-    assert '<Text style={styles.brand}>Аида</Text>' in source
+    assert '<Txt variant="h3" weight="extrabold">{t.brand}</Txt>' in source
     assert "width: 30, height: 30, borderRadius: 9" in source

@@ -46,7 +46,7 @@ def test_preview_placeholder_does_not_replace_production_aida_chat():
 
 def test_public_and_authenticated_shells_use_the_same_dark_canvas():
     layout = _read("frontend/app/_layout.tsx")
-    landing = _read("frontend/app/index.tsx")
+    landing = _read("frontend/src/emergent/screens/Landing.tsx")
     app_json = _read("frontend/app.json")
 
     assert '<StatusBar style="light" />' in layout

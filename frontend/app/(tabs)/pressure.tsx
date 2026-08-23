@@ -1,1 +1,2 @@
-export { default } from "../pressure";
+export { default } from "@/src/emergent/screens/Pressure";
+

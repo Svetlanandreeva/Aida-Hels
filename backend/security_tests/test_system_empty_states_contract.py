@@ -2,7 +2,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-HOME = ROOT / "frontend" / "app" / "(tabs)" / "index.tsx"
+HOME = ROOT / "frontend" / "src" / "emergent" / "health-context.tsx"
 READINESS = ROOT / "frontend" / "src" / "components" / "ReadinessProgressCard.tsx"
 BODY = ROOT / "frontend" / "app" / "body.tsx"
 PRESSURE = ROOT / "frontend" / "app" / "pressure.tsx"
@@ -37,3 +37,6 @@ def test_home_must_keep_section_errors_visible():
     assert "home.symptoms.state" in source
     assert "home.labs.state" in source
     assert "home.overview.state" in source
+    view = (ROOT / "frontend" / "src" / "emergent" / "screens" / "Home.tsx").read_text(encoding="utf-8")
+    assert "failedSections" in view
+    assert "ошибка загрузки, а не отсутствие записей" in view
