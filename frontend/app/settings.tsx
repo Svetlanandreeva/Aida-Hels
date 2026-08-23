@@ -7,6 +7,7 @@ import { useApp } from "@/src/store";
 import { useI18n } from "@/src/i18n";
 import { useResponsiveLayout } from "@/src/hooks/use-responsive-layout";
 import { api } from "@/src/api";
+import { getModuleConfig, ModuleConfig, patchModuleConfig } from "@/src/moduleConfigApi";
 import { colors, spacing, radius, fontSize, fonts } from "@/src/theme";
 
 type PuzzleWidget = {
@@ -16,6 +17,22 @@ type PuzzleWidget = {
   order: number;
   allow_ai_analytics: boolean;
   notifications: boolean;
+};
+
+const MODULE_LABELS: Record<string, { ru: string; en: string; icon: any }> = {
+  nutrition: { ru: "Питание", en: "Nutrition", icon: "restaurant-outline" },
+  labs: { ru: "Анализы и биомаркеры", en: "Labs and biomarkers", icon: "flask-outline" },
+  symptoms: { ru: "Симптомы и боль", en: "Symptoms and pain", icon: "pulse-outline" },
+  pressure: { ru: "Давление и пульс", en: "Blood pressure and pulse", icon: "heart-outline" },
+  sleep: { ru: "Сон и восстановление", en: "Sleep and recovery", icon: "moon-outline" },
+  mental: { ru: "Психика", en: "Mind", icon: "happy-outline" },
+  meds: { ru: "Лекарства", en: "Medications", icon: "medkit-outline" },
+  body: { ru: "Организм", en: "Body", icon: "body-outline" },
+  chronic: { ru: "Хронические состояния", en: "Chronic conditions", icon: "medical-outline" },
+  women: { ru: "Женское здоровье", en: "Women's health", icon: "female-outline" },
+  weight: { ru: "Вес и параметры тела", en: "Weight and body metrics", icon: "scale-outline" },
+  documents: { ru: "Документы", en: "Documents", icon: "document-text-outline" },
+  tasks: { ru: "Задачи и напоминания", en: "Tasks and reminders", icon: "checkbox-outline" },
 };
 
 const WIDGET_LABELS: Record<string, { ru: string; en: string; icon: any }> = {
@@ -33,7 +50,9 @@ const normalizeWidgets = (items: any[]): PuzzleWidget[] =>
     .map((w: any) => ({
       id: w.id,
       enabled: w.enabled !== false,
-      show_on_home: w.show_on_home !== false,
+      show_on_home: w.configured_show_on_home !== undefined
+        ? w.configured_show_on_home !== false
+        : w.show_on_home !== false,
       order: Number.isFinite(w.order) ? w.order : 0,
       allow_ai_analytics: w.allow_ai_analytics !== false,
       notifications: w.notifications === true,
@@ -44,30 +63,59 @@ export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const responsive = useResponsiveLayout();
-  const { activeId } = useApp();
+  const { activeId, reload, bumpRefresh } = useApp();
   const { lang, setLang } = useI18n();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  const [modules, setModules] = useState<ModuleConfig[]>([]);
   const [widgets, setWidgets] = useState<PuzzleWidget[]>([]);
 
   const load = useCallback(async () => {
     if (!activeId) {
+      setModules([]);
       setWidgets([]);
+      setLoadError(false);
       setLoading(false);
       return;
     }
     setLoading(true);
+    setLoadError(false);
     try {
-      const puzzle = await api.getPuzzle(activeId);
+      const [moduleResponse, puzzle] = await Promise.all([
+        getModuleConfig(activeId),
+        api.getPuzzle(activeId),
+      ]);
+      setModules([...(moduleResponse.modules || [])].sort((a, b) => a.order - b.order));
       setWidgets(normalizeWidgets(puzzle.widgets || []));
+    } catch {
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
   }, [activeId]);
 
-  useFocusEffect(useCallback(() => { load().catch(() => setLoading(false)); }, [load]));
+  useFocusEffect(useCallback(() => { void load(); }, [load]));
 
-  const persist = async (next: PuzzleWidget[]) => {
+  const persistModule = async (code: string, patch: Partial<ModuleConfig>) => {
+    if (!activeId) return;
+    const previous = modules;
+    setModules((items) => items.map((item) => item.module_code === code ? { ...item, ...patch, source: "user" } : item));
+    setSaving(true);
+    try {
+      const response = await patchModuleConfig(activeId, [{ module_code: code, ...patch }]);
+      setModules([...(response.modules || [])].sort((a, b) => a.order - b.order));
+      await reload();
+      bumpRefresh();
+    } catch {
+      setModules(previous);
+      setLoadError(true);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const persistWidgets = async (next: PuzzleWidget[]) => {
     const normalized = [...next]
       .sort((a, b) => a.order - b.order)
       .map((w, index) => ({ ...w, order: index }));
@@ -76,13 +124,17 @@ export default function SettingsScreen() {
     setSaving(true);
     try {
       await api.savePuzzle(activeId, normalized);
+      bumpRefresh();
+    } catch {
+      setLoadError(true);
+      await load();
     } finally {
       setSaving(false);
     }
   };
 
   const patchWidget = (id: string, patch: Partial<PuzzleWidget>) =>
-    persist(widgets.map((w) => (w.id === id ? { ...w, ...patch } : w)));
+    persistWidgets(widgets.map((w) => (w.id === id ? { ...w, ...patch } : w)));
 
   const moveWidget = (id: string, direction: -1 | 1) => {
     const sorted = [...widgets].sort((a, b) => a.order - b.order);
@@ -90,7 +142,7 @@ export default function SettingsScreen() {
     const target = index + direction;
     if (index < 0 || target < 0 || target >= sorted.length) return;
     [sorted[index], sorted[target]] = [sorted[target], sorted[index]];
-    persist(sorted.map((w, i) => ({ ...w, order: i })));
+    persistWidgets(sorted.map((w, i) => ({ ...w, order: i })));
   };
 
   const text = (ru: string, en: string) => (lang === "ru" ? ru : en);
@@ -103,7 +155,7 @@ export default function SettingsScreen() {
         </Pressable>
         <View style={{ flex: 1 }}>
           <Text style={styles.title}>{text("Настройки", "Settings")}</Text>
-          <Text style={styles.subtitle}>{text("Профиль, Главная и подключённые функции", "Profile, Home and connected features")}</Text>
+          <Text style={styles.subtitle}>{text("Профиль, модули и Главная", "Profile, modules and Home")}</Text>
         </View>
         {saving ? <ActivityIndicator color={colors.onSurface} /> : null}
       </View>
@@ -124,45 +176,79 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        <Text style={styles.groupLabel}>{text("ПАЗЛ ГЛАВНОЙ", "HOME PUZZLE")}</Text>
-        <Text style={styles.groupHint}>{text("Здесь настраивается состав Главной: какие модули включены, что видно на экране и какие данные может использовать Аида.", "Configure Home here: enabled modules, visible cards and what Aida may use for analytics.")}</Text>
+        <Text style={styles.groupLabel}>{text("МОЯ АИДА — МОДУЛИ", "MY AIDA — MODULES")}</Text>
+        <Text style={styles.groupHint}>{text(
+          "Включение модуля, показ на Главной, AI-аналитика и уведомления настраиваются независимо. Отключение модуля не удаляет историю.",
+          "Module access, Home visibility, AI analytics and notifications are independent. Disabling a module does not delete its history.",
+        )}</Text>
 
         {loading ? (
           <View style={styles.loader}><ActivityIndicator color={colors.onSurface} /></View>
-        ) : widgets.length === 0 ? (
+        ) : loadError && modules.length === 0 ? (
           <View style={styles.sectionCard}>
-            <Text style={styles.emptyTitle}>{text("Пока нечего настраивать", "Nothing to configure yet")}</Text>
-            <Text style={styles.emptyText}>{text("Модули появятся после создания профиля и загрузки конфигурации.", "Modules will appear after a profile and configuration are available.")}</Text>
+            <Text style={styles.emptyTitle}>{text("Не удалось загрузить настройки", "Could not load settings")}</Text>
+            <Text style={styles.emptyText}>{text("Каталог модулей не заменяется ложным пустым состоянием. Попробуйте ещё раз.", "The module registry is not replaced by a false empty state. Please retry.")}</Text>
+            <Pressable onPress={() => void load()} style={styles.retryButton}><Text style={styles.retryText}>{text("Повторить", "Retry")}</Text></Pressable>
           </View>
         ) : (
-          widgets.map((w, index) => {
-            const meta = WIDGET_LABELS[w.id];
+          modules.map((module) => {
+            const meta = MODULE_LABELS[module.module_code];
             if (!meta) return null;
             return (
-              <View key={w.id} style={styles.widgetCard} testID={`settings-widget-${w.id}`}>
+              <View key={module.module_code} style={styles.widgetCard} testID={`settings-module-${module.module_code}`}>
                 <View style={styles.widgetHeader}>
                   <View style={styles.widgetIcon}><Ionicons name={meta.icon} size={19} color={colors.onSurface} /></View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.widgetTitle}>{lang === "ru" ? meta.ru : meta.en}</Text>
-                    <Text style={styles.widgetOrder}>{text(`Позиция ${index + 1}`, `Position ${index + 1}`)}</Text>
-                  </View>
-                  <View style={styles.orderButtons}>
-                    <Pressable disabled={index === 0} onPress={() => moveWidget(w.id, -1)} style={[styles.orderButton, index === 0 && styles.disabled]} testID={`settings-move-up-${w.id}`}>
-                      <Ionicons name="chevron-up" size={18} color={colors.onSurface} />
-                    </Pressable>
-                    <Pressable disabled={index === widgets.length - 1} onPress={() => moveWidget(w.id, 1)} style={[styles.orderButton, index === widgets.length - 1 && styles.disabled]} testID={`settings-move-down-${w.id}`}>
-                      <Ionicons name="chevron-down" size={18} color={colors.onSurface} />
-                    </Pressable>
+                    <Text style={styles.widgetOrder}>{text(`Источник: ${module.source}`, `Source: ${module.source}`)}</Text>
                   </View>
                 </View>
-                <SettingToggle label={text("Модуль включён", "Module enabled")} value={w.enabled} onChange={(value) => patchWidget(w.id, { enabled: value })} testID={`settings-enabled-${w.id}`} />
-                <SettingToggle label={text("Показывать на Главной", "Show on Home")} value={w.show_on_home} disabled={!w.enabled} onChange={(value) => patchWidget(w.id, { show_on_home: value })} testID={`settings-home-${w.id}`} />
-                <SettingToggle label={text("Разрешить AI-аналитику", "Allow AI analytics")} value={w.allow_ai_analytics} disabled={!w.enabled} onChange={(value) => patchWidget(w.id, { allow_ai_analytics: value })} testID={`settings-ai-${w.id}`} />
-                <SettingToggle label={text("Уведомления", "Notifications")} value={w.notifications} disabled={!w.enabled} onChange={(value) => patchWidget(w.id, { notifications: value })} testID={`settings-notifications-${w.id}`} last />
+                <SettingToggle label={text("Включить в приложение", "Enable in app")} value={module.enabled} onChange={(value) => persistModule(module.module_code, { enabled: value })} testID={`settings-module-enabled-${module.module_code}`} />
+                <SettingToggle label={text("Показывать на Главной", "Show on Home")} value={module.show_on_home} disabled={!module.enabled} onChange={(value) => persistModule(module.module_code, { show_on_home: value })} testID={`settings-module-home-${module.module_code}`} />
+                <SettingToggle label={text("Использовать данные в аналитике Аиды", "Use data in Aida analytics")} value={module.allow_ai_analytics} disabled={!module.enabled} onChange={(value) => persistModule(module.module_code, { allow_ai_analytics: value })} testID={`settings-module-ai-${module.module_code}`} />
+                <SettingToggle label={text("Уведомления", "Notifications")} value={module.notifications_enabled} disabled={!module.enabled} onChange={(value) => persistModule(module.module_code, { notifications_enabled: value })} testID={`settings-module-notifications-${module.module_code}`} last />
               </View>
             );
           })
         )}
+
+        <Text style={styles.groupLabel}>{text("ГЛАВНАЯ — КАРТОЧКИ", "HOME — CARDS")}</Text>
+        <Text style={styles.groupHint}>{text(
+          "Здесь меняются только порядок и видимость карточек Главной. Это не включает медицинский модуль и не даёт Аиде доступ к его данным.",
+          "Only Home-card order and visibility are configured here. This does not enable a medical module or grant Aida access to its data.",
+        )}</Text>
+
+        {!loading && widgets.map((w, index) => {
+          const meta = WIDGET_LABELS[w.id];
+          if (!meta) return null;
+          const visible = w.enabled && w.show_on_home;
+          return (
+            <View key={w.id} style={styles.widgetCard} testID={`settings-widget-${w.id}`}>
+              <View style={styles.widgetHeader}>
+                <View style={styles.widgetIcon}><Ionicons name={meta.icon} size={19} color={colors.onSurface} /></View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.widgetTitle}>{lang === "ru" ? meta.ru : meta.en}</Text>
+                  <Text style={styles.widgetOrder}>{text(`Позиция ${index + 1}`, `Position ${index + 1}`)}</Text>
+                </View>
+                <View style={styles.orderButtons}>
+                  <Pressable disabled={index === 0} onPress={() => moveWidget(w.id, -1)} style={[styles.orderButton, index === 0 && styles.disabled]} testID={`settings-move-up-${w.id}`}>
+                    <Ionicons name="chevron-up" size={18} color={colors.onSurface} />
+                  </Pressable>
+                  <Pressable disabled={index === widgets.length - 1} onPress={() => moveWidget(w.id, 1)} style={[styles.orderButton, index === widgets.length - 1 && styles.disabled]} testID={`settings-move-down-${w.id}`}>
+                    <Ionicons name="chevron-down" size={18} color={colors.onSurface} />
+                  </Pressable>
+                </View>
+              </View>
+              <SettingToggle
+                label={text("Показывать карточку", "Show card")}
+                value={visible}
+                onChange={(value) => patchWidget(w.id, { enabled: value ? true : w.enabled, show_on_home: value })}
+                testID={`settings-widget-visible-${w.id}`}
+                last
+              />
+            </View>
+          );
+        })}
 
         <Text style={styles.groupLabel}>{text("СИСТЕМА", "SYSTEM")}</Text>
         <View style={styles.sectionCard}>
@@ -209,6 +295,8 @@ const styles = StyleSheet.create({
   loader: { minHeight: 120, alignItems: "center", justifyContent: "center" },
   emptyTitle: { fontSize: fontSize.base, fontWeight: "700", color: colors.onSurface, fontFamily: fonts.text },
   emptyText: { marginTop: spacing.xs, fontSize: fontSize.sm, lineHeight: 19, color: colors.onSurfaceSecondary, fontFamily: fonts.text },
+  retryButton: { alignSelf: "flex-start", marginTop: spacing.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radius.pill, backgroundColor: colors.surface },
+  retryText: { fontSize: fontSize.sm, fontWeight: "700", color: colors.onSurface, fontFamily: fonts.text },
   widgetCard: { backgroundColor: colors.surfaceSecondary, borderRadius: radius.lg, padding: spacing.md, marginBottom: spacing.md, borderWidth: 1, borderColor: colors.border },
   widgetHeader: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingBottom: spacing.md },
   widgetIcon: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center" },
