@@ -22,7 +22,7 @@ import { useApp } from "@/src/store";
 import { useI18n } from "@/src/i18n";
 import { useResponsiveLayout } from "@/src/hooks/use-responsive-layout";
 import { api, Medication, Symptom, LabTest, Task } from "@/src/api";
-import { getHome } from "@/src/homeApi";
+import { getHome, type DataState } from "@/src/homeApi";
 import { getMedicationDay, markMedicationIntake, MedicationSlot } from "@/src/medicationScheduleApi";
 import { colors, spacing, radius, fontSize, fonts, gradients, statusColor } from "@/src/theme";
 
@@ -36,6 +36,28 @@ type PuzzleWidget = {
   order: number;
   allow_ai_analytics: boolean;
   notifications: boolean;
+};
+
+type HomeSectionStates = {
+  readiness: DataState;
+  gamification: DataState;
+  medications: DataState;
+  symptoms: DataState;
+  labs: DataState;
+  overview: DataState;
+  tasks: DataState;
+  medicationDay: DataState;
+};
+
+const EMPTY_SECTION_STATES: HomeSectionStates = {
+  readiness: "no_data",
+  gamification: "no_data",
+  medications: "no_data",
+  symptoms: "no_data",
+  labs: "no_data",
+  overview: "no_data",
+  tasks: "no_data",
+  medicationDay: "no_data",
 };
 
 const TASK_ROUTES: Record<string, string | undefined> = {
@@ -81,6 +103,8 @@ export default function HomeScreen() {
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [homeLoadError, setHomeLoadError] = useState(false);
+  const [sectionStates, setSectionStates] = useState<HomeSectionStates>(EMPTY_SECTION_STATES);
   const [readiness, setReadiness] = useState<{ overall: number; scores: Record<string, number> } | null>(null);
   const [game, setGame] = useState<any>(null);
   const [meds, setMeds] = useState<Medication[]>([]);
@@ -88,8 +112,6 @@ export default function HomeScreen() {
   const [labs, setLabs] = useState<LabTest[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [medicationSlots, setMedicationSlots] = useState<MedicationSlot[]>([]);
-  const [tasksAvailable, setTasksAvailable] = useState(false);
-  const [medScheduleAvailable, setMedScheduleAvailable] = useState(false);
   const [actionBusy, setActionBusy] = useState<string | null>(null);
   const [widgets, setWidgets] = useState<PuzzleWidget[]>([]);
   const [overview, setOverview] = useState<{ attention: any[]; ai_summary: string | null } | null>(null);
@@ -119,15 +141,15 @@ export default function HomeScreen() {
     setLabs([]);
     setTasks([]);
     setMedicationSlots([]);
-    setTasksAvailable(false);
-    setMedScheduleAvailable(false);
     setWidgets([]);
     setOverview(null);
+    setSectionStates(EMPTY_SECTION_STATES);
   }, []);
 
   const load = useCallback(async () => {
     if (!activeId) {
       clearHome();
+      setHomeLoadError(false);
       setLoading(false);
       return;
     }
@@ -135,6 +157,17 @@ export default function HomeScreen() {
     const today = localDateString();
     try {
       const home = await getHome(activeId, today, lang);
+      setHomeLoadError(false);
+      setSectionStates({
+        readiness: home.readiness.state,
+        gamification: home.gamification.state,
+        medications: home.medications.state,
+        symptoms: home.symptoms.state,
+        labs: home.labs.state,
+        overview: home.overview.state,
+        tasks: home.tasks.state,
+        medicationDay: home.medication_day.state,
+      });
       setReadiness(home.readiness.state === "data" && home.readiness.value !== null
         ? { overall: home.readiness.value, scores: home.readiness.scores || {} }
         : null);
@@ -147,11 +180,10 @@ export default function HomeScreen() {
         ? { attention: home.overview.attention || [], ai_summary: home.overview.ai_summary || null }
         : null);
       setTasks(home.tasks.items || []);
-      setTasksAvailable(home.tasks.state !== "error");
       setMedicationSlots(home.medication_day.slots || []);
-      setMedScheduleAvailable(home.medication_day.state !== "error");
     } catch (_) {
       clearHome();
+      setHomeLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -265,12 +297,14 @@ export default function HomeScreen() {
       case "readiness":
         return null;
       case "companion":
-        return <CompanionWidget key={id} game={game} />;
+        return <CompanionWidget key={id} game={game} state={sectionStates.gamification} lang={lang} />;
       case "next_medication":
         return (
           <Card key={id} testID="widget-medication" style={[styles.halfCard, responsive.width < 480 && styles.fullWidthCard]}>
             <WidgetHeader icon="medkit-outline" label={t("next_medication")} />
-            {activeMed ? (
+            {sectionStates.medications === "error" ? (
+              <SourceError text={lang === "ru" ? "Не удалось загрузить лекарства" : "Could not load medications"} />
+            ) : activeMed ? (
               <>
                 <Title numberOfLines={1}>{activeMed.name}</Title>
                 <Muted style={{ marginTop: 2 }} numberOfLines={1}>{[activeMed.dose, activeMed.schedule].filter(Boolean).join(" · ") || "—"}</Muted>
@@ -282,7 +316,9 @@ export default function HomeScreen() {
         return (
           <Card key={id} testID="widget-symptom" style={[styles.halfCard, responsive.width < 480 && styles.fullWidthCard]}>
             <WidgetHeader icon="pulse-outline" label={t("recent_symptom")} />
-            {lastSymptom ? (
+            {sectionStates.symptoms === "error" ? (
+              <SourceError text={lang === "ru" ? "Не удалось загрузить симптомы" : "Could not load symptoms"} />
+            ) : lastSymptom ? (
               <>
                 <Title numberOfLines={1}>{lastSymptom.name}</Title>
                 <View style={styles.sevInline}><View style={styles.sevBadge}><Text style={styles.sevBadgeText}>{lastSymptom.severity}/10</Text></View></View>
@@ -294,7 +330,9 @@ export default function HomeScreen() {
         return (
           <Card key={id} testID="widget-lab">
             <WidgetHeader icon="water-outline" label={t("latest_lab")} />
-            {lastLab ? (
+            {sectionStates.labs === "error" ? (
+              <SourceError text={lang === "ru" ? "Не удалось загрузить анализы" : "Could not load labs"} />
+            ) : lastLab ? (
               <>
                 <Title>{lastLab.title}</Title>
                 <Muted style={{ marginTop: 2 }}>{lastLab.date} · {lastLab.biomarkers.length} {t("biomarkers")}</Muted>
@@ -307,7 +345,9 @@ export default function HomeScreen() {
         return (
           <Card key={id} testID="widget-quests">
             <WidgetHeader icon="trophy-outline" label={t("quests")} />
-            {game?.quests?.length ? (game.quests || []).map((q: any) => <View key={q.id} style={styles.questRow}><Ionicons name={q.done ? "checkmark-circle" : "ellipse-outline"} size={20} color={q.done ? colors.success : colors.onSurfaceSecondary} /><Text style={[styles.questText, q.done && styles.questDone]}>{lang === "ru" ? q.title : q.title_en}</Text><Tag label={`+${q.xp}`} /></View>) : <Muted>{t("not_enough_data")}</Muted>}
+            {sectionStates.gamification === "error" ? (
+              <SourceError text={lang === "ru" ? "Не удалось загрузить квесты" : "Could not load quests"} />
+            ) : game?.quests?.length ? (game.quests || []).map((q: any) => <View key={q.id} style={styles.questRow}><Ionicons name={q.done ? "checkmark-circle" : "ellipse-outline"} size={20} color={q.done ? colors.success : colors.onSurfaceSecondary} /><Text style={[styles.questText, q.done && styles.questDone]}>{lang === "ru" ? q.title : q.title_en}</Text><Tag label={`+${q.xp}`} /></View>) : <Muted>{t("not_enough_data")}</Muted>}
           </Card>
         );
       case "quick_note":
@@ -331,17 +371,34 @@ export default function HomeScreen() {
   }
 
   const todayHasItems = todayMedicationSlots.length > 0 || todayTasks.length > 0;
-  const todaySourcesAvailable = tasksAvailable || medScheduleAvailable;
+  const todaySourcesAvailable = sectionStates.tasks !== "error" || sectionStates.medicationDay !== "error";
+  const todayHasSourceError = sectionStates.tasks === "error" || sectionStates.medicationDay === "error";
 
   return (
     <View style={styles.container}>
       <View style={[styles.header, { paddingTop: insets.top + spacing.sm, paddingHorizontal: responsive.contentPadding }]}><TopBar subtitle={`${t("hello")}, ${activeProfile?.name || ""} · ${t("home_subtitle")}`} /></View>
-      {loading ? <View style={styles.center}><ActivityIndicator size="large" color={colors.onSurface} /></View> : (
+      {loading ? <View style={styles.center}><ActivityIndicator size="large" color={colors.onSurface} /></View> : homeLoadError ? (
+        <ScrollView contentContainerStyle={{ paddingHorizontal: responsive.contentPadding, paddingTop: spacing.xl, paddingBottom: 96 + insets.bottom }} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.onSurface} />}>
+          <Card testID="home-load-error">
+            <View style={styles.errorBlock}>
+              <Ionicons name="cloud-offline-outline" size={28} color={colors.onSurfaceSecondary} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.errorTitle}>{lang === "ru" ? "Не удалось обновить Главную" : "Could not refresh Home"}</Text>
+                <Muted>{lang === "ru" ? "Это техническая ошибка. Сохранённые данные не считаются отсутствующими." : "This is a technical error. Saved data is not treated as missing."}</Muted>
+              </View>
+            </View>
+            <PrimaryButton label={lang === "ru" ? "Повторить" : "Retry"} onPress={() => { setLoading(true); void load(); }} style={{ marginTop: spacing.lg }} />
+          </Card>
+        </ScrollView>
+      ) : (
         <ScrollView contentContainerStyle={{ paddingHorizontal: responsive.contentPadding, paddingTop: spacing.lg, paddingBottom: (responsive.isDesktop ? 40 : 96) + insets.bottom }} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.onSurface} />}>
-          <View style={styles.statStrip}><View style={styles.statPill}><Text style={styles.statNum}>{hasLabStatusData ? inRange : "—"}</Text><View style={[styles.statTag, { backgroundColor: colors.accent }]}><Text style={styles.statTagText}>{lang === "ru" ? "В норме" : "In range"}</Text></View></View><View style={styles.statPill}><Text style={styles.statNum}>{hasLabStatusData ? outRange : "—"}</Text><View style={[styles.statTag, { backgroundColor: "#F6D8CE" }]}><Text style={[styles.statTagText, { color: colors.error }]}>{lang === "ru" ? "Вне нормы" : "Out of range"}</Text></View></View></View>
-          {readinessOn && <ReadinessProgressCard activeId={activeId} profile={activeProfile} readiness={readiness} hasReadinessData={hasReadinessData} labs={labs} symptoms={symptoms} onOpenLab={openLab} onOpenCheckin={() => setCheckinOpen(true)} onNavigate={(route) => router.push(route as any)} />}
+          <View style={styles.statStrip}><View style={styles.statPill}><Text style={styles.statNum}>{sectionStates.labs !== "error" && hasLabStatusData ? inRange : "—"}</Text><View style={[styles.statTag, { backgroundColor: colors.accent }]}><Text style={styles.statTagText}>{lang === "ru" ? "В норме" : "In range"}</Text></View></View><View style={styles.statPill}><Text style={styles.statNum}>{sectionStates.labs !== "error" && hasLabStatusData ? outRange : "—"}</Text><View style={[styles.statTag, { backgroundColor: "#F6D8CE" }]}><Text style={[styles.statTagText, { color: colors.error }]}>{lang === "ru" ? "Вне нормы" : "Out of range"}</Text></View></View></View>
+          {sectionStates.labs === "error" ? <View style={styles.sectionNotice}><SourceError text={lang === "ru" ? "Статус анализов временно недоступен" : "Lab status is temporarily unavailable"} /></View> : null}
+          {readinessOn && (sectionStates.readiness === "error" ? (
+            <Card style={{ marginBottom: spacing.md }} testID="readiness-source-error"><WidgetHeader icon="analytics-outline" label={lang === "ru" ? "Готовность аналитики" : "Analytics readiness"} /><SourceError text={lang === "ru" ? "Не удалось загрузить готовность аналитики" : "Could not load analytics readiness"} /></Card>
+          ) : <ReadinessProgressCard activeId={activeId} profile={activeProfile} readiness={readiness} hasReadinessData={hasReadinessData} labs={labs} symptoms={symptoms} onOpenLab={openLab} onOpenCheckin={() => setCheckinOpen(true)} onNavigate={(route) => router.push(route as any)} />)}
           {aiAnalyticsOn && overview?.ai_summary ? <GradientCard gradient={gradients.lime} style={{ marginBottom: spacing.md }} testID="ai-day-card"><View style={styles.aiHead}><Ionicons name="sparkles" size={16} color={colors.onSurface} /><Text style={styles.aiHeadText}>{t("ai_day")}</Text></View><Text style={styles.aiText}>{overview.ai_summary}</Text></GradientCard> : null}
-          <Card style={{ marginBottom: spacing.md }} testID="attention-card"><WidgetHeader icon="alert-circle-outline" label={t("needs_attention")} />{overview?.attention?.length ? overview.attention.map((a, i) => <Pressable key={i} style={styles.attnRow} testID={`attention-${i}`} onPress={() => router.push((a.type === "bp" ? "/pressure" : a.type === "symptom" ? "/history" : "/labs") as any)}><View style={[styles.attnDot, { backgroundColor: a.severity === "error" ? colors.error : colors.warning }]} /><View style={{ flex: 1 }}><Text style={styles.attnTitle}>{a.title}</Text>{a.subtitle ? <Muted>{a.subtitle}</Muted> : null}</View><Ionicons name="chevron-forward" size={16} color={colors.onSurfaceSecondary} /></Pressable>) : hasHealthEvidence && overview ? <View style={styles.allGood}><Ionicons name="checkmark-circle" size={20} color={colors.success} /><Muted style={{ flex: 1 }}>{t("all_good")}</Muted></View> : <View style={styles.neutralState}><Ionicons name="information-circle-outline" size={20} color={colors.onSurfaceSecondary} /><Muted style={{ flex: 1 }}>{t("not_enough_data")}</Muted></View>}</Card>
+          <Card style={{ marginBottom: spacing.md }} testID="attention-card"><WidgetHeader icon="alert-circle-outline" label={t("needs_attention")} />{sectionStates.overview === "error" ? <SourceError text={lang === "ru" ? "Не удалось загрузить сигналы Аиды" : "Could not load Aida signals"} /> : overview?.attention?.length ? overview.attention.map((a, i) => <Pressable key={i} style={styles.attnRow} testID={`attention-${i}`} onPress={() => router.push((a.type === "bp" ? "/pressure" : a.type === "symptom" ? "/history" : "/labs") as any)}><View style={[styles.attnDot, { backgroundColor: a.severity === "error" ? colors.error : colors.warning }]} /><View style={{ flex: 1 }}><Text style={styles.attnTitle}>{a.title}</Text>{a.subtitle ? <Muted>{a.subtitle}</Muted> : null}</View><Ionicons name="chevron-forward" size={16} color={colors.onSurfaceSecondary} /></Pressable>) : hasHealthEvidence && overview ? <View style={styles.allGood}><Ionicons name="checkmark-circle" size={20} color={colors.success} /><Muted style={{ flex: 1 }}>{t("all_good")}</Muted></View> : <View style={styles.neutralState}><Ionicons name="information-circle-outline" size={20} color={colors.onSurfaceSecondary} /><Muted style={{ flex: 1 }}>{t("not_enough_data")}</Muted></View>}</Card>
 
           <Card style={{ marginBottom: spacing.md }} testID="today-card">
             <View style={styles.todayHeader}>
@@ -353,9 +410,10 @@ export default function HomeScreen() {
             {!todaySourcesAvailable ? (
               <View style={styles.neutralState}><Ionicons name="cloud-offline-outline" size={20} color={colors.onSurfaceSecondary} /><Muted style={{ flex: 1 }}>{lang === "ru" ? "Не удалось загрузить действия на сегодня" : "Today's actions could not be loaded"}</Muted></View>
             ) : !todayHasItems ? (
-              <View style={styles.neutralState}><Ionicons name="checkmark-circle-outline" size={20} color={colors.onSurfaceSecondary} /><Muted style={{ flex: 1 }}>{lang === "ru" ? "На сегодня действий нет" : "No actions for today"}</Muted></View>
+              <View style={styles.neutralState}><Ionicons name={todayHasSourceError ? "cloud-offline-outline" : "checkmark-circle-outline"} size={20} color={colors.onSurfaceSecondary} /><Muted style={{ flex: 1 }}>{todayHasSourceError ? (lang === "ru" ? "Часть действий не удалось загрузить" : "Some actions could not be loaded") : (lang === "ru" ? "На сегодня действий нет" : "No actions for today")}</Muted></View>
             ) : (
               <View>
+                {todayHasSourceError ? <View style={[styles.neutralState, { marginBottom: spacing.sm }]}><Ionicons name="cloud-offline-outline" size={18} color={colors.onSurfaceSecondary} /><Muted style={{ flex: 1 }}>{lang === "ru" ? "Часть источников действий временно недоступна" : "Some action sources are temporarily unavailable"}</Muted></View> : null}
                 {todayMedicationSlots.map((slot, index) => {
                   const taken = slot.status === "taken";
                   const skipped = slot.status === "skipped";
@@ -406,7 +464,7 @@ export default function HomeScreen() {
             </View>
           </Card>
 
-          <View style={[styles.dualRow, responsive.width < 480 && styles.stackRow]}><Card style={[styles.dualCard, responsive.width < 480 && styles.fullWidthCard]} onPress={() => openLab()} testID="upload-records-card"><View style={styles.plusRow}><Ionicons name="cloud-upload-outline" size={22} color={colors.onSurface} /><View style={styles.plusBtn}><Ionicons name="add" size={18} color={colors.onSurface} /></View></View><Text style={styles.dualTitle}>{t("upload_lab")}</Text><Muted numberOfLines={1}>{labs.length > 0 ? `${labs.length} ${t("labs").toLowerCase()}` : (lang === "ru" ? "Анализов пока нет" : "No labs yet")}</Muted></Card><GradientCard gradient={gradients.pink} style={[styles.dualCard, responsive.width < 480 && styles.fullWidthCard]} onPress={() => router.push("/devices")} testID="connect-device-card"><View style={styles.plusRow}><Ionicons name="watch-outline" size={22} color={colors.onSurface} /><View style={styles.plusBtn}><Ionicons name="add" size={18} color={colors.onSurface} /></View></View><Text style={styles.dualTitle}>{lang === "ru" ? "Подключить устройство" : "Connect tracker"}</Text><Muted numberOfLines={1} style={{ color: "rgba(27,27,29,0.55)" }}>Apple Watch · Xiaomi</Muted></GradientCard></View>
+          <View style={[styles.dualRow, responsive.width < 480 && styles.stackRow]}><Card style={[styles.dualCard, responsive.width < 480 && styles.fullWidthCard]} onPress={() => openLab()} testID="upload-records-card"><View style={styles.plusRow}><Ionicons name="cloud-upload-outline" size={22} color={colors.onSurface} /><View style={styles.plusBtn}><Ionicons name="add" size={18} color={colors.onSurface} /></View></View><Text style={styles.dualTitle}>{t("upload_lab")}</Text><Muted numberOfLines={1}>{sectionStates.labs === "error" ? (lang === "ru" ? "Не удалось загрузить анализы" : "Could not load labs") : labs.length > 0 ? `${labs.length} ${t("labs").toLowerCase()}` : (lang === "ru" ? "Анализов пока нет" : "No labs yet")}</Muted></Card><GradientCard gradient={gradients.pink} style={[styles.dualCard, responsive.width < 480 && styles.fullWidthCard]} onPress={() => router.push("/devices")} testID="connect-device-card"><View style={styles.plusRow}><Ionicons name="watch-outline" size={22} color={colors.onSurface} /><View style={styles.plusBtn}><Ionicons name="add" size={18} color={colors.onSurface} /></View></View><Text style={styles.dualTitle}>{lang === "ru" ? "Подключить устройство" : "Connect tracker"}</Text><Muted numberOfLines={1} style={{ color: "rgba(27,27,29,0.55)" }}>Apple Watch · Xiaomi</Muted></GradientCard></View>
           <View style={{ gap: spacing.md, marginTop: spacing.md }}>{rows}</View>
         </ScrollView>
       )}
@@ -459,8 +517,18 @@ export default function HomeScreen() {
 
 const WidgetHeader: React.FC<{ icon: any; label: string }> = ({ icon, label }) => <View style={styles.widgetHeader}><Ionicons name={icon} size={15} color={colors.onSurfaceSecondary} /><Text style={styles.widgetHeaderText}>{label}</Text></View>;
 
-const CompanionWidget: React.FC<{ game: any }> = ({ game }) => {
+const SourceError: React.FC<{ text: string }> = ({ text }) => (
+  <View style={styles.neutralState}>
+    <Ionicons name="cloud-offline-outline" size={18} color={colors.onSurfaceSecondary} />
+    <Muted style={{ flex: 1 }}>{text}</Muted>
+  </View>
+);
+
+const CompanionWidget: React.FC<{ game: any; state: DataState; lang: string }> = ({ game, state, lang }) => {
   const { t } = useI18n();
+  if (state === "error") {
+    return <GradientCard gradient={gradients.lime} testID="widget-companion"><View style={styles.companionRow}><Image source={{ uri: COMPANION_IMG }} style={styles.companionImg} contentFit="cover" /><View style={{ flex: 1 }}><Text style={styles.companionName}>{t("companion")}</Text><Muted style={{ marginTop: spacing.sm }}>{lang === "ru" ? "Не удалось загрузить данные спутника" : "Could not load companion data"}</Muted></View></View></GradientCard>;
+  }
   if (!game) {
     return <GradientCard gradient={gradients.lime} testID="widget-companion"><View style={styles.companionRow}><Image source={{ uri: COMPANION_IMG }} style={styles.companionImg} contentFit="cover" /><View style={{ flex: 1 }}><Text style={styles.companionName}>{t("companion")}</Text><Muted style={{ marginTop: spacing.sm }}>{t("not_enough_data")}</Muted></View></View></GradientCard>;
   }
@@ -474,6 +542,9 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.surface },
   header: { paddingHorizontal: spacing.lg, paddingBottom: spacing.md, backgroundColor: colors.surface },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
+  errorBlock: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md },
+  errorTitle: { fontSize: fontSize.lg, fontWeight: "700", color: colors.onSurface, fontFamily: fonts.text, marginBottom: 3 },
+  sectionNotice: { marginBottom: spacing.md, paddingHorizontal: spacing.xs },
   statStrip: { flexDirection: "row", gap: spacing.md, marginBottom: spacing.md },
   statPill: { flex: 1, backgroundColor: colors.surfaceSecondary, borderRadius: radius.lg, padding: spacing.lg, borderWidth: 1, borderColor: colors.glassBorder },
   statNum: { fontSize: fontSize["4xl"], fontWeight: "800", color: colors.onSurface, letterSpacing: -1, fontFamily: fonts.display },
