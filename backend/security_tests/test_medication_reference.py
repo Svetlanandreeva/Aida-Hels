@@ -1,5 +1,6 @@
 import asyncio
 
+import medication_reference
 from medication_reference import MedicationReferenceService, _finalize_candidate
 
 
@@ -101,9 +102,14 @@ def test_cache_miss_is_normalized_and_persisted(monkeypatch):
     async def fake_external(query):
         return [candidate], ["RxNorm"], True
 
+    # A fresh process/runner can have monotonic uptime below the 10-minute
+    # external-query TTL. The first lookup must still run because there is no
+    # recorded timestamp for this query yet.
+    monkeypatch.setattr(medication_reference.time, "monotonic", lambda: 5.0)
     monkeypatch.setattr(service, "_lookup_external", fake_external)
     result = asyncio.run(service.search("Atarax", 12))
 
+    assert result["internet_lookup_performed"] is True
     assert result["items"][0]["active_ingredient"] == "hydroxyzine"
     assert result["items"][0]["reference_source"] == "aida_catalog"
     assert db.medication_catalog.writes == 1

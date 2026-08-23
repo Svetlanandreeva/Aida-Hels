@@ -545,8 +545,8 @@ class MedicationReferenceService:
         await self._load_cache()
         cached_before = self._cache_matches(query, safe_limit)
         qkey = _norm(query)
-        last_lookup = self._external_query_times.get(qkey, 0.0)
-        lookup_recent = time.monotonic() - last_lookup < _EXTERNAL_QUERY_TTL_SECONDS
+        last_lookup = self._external_query_times.get(qkey)
+        lookup_recent = last_lookup is not None and time.monotonic() - last_lookup < _EXTERNAL_QUERY_TTL_SECONDS
         should_lookup = len(cached_before) < min(safe_limit, 5) and not lookup_recent
 
         sources_checked: list[str] = []
