@@ -62,11 +62,9 @@ def test_registration_no_longer_claims_phone_is_collected_on_step_one():
     assert "Создайте аккаунт" in register
 
 
-def test_email_verification_does_not_open_the_app_without_a_session():
+def test_email_registration_navigates_only_after_session_creation():
     register = (ROOT / "frontend" / "app" / "register.tsx").read_text(encoding="utf-8")
-    verification = register.index("if (result.verification_required)")
-    navigation = register.index('router.replace("/onboarding" as any)', verification)
-    assert 'setVerificationEmail(result.email)' in register[verification:navigation]
-    assert 'return;' in register[verification:navigation]
-    assert 'resendVerification(verificationEmail)' in register
-    assert 'testID="register-go-login"' in register
+    session = register.index('await withTimeout(register("Мой профиль", cleanEmail, password, null)')
+    navigation = register.index('router.replace("/onboarding" as any)', session)
+    assert session < navigation
+    assert "verification_required" not in register
