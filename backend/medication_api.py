@@ -7,7 +7,6 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
@@ -31,6 +30,10 @@ _REFERENCE_FIELDS = (
     "registration",
     "manufacturer",
     "normalization_status",
+    "reference_verification_status",
+    "reference_confidence",
+    "reference_sources",
+    "reference_urls",
     "reference_updated_at",
 )
 
@@ -103,6 +106,10 @@ def _normalize_med(doc):
     result.setdefault("registration", None)
     result.setdefault("manufacturer", None)
     result.setdefault("normalization_status", "legacy")
+    result.setdefault("reference_verification_status", None)
+    result.setdefault("reference_confidence", None)
+    result.setdefault("reference_sources", [])
+    result.setdefault("reference_urls", [])
     result.setdefault("reference_updated_at", None)
     return result
 
@@ -119,6 +126,10 @@ def _clear_reference(payload: Dict[str, Any], *, status: str = "manual") -> None
         "registration": None,
         "manufacturer": None,
         "normalization_status": status,
+        "reference_verification_status": "unverified",
+        "reference_confidence": 0.0,
+        "reference_sources": [],
+        "reference_urls": [],
         "reference_updated_at": None,
     })
 
@@ -138,7 +149,11 @@ def _apply_reference(payload: Dict[str, Any], reference: Dict[str, Any], *, stat
         "registration": reference.get("registration"),
         "manufacturer": reference.get("manufacturer"),
         "normalization_status": status,
-        "reference_updated_at": reference.get("updated_at_source"),
+        "reference_verification_status": reference.get("verification_status") or "probable",
+        "reference_confidence": reference.get("confidence"),
+        "reference_sources": reference.get("source_names") or [],
+        "reference_urls": reference.get("source_urls") or [],
+        "reference_updated_at": reference.get("last_verified_at") or reference.get("updated_at_source"),
     })
 
 
@@ -161,8 +176,8 @@ class MedicationCreate(BaseModel):
     source: str = "aida"
     external_id: Optional[str] = None
     external_metadata: Dict[str, Any] = Field(default_factory=dict)
-    # A client selects only a stable catalogue identity. Medical metadata is
-    # always resolved again by the backend before storage.
+    # The browser submits only Aida's internal catalogue identity. Ingredient
+    # metadata is resolved again server-side from the cached reference row.
     reference_source: Optional[str] = None
     reference_id: Optional[str] = None
 
@@ -227,51 +242,45 @@ def _validate_structured_dose(payload: Dict[str, Any]) -> None:
         payload["dose_unit"] = normalized
 
 
-async def _normalize_catalog_selection(payload: Dict[str, Any]) -> None:
-    """Resolve/verify normalized medication identity without fuzzy medical guessing."""
-    service = medication_reference_service()
+async def _normalize_catalog_selection(payload: Dict[str, Any], service) -> None:
+    """Resolve normalized identity without trusting browser-supplied medical facts."""
     reference_source = str(payload.get("reference_source") or "").strip()
     reference_id = str(payload.get("reference_id") or "").strip()
 
-    if reference_source == "rls_aurora" and reference_id:
-        if not service.configured:
-            raise HTTPException(503, "Medication reference catalogue is not configured")
-        try:
-            reference = await service.resolve_reference(reference_source, reference_id)
-        except (httpx.HTTPError, ValueError):
-            raise HTTPException(503, "Medication reference catalogue is temporarily unavailable")
+    if reference_source == "aida_catalog" and reference_id:
+        reference = await service.resolve_reference(reference_source, reference_id)
         if not reference:
-            raise HTTPException(400, "Medication reference is invalid")
-        _apply_reference(payload, reference, status="catalog")
+            raise HTTPException(400, "Medication reference is invalid or no longer available")
+        verification = str(reference.get("verification_status") or "probable")
+        status = "catalog_verified" if verification == "verified" else "catalog_probable"
+        _apply_reference(payload, reference, status=status)
         return
 
     if reference_source == "manual":
         _clear_reference(payload, status="manual")
         return
 
-    # Keep non-Aida imports independent. Apple Health can carry RxNorm or other
-    # identifiers in external_metadata, but those are not silently re-labelled
-    # as RLS active-substance IDs.
+    # Keep non-Aida imports independent. Apple Health may already carry its own
+    # normalized identifiers in external_metadata; do not silently relabel them.
     if payload.get("source") != "aida":
         payload.setdefault("trade_name", payload.get("name"))
         payload.setdefault("normalization_status", "external")
         return
 
-    # Existing/general medication forms still submit a plain name. If it is an
-    # exact trade-name match, enrich it safely. Otherwise keep it explicitly
-    # unverified so AI interaction logic can distinguish it from catalogue data.
-    try:
-        reference = await service.resolve_exact_trade_name(str(payload.get("name") or ""))
-    except (httpx.HTTPError, ValueError):
-        reference = None
+    # Existing/general medication forms may still submit a plain name. Resolve
+    # only an exact cached/internet match; fuzzy results never become medical facts.
+    reference = await service.resolve_exact_trade_name(str(payload.get("name") or ""))
     if reference:
-        _apply_reference(payload, reference, status="resolved")
+        verification = str(reference.get("verification_status") or "probable")
+        status = "resolved_verified" if verification == "verified" else "resolved_probable"
+        _apply_reference(payload, reference, status=status)
     else:
         _clear_reference(payload, status="unverified")
 
 
 def build_medication_router(db, auth) -> APIRouter:
     router = APIRouter(prefix="/api/medications", tags=["medications"])
+    reference_service = medication_reference_service(db)
 
     @router.get("")
     async def list_medications(profile_id: str, account: Dict[str, Any] = Depends(auth.require_account)):
@@ -303,7 +312,7 @@ def build_medication_router(db, auth) -> APIRouter:
         metadata = payload.get("external_metadata")
         payload["external_metadata"] = metadata if isinstance(metadata, dict) else {}
 
-        await _normalize_catalog_selection(payload)
+        await _normalize_catalog_selection(payload, reference_service)
 
         if payload["source"] == "apple_health" and external_id:
             existing = await db.medications.find_one(
@@ -351,7 +360,7 @@ def build_medication_router(db, auth) -> APIRouter:
                 "reference_source": patch.get("reference_source"),
                 "reference_id": patch.get("reference_id"),
             }
-            await _normalize_catalog_selection(normalization_payload)
+            await _normalize_catalog_selection(normalization_payload, reference_service)
             for key in _REFERENCE_FIELDS:
                 patch[key] = normalization_payload.get(key)
             patch["name"] = normalization_payload.get("name") or patch.get("name")
