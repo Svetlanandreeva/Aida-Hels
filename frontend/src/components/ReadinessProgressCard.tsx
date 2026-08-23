@@ -51,6 +51,7 @@ export function ReadinessProgressCard({
   const ru = lang === "ru";
   const [open, setOpen] = useState(false);
   const [detailsLoading, setDetailsLoading] = useState(false);
+  const [detailsError, setDetailsError] = useState(false);
   const [vitals, setVitals] = useState<Vital[]>([]);
   const [checkins, setCheckins] = useState<Checkin[]>([]);
   const [biologicalAge, setBiologicalAge] = useState<BiologicalAgeResult | null>(null);
@@ -113,15 +114,21 @@ export function ReadinessProgressCard({
     setOpen(true);
     if (!activeId || detailsLoading) return;
     setDetailsLoading(true);
+    setDetailsError(false);
     try {
       const [vitalsResult, checkinsResult, ageResult] = await Promise.allSettled([
         api.listVitals(activeId),
         api.listCheckins(activeId),
         overall >= 100 ? api.biologicalAge(activeId) : Promise.resolve(null),
       ]);
-      setVitals(vitalsResult.status === "fulfilled" ? vitalsResult.value : []);
-      setCheckins(checkinsResult.status === "fulfilled" ? checkinsResult.value : []);
-      setBiologicalAge(ageResult.status === "fulfilled" ? ageResult.value : null);
+      if (vitalsResult.status === "fulfilled") setVitals(vitalsResult.value);
+      if (checkinsResult.status === "fulfilled") setCheckins(checkinsResult.value);
+      if (ageResult.status === "fulfilled") setBiologicalAge(ageResult.value);
+      setDetailsError(
+        vitalsResult.status === "rejected"
+        || checkinsResult.status === "rejected"
+        || ageResult.status === "rejected"
+      );
     } finally {
       setDetailsLoading(false);
     }
@@ -185,6 +192,15 @@ export function ReadinessProgressCard({
         ) : null}
 
         {detailsLoading ? <View style={styles.loadingRow}><ActivityIndicator color={colors.onSurface} /><Muted>{ru ? "Проверяем сохранённые данные…" : "Checking saved data…"}</Muted></View> : null}
+        {detailsError && !detailsLoading ? (
+          <Pressable style={styles.errorState} onPress={openDetails} testID="readiness-details-error">
+            <Ionicons name="cloud-offline-outline" size={21} color={colors.onSurfaceSecondary} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.errorTitle}>{ru ? "Не все источники удалось обновить" : "Some sources could not be refreshed"}</Text>
+              <Muted>{ru ? "Это техническая ошибка, а не отсутствие данных. Нажмите, чтобы повторить." : "This is a technical error, not missing data. Tap to retry."}</Muted>
+            </View>
+          </Pressable>
+        ) : null}
 
         <View style={styles.itemList}>
           {items.map((item) => (
@@ -220,6 +236,8 @@ const styles = StyleSheet.create({
   sheetTitle: { fontSize: fontSize.xl, fontWeight: "700", color: colors.onSurface, fontFamily: fonts.display },
   sheetLead: { marginTop: spacing.xs, marginBottom: spacing.lg, lineHeight: 20 },
   loadingRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.md },
+  errorState: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md, padding: spacing.md, borderRadius: radius.lg, backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.border, marginBottom: spacing.md },
+  errorTitle: { fontSize: fontSize.base, fontWeight: "700", color: colors.onSurface, fontFamily: fonts.text, marginBottom: 2 },
   ageState: { flexDirection: "row", gap: spacing.md, padding: spacing.md, borderRadius: radius.lg, backgroundColor: colors.surfaceSecondary, marginBottom: spacing.md },
   itemList: { gap: spacing.md },
   item: { padding: spacing.md, borderRadius: radius.lg, backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.border },
