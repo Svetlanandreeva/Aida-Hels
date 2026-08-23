@@ -30,6 +30,7 @@ SHEET_NAMES = {
     "symptoms": "symptoms",
     "medications": "medications",
     "medication_events": "medication_events",
+    "nutrition_entries": "nutrition_entries",
     "vitals": "vitals",
     "checkins": "checkins",
     "tasks": "tasks",

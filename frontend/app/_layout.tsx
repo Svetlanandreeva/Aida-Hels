@@ -147,6 +147,7 @@ function RoutedApp() {
         <Stack.Screen name="onboarding-lifestyle" />
         <Stack.Screen name="onboarding-medications" />
         <Stack.Screen name="medication-time-setup" />
+        <Stack.Screen name="nutrition" />
         <Stack.Screen name="report" options={{ presentation: "modal" }} />
       </Stack>
     </View>

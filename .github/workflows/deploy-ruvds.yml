@@ -221,6 +221,68 @@ jobs:
           PY
           EOF
 
+      - name: Ensure persistent nutrition reference configuration
+        timeout-minutes: 2
+        env:
+          USDA_FDC_API_KEY: ${{ secrets.USDA_FDC_API_KEY }}
+        run: |
+          encode_optional_secret() {
+            if [ -z "$1" ]; then
+              printf '-'
+            else
+              printf '%s' "$1" | base64 | tr -d '\n'
+            fi
+          }
+
+          USDA_FDC_API_KEY_B64="$(encode_optional_secret "$USDA_FDC_API_KEY")"
+
+          ssh -p "$RUVDS_PORT" -i ~/.ssh/ruvds -o ConnectTimeout=10 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            "$RUVDS_USER@$RUVDS_HOST" bash -s -- "$USDA_FDC_API_KEY_B64" <<'EOF'
+          set -euo pipefail
+          cd /opt/aida/backend
+          touch .env
+          test -w .env || (echo 'Production .env is not writable by deploy user' && exit 1)
+          chmod 600 .env
+          export USDA_FDC_API_KEY_B64="$1"
+
+          python3 - <<'PY'
+          import base64
+          import os
+          from pathlib import Path
+
+          path = Path('.env')
+          lines = path.read_text().splitlines()
+          existing = ''
+          for line in lines:
+              if line.startswith('USDA_FDC_API_KEY='):
+                  existing = line.split('=', 1)[1].strip()
+                  break
+
+          encoded = os.environ.get('USDA_FDC_API_KEY_B64', '')
+          incoming = '' if not encoded or encoded == '-' else base64.b64decode(encoded.encode('ascii')).decode('utf-8').strip()
+          value = incoming or existing
+          if not value:
+              print('USDA_FDC_API_KEY is not configured; Open Food Facts remains available.')
+              raise SystemExit(0)
+
+          updated = []
+          replaced = False
+          for line in lines:
+              if line.startswith('USDA_FDC_API_KEY='):
+                  if not replaced:
+                      updated.append(f'USDA_FDC_API_KEY={value}')
+                      replaced = True
+                  continue
+              updated.append(line)
+          if not replaced:
+              if updated and updated[-1] != '':
+                  updated.append('')
+              updated.append(f'USDA_FDC_API_KEY={value}')
+          path.write_text('\n'.join(updated).rstrip() + '\n')
+          print('USDA FoodData Central production key is configured and persisted.')
+          PY
+          EOF
+
       - name: Upload backend and built web bundle
         timeout-minutes: 8
         run: |

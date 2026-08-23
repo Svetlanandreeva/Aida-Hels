@@ -1,5 +1,6 @@
 import React, { useCallback, useState } from "react";
 import {
+  ActivityIndicator,
   View,
   Text,
   StyleSheet,
@@ -42,6 +43,7 @@ export default function ProfileScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [edit, setEdit] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [nutritionSaving, setNutritionSaving] = useState(false);
 
   const [height, setHeight] = useState("");
   const [weight, setWeight] = useState("");
@@ -86,6 +88,21 @@ export default function ProfileScreen() {
     }
   };
 
+  const toggleNutrition = async () => {
+    if (!activeProfile || nutritionSaving) return;
+    const enabled = activeProfile.module_settings?.nutrition === true;
+    setNutritionSaving(true);
+    try {
+      await api.updateProfile(activeProfile.id, {
+        module_settings: { ...(activeProfile.module_settings || {}), nutrition: !enabled },
+      });
+      await reload();
+      bumpRefresh();
+    } finally {
+      setNutritionSaving(false);
+    }
+  };
+
   if (!activeProfile) {
     return (
       <View style={[styles.emptyPage, { paddingTop: insets.top + spacing["3xl"] }]}>
@@ -109,6 +126,7 @@ export default function ProfileScreen() {
   }
 
   const age = ageFrom(activeProfile.dob);
+  const nutritionEnabled = activeProfile.module_settings?.nutrition === true;
 
   return (
     <View style={styles.container}>
@@ -159,6 +177,7 @@ export default function ProfileScreen() {
           <View style={styles.featureLinks} testID="profile-feature-links">
             <FeatureLink icon="body-outline" title={lang === "ru" ? "Организм" : "Body"} subtitle={lang === "ru" ? "Системы и биологический возраст" : "Systems and biological age"} onPress={() => router.push("/body" as any)} />
             <FeatureLink icon="watch-outline" title={lang === "ru" ? "Устройства" : "Devices"} subtitle={lang === "ru" ? "Часы, HealthKit и Health Connect" : "Watches, HealthKit and Health Connect"} onPress={() => router.push("/devices" as any)} />
+            {nutritionEnabled ? <FeatureLink icon="restaurant-outline" title={lang === "ru" ? "Питание" : "Nutrition"} subtitle={lang === "ru" ? "Дневник, качество рациона и взаимодействия" : "Diary, diet quality and interactions"} onPress={() => router.push("/nutrition" as any)} /> : null}
             {activeProfile.sex === "female" ? <FeatureLink icon="flower-outline" title={lang === "ru" ? "Женское здоровье" : "Women's health"} subtitle={lang === "ru" ? "Цикл, планирование, беременность" : "Cycle, planning, pregnancy"} onPress={() => router.push("/womens-health" as any)} /> : null}
             <FeatureLink icon="people-outline" title={lang === "ru" ? "Семья и доступ" : "Family & access"} subtitle={lang === "ru" ? "Профили и разрешения" : "Profiles and permissions"} onPress={() => router.push("/family" as any)} />
             <FeatureLink icon="shield-checkmark-outline" title={lang === "ru" ? "Приватность" : "Privacy"} subtitle={lang === "ru" ? "AI, уведомления и сессии" : "AI, notifications and sessions"} onPress={() => router.push("/privacy" as any)} />
@@ -218,6 +237,18 @@ export default function ProfileScreen() {
                 </Pressable>
               </View>
             </View>
+            <Pressable style={styles.settingRow} onPress={() => void toggleNutrition()} disabled={nutritionSaving} testID="nutrition-setting-toggle">
+              <View style={styles.settingActionLabel}>
+                <Ionicons name="restaurant-outline" size={19} color={colors.onSurface} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.settingLabel}>{lang === "ru" ? "Дневник питания" : "Nutrition diary"}</Text>
+                  <Text style={styles.settingHint}>{lang === "ru" ? "Добавлять питание в общий анализ Aida" : "Include nutrition in Aida's overall analysis"}</Text>
+                </View>
+              </View>
+              <View style={[styles.moduleChip, nutritionEnabled && styles.moduleChipActive]}>
+                {nutritionSaving ? <ActivityIndicator size="small" color={nutritionEnabled ? colors.onBrandPrimary : colors.onSurface} /> : <Text style={[styles.moduleChipText, nutritionEnabled && styles.moduleChipTextActive]}>{nutritionEnabled ? (lang === "ru" ? "Вкл" : "On") : (lang === "ru" ? "Выкл" : "Off")}</Text>}
+              </View>
+            </Pressable>
             <Pressable style={styles.settingRow} onPress={openEdit} testID="edit-profile-button">
               <Text style={styles.settingLabel}>{t("edit")}</Text>
               <Ionicons name="chevron-forward" size={18} color={colors.onSurfaceSecondary} />
@@ -349,9 +380,15 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     borderTopWidth: 1,
     borderTopColor: colors.divider,
+    gap: spacing.md,
   },
-  settingActionLabel: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  settingActionLabel: { flex: 1, flexDirection: "row", alignItems: "center", gap: spacing.sm },
   settingLabel: { fontSize: fontSize.lg, color: colors.onSurface, fontFamily: fonts.text },
+  settingHint: { marginTop: 2, fontSize: fontSize.sm, lineHeight: 18, color: colors.onSurfaceSecondary, fontFamily: fonts.text },
+  moduleChip: { minWidth: 56, minHeight: 32, paddingHorizontal: 9, borderRadius: radius.pill, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+  moduleChipActive: { backgroundColor: colors.brandPrimary, borderColor: colors.brandPrimary },
+  moduleChipText: { fontSize: fontSize.sm, fontWeight: "800", color: colors.onSurfaceSecondary, fontFamily: fonts.text },
+  moduleChipTextActive: { color: colors.onBrandPrimary },
   langSwitch: { flexDirection: "row", backgroundColor: colors.surface, borderRadius: radius.pill, padding: 3, borderWidth: 1, borderColor: colors.border },
   langOpt: { paddingHorizontal: spacing.md, paddingVertical: 5, borderRadius: radius.pill },
   langOptActive: { backgroundColor: colors.brandPrimary },
