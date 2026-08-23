@@ -39,9 +39,9 @@ def test_primary_navigation_matches_product_hierarchy():
 
 def test_primary_navigation_reuses_existing_section_screens():
     wrappers = {
-        "frontend/app/(tabs)/mind.tsx": '../mind',
-        "frontend/app/(tabs)/pressure.tsx": '../pressure',
-        "frontend/app/(tabs)/labs.tsx": '../labs',
+        "frontend/app/(tabs)/mind.tsx": '@/src/emergent/screens/Mind',
+        "frontend/app/(tabs)/pressure.tsx": '@/src/emergent/screens/Pressure',
+        "frontend/app/(tabs)/labs.tsx": '@/src/emergent/screens/Labs',
     }
     for path, target in wrappers.items():
         source = read(path)

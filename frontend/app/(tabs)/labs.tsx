@@ -1,1 +1,2 @@
-export { default } from "../labs";
+export { default } from "@/src/emergent/screens/Labs";
+

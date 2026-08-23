@@ -1,1 +1,2 @@
-export { default } from "../body";
+export { default } from "@/src/emergent/screens/Body";
+
