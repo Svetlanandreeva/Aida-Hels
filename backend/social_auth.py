@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
 import logging
 import os
 import secrets
@@ -53,6 +54,23 @@ def _json_object(response: httpx.Response, error_message: str) -> Dict[str, Any]
     return data
 
 
+def _with_query(url: str, params: Dict[str, str]) -> str:
+    separator = "&" if "?" in url else "?"
+    return f"{url}{separator}{urlencode(params)}"
+
+
+def _callback_error_code(exc: HTTPException) -> str:
+    if exc.status_code == 409:
+        return "account_exists"
+    if exc.status_code == 403:
+        return "account_unavailable"
+    if exc.status_code in {502, 504}:
+        return "provider_exchange_failed"
+    if exc.status_code == 503:
+        return "temporary_unavailable"
+    return "social_sign_in_failed"
+
+
 class SocialStartRequest(BaseModel):
     return_uri: str = Field(min_length=1, max_length=1000)
 
@@ -88,6 +106,10 @@ class SocialAuthService:
 
     def configured(self, provider: str) -> bool:
         cfg = self._config(provider)
+        if provider == "vk":
+            # Current VK ID OAuth 2.1 code exchange is PKCE + APP_ID based and
+            # does not send the application secret over the authorization wire.
+            return bool(cfg["client_id"] and cfg["callback"])
         return bool(cfg["client_id"] and cfg["client_secret"] and cfg["callback"])
 
     @staticmethod
@@ -142,14 +164,18 @@ class SocialAuthService:
             }
             url = "https://oauth.yandex.ru/authorize?" + urlencode(params)
         else:
+            # Match the current VK ID SDK wire contract. VK uses lowercase
+            # `s256` and sends both client_id and app_id for redirect auth.
             params = {
                 "response_type": "code",
                 "client_id": cfg["client_id"],
+                "app_id": cfg["client_id"],
                 "redirect_uri": cfg["callback"],
                 "state": state,
                 "code_challenge": _pkce_challenge(verifier),
-                "code_challenge_method": "S256",
+                "code_challenge_method": "s256",
                 "scope": "email",
+                "sdk_type": "vkid",
             }
             url = "https://id.vk.ru/authorize?" + urlencode(params)
         return {"authorization_url": url}
@@ -219,36 +245,49 @@ class SocialAuthService:
             "name": str(info.get("real_name") or info.get("display_name") or email.split("@")[0] or "Yandex user"),
         }
 
-    async def _exchange_vk(self, code: str, state_record: Dict[str, Any], device_id: str) -> Dict[str, str]:
+    async def _exchange_vk(
+        self,
+        code: str,
+        state_record: Dict[str, Any],
+        device_id: str,
+        callback_state: str,
+    ) -> Dict[str, str]:
         cfg = self._config("vk")
         if not device_id:
             raise HTTPException(400, "VK ID device_id is missing")
 
         try:
             async with httpx.AsyncClient(timeout=20) as client:
+                # VK ID SDK sends OAuth metadata in the query string and the
+                # one-time authorization code in the form body.
                 token_res = await client.post(
                     "https://id.vk.ru/oauth2/auth",
-                    data={
+                    params={
                         "grant_type": "authorization_code",
-                        "code": code,
-                        "code_verifier": state_record["code_verifier"],
-                        "client_id": cfg["client_id"],
-                        "client_secret": cfg["client_secret"],
-                        "device_id": device_id,
                         "redirect_uri": cfg["callback"],
+                        "client_id": cfg["client_id"],
+                        "code_verifier": state_record["code_verifier"],
+                        "state": callback_state,
+                        "device_id": device_id,
                     },
+                    data={"code": code},
                 )
                 if token_res.status_code >= 400:
                     logger.warning("VK ID token exchange rejected: status=%s", token_res.status_code)
                     raise HTTPException(502, "VK ID token exchange failed")
                 token_data = _json_object(token_res, "VK ID returned an invalid token response")
+                returned_state = str(token_data.get("state") or "")
+                if returned_state and returned_state != callback_state:
+                    logger.warning("VK ID token exchange returned mismatched state")
+                    raise HTTPException(502, "VK ID token exchange state mismatch")
                 access_token = str(token_data.get("access_token") or "")
                 if not access_token:
                     raise HTTPException(502, "VK ID returned no access token")
 
                 info_res = await client.post(
                     "https://id.vk.ru/oauth2/user_info",
-                    data={"access_token": access_token, "client_id": cfg["client_id"]},
+                    params={"client_id": cfg["client_id"]},
+                    data={"access_token": access_token},
                 )
                 if info_res.status_code >= 400:
                     logger.warning("VK ID profile request rejected: status=%s", info_res.status_code)
@@ -392,14 +431,14 @@ class SocialAuthService:
         if provider not in self.providers:
             raise HTTPException(404, "Unknown social provider")
         record = await self._consume_state(provider, state)
-        if provider == "yandex":
-            identity_data = await self._exchange_yandex(code, record)
-        else:
-            identity_data = await self._exchange_vk(code, record, device_id)
-        if not identity_data["provider_user_id"] or not identity_data["email"]:
-            raise HTTPException(502, "Social provider did not return required account data")
-
         try:
+            if provider == "yandex":
+                identity_data = await self._exchange_yandex(code, record)
+            else:
+                identity_data = await self._exchange_vk(code, record, device_id, state)
+            if not identity_data["provider_user_id"] or not identity_data["email"]:
+                raise HTTPException(502, "Social provider did not return required account data")
+
             account = await self._find_or_create_social_account(provider, identity_data)
             if not account or account.get("disabled_at"):
                 raise HTTPException(403, "Account unavailable")
@@ -414,14 +453,25 @@ class SocialAuthService:
                 "expires_at": _iso(now + timedelta(minutes=self.ticket_minutes)),
                 "used_at": None,
             })
-        except HTTPException:
-            raise
+        except HTTPException as exc:
+            logger.warning(
+                "Social OAuth callback rejected: provider=%s status=%s detail=%s",
+                provider,
+                exc.status_code,
+                str(exc.detail)[:160],
+            )
+            return _with_query(record["return_uri"], {
+                "oauth_error": _callback_error_code(exc),
+                "oauth_provider": provider,
+            })
         except Exception as exc:
             logger.exception("Social OAuth account persistence failed: provider=%s", provider)
-            raise HTTPException(503, "Social sign-in is temporarily unavailable") from exc
+            return _with_query(record["return_uri"], {
+                "oauth_error": "temporary_unavailable",
+                "oauth_provider": provider,
+            })
 
-        separator = "&" if "?" in record["return_uri"] else "?"
-        return f"{record['return_uri']}{separator}oauth_ticket={ticket}"
+        return _with_query(record["return_uri"], {"oauth_ticket": ticket})
 
     async def complete(self, ticket: str) -> Dict[str, Any]:
         try:
@@ -466,9 +516,42 @@ def build_social_auth_router(db, auth_service) -> APIRouter:
 
     @router.get("/{provider}/callback")
     async def callback(provider: str, request: Request):
-        code = str(request.query_params.get("code") or "")
-        state = str(request.query_params.get("state") or "")
-        device_id = str(request.query_params.get("device_id") or "")
+        payload: Dict[str, Any] = {}
+        raw_payload = str(request.query_params.get("payload") or "").strip()
+        if raw_payload:
+            try:
+                parsed = json.loads(raw_payload)
+                if isinstance(parsed, dict):
+                    payload = parsed
+            except (TypeError, ValueError):
+                logger.warning("OAuth callback payload is not valid JSON: provider=%s", provider)
+
+        code = str(request.query_params.get("code") or payload.get("code") or "")
+        state = str(request.query_params.get("state") or payload.get("state") or "")
+        device_id = str(request.query_params.get("device_id") or payload.get("device_id") or "")
+        provider_error = str(request.query_params.get("error") or payload.get("error") or "").strip()
+        provider_error_description = str(
+            request.query_params.get("error_description") or payload.get("error_description") or ""
+        ).strip()
+
+        if provider_error:
+            if not state:
+                raise HTTPException(400, "OAuth callback error is missing state")
+            record = await service._consume_state(provider, state)
+            logger.warning(
+                "OAuth provider rejected authorization: provider=%s error=%s description=%s",
+                provider,
+                provider_error[:80],
+                provider_error_description[:160],
+            )
+            return RedirectResponse(
+                _with_query(record["return_uri"], {
+                    "oauth_error": "provider_rejected",
+                    "oauth_provider": provider,
+                }),
+                status_code=302,
+            )
+
         if not code or not state:
             raise HTTPException(400, "OAuth callback is missing code or state")
         return RedirectResponse(
