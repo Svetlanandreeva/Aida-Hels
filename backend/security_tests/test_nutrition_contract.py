@@ -57,6 +57,13 @@ def test_open_sources_are_persistent_sources_and_fatsecret_is_not_analysis_depen
     assert "FatSecret is intentionally not part" in source
 
 
+def test_usda_secret_is_wired_into_production_deploy_without_logging_value():
+    workflow = (ROOT / ".github/workflows/deploy-ruvds.yml").read_text(encoding="utf-8")
+    assert 'USDA_FDC_API_KEY: ${{ secrets.USDA_FDC_API_KEY }}' in workflow
+    assert "USDA FoodData Central production key is configured and persisted." in workflow
+    assert "USDA_FDC_API_KEY_B64" in workflow
+
+
 def test_open_source_cross_check_compares_macros_without_copying_secondary_product():
     primary = {
         "name": "Oatmeal",
