@@ -20,7 +20,7 @@ def test_context_builder_fails_closed_for_privacy_and_explicitly_disabled_module
 
     assert 'privacy.get("include_in_ai_context") is False' in source
     for module in ("meds", "symptoms", "labs", "pressure", "mental", "chronic", "women"):
-        assert f'_module_enabled(modules, "{module}")' in source
+        assert f'module_ai_allowed(profile, "{module}")' in source
     assert '"respect_module_settings": True' in source
 
 
