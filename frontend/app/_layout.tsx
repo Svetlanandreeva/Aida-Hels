@@ -6,11 +6,14 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 
 import { AuthProvider, useAuth } from "@/src/auth";
+import { api } from "@/src/api";
+import { withTimeout } from "@/src/async";
 import { useIconFonts } from "@/src/hooks/use-icon-fonts";
 import { I18nProvider } from "@/src/i18n";
 import { AppProvider, useApp } from "@/src/store";
 import { KeyboardRoot } from "@/src/components/KeyboardRoot";
 import { StartupPreview } from "@/src/components/StartupPreview";
+import { storage } from "@/src/utils/storage";
 import { colors } from "@/src/theme";
 
 LogBox.ignoreAllLogs(true);
@@ -26,6 +29,7 @@ if (Platform.OS !== "web") {
 
 const PUBLIC_ROUTES = new Set(["", "auth", "register", "reset-password", "terms", "privacy-policy"]);
 const ONBOARDING_ROUTES = new Set(["onboarding", "onboarding-medical", "onboarding-lifestyle", "onboarding-medications"]);
+const MEDICATION_TIME_PROMPT_PREFIX = "aida.medicationTimePrompt.v1.";
 
 const DeferredLogProvider = lazy(async () => {
   await import("@/src/lab-runtime-compat");
@@ -65,6 +69,37 @@ function useDeferredNotificationSetup() {
     const timer = setTimeout(() => { void import("@/src/notifications"); }, 500);
     return () => clearTimeout(timer);
   }, []);
+}
+
+function MedicationTimePromptGate() {
+  const { activeId, activeProfile, loading } = useApp();
+  const segments = useSegments();
+
+  useEffect(() => {
+    const route = String(segments[0] || "");
+    if (loading || !activeId || !activeProfile?.onboarding_completed) return;
+    if (route === "medication-time-setup" || PUBLIC_ROUTES.has(route)) return;
+
+    let cancelled = false;
+    void (async () => {
+      const key = `${MEDICATION_TIME_PROMPT_PREFIX}${activeId}`;
+      const alreadyPrompted = await storage.getItem<string>(key, "").catch(() => "");
+      if (cancelled || alreadyPrompted) return;
+      try {
+        const medications = await withTimeout(api.listMeds(activeId), 2500, "medication_time_prompt");
+        if (cancelled) return;
+        const missing = medications.some((med) => med.active && !(med.times || []).length);
+        await storage.setItem(key, "1").catch(() => undefined);
+        if (missing && !cancelled) router.replace("/medication-time-setup" as any);
+      } catch {
+        // A slow/offline medication request must never block entering Aida.
+        // Home still keeps the persistent missing-time warning once data loads.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [activeId, activeProfile?.onboarding_completed, loading, segments]);
+
+  return null;
 }
 
 function ProfileGate({ children }: { children: React.ReactNode }) {
@@ -111,6 +146,7 @@ function RoutedApp() {
         <Stack.Screen name="onboarding-medical" />
         <Stack.Screen name="onboarding-lifestyle" />
         <Stack.Screen name="onboarding-medications" />
+        <Stack.Screen name="medication-time-setup" />
         <Stack.Screen name="report" options={{ presentation: "modal" }} />
       </Stack>
     </View>
@@ -121,6 +157,7 @@ function RoutedApp() {
   if (!hasAppAccess) return stack;
   return (
     <AppProvider>
+      <MedicationTimePromptGate />
       <ProfileGate>
         <Suspense fallback={null}>
           <DeferredAuthenticatedSyncRuntime />
