@@ -64,6 +64,7 @@ from lab_pipeline import build_lab_router  # noqa: E402
 from lab_trends import build_lab_trends_router  # noqa: E402
 from medication_api import build_medication_router  # noqa: E402
 from medication_reference import build_medication_reference_router  # noqa: E402
+from module_config import build_module_config_router  # noqa: E402
 from nutrition_api import build_nutrition_router  # noqa: E402
 from pregnancy_api import build_pregnancy_router  # noqa: E402
 from profile_api import build_profile_router  # noqa: E402
@@ -142,6 +143,7 @@ app.include_router(build_email_signup_router(_google_db))
 app.include_router(build_social_auth_router(_google_db, auth_service))
 app.include_router(build_account_session_router(_google_db, auth_service))
 app.include_router(build_profile_router(_google_db, auth_service))
+app.include_router(build_module_config_router(_google_db, auth_service))
 app.include_router(build_icd10_router())
 app.include_router(build_medication_reference_router(_google_db))
 app.include_router(build_family_router(_google_db, auth_service))
