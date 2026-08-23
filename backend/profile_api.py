@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from module_config import apply_legacy_module_settings, effective_module_map, module_settings_projection
 from puzzle_api import widgets_for_goals
 
 logger = logging.getLogger(__name__)
@@ -72,6 +73,7 @@ class ProfileFull(BaseModel):
     avatar_url: Optional[str] = None
     privacy: Dict[str, Any] = Field(default_factory=_default_privacy)
     module_settings: Dict[str, bool] = Field(default_factory=dict)
+    module_config: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
     goals: List[str] = Field(default_factory=list)
     onboarding_completed: bool = False
     women_health: Dict[str, Any] = Field(default_factory=dict)
@@ -148,6 +150,8 @@ def _normalize(doc: Dict[str, Any], access_role: Optional[str] = None) -> Dict[s
     privacy.update(out.get("privacy") or {})
     out["privacy"] = privacy
     out.setdefault("module_settings", {})
+    out["module_config"] = effective_module_map(out)
+    out["module_settings"] = module_settings_projection(out["module_config"])
     out.setdefault("goals", [])
     out.setdefault("onboarding_completed", False)
     out.setdefault("women_health", {})
@@ -201,8 +205,6 @@ def build_profile_router(db, auth) -> APIRouter:
                     upsert=True,
                 )
         except Exception:
-            # Puzzle GET already has a goal-based fallback, so a delayed Sheets
-            # write must never make onboarding completion fail or stall.
             logger.exception("Goal puzzle background sync failed: profile_id=%s", profile_id)
 
     @router.get("", response_model=List[ProfileFull])
@@ -229,6 +231,10 @@ def build_profile_router(db, auth) -> APIRouter:
         privacy = _default_privacy()
         privacy.update(payload.get("privacy") or {})
         payload["privacy"] = privacy
+        if payload.get("module_settings"):
+            payload["module_config"] = apply_legacy_module_settings(payload, payload["module_settings"])
+            payload["module_settings"] = module_settings_projection(payload["module_config"])
+            payload["module_settings_source"] = "user"
         p = ProfileFull(**payload, access_role="owner", is_owner=True)
         doc = p.model_dump(exclude={"access_role", "is_owner"})
         doc["account_id"] = account["id"]
@@ -269,6 +275,9 @@ def build_profile_router(db, auth) -> APIRouter:
             patch["privacy"] = merged
 
         if "module_settings" in patch and patch["module_settings"] is not None:
+            config = apply_legacy_module_settings(current, patch["module_settings"])
+            patch["module_config"] = config
+            patch["module_settings"] = module_settings_projection(config)
             patch["module_settings_source"] = "user"
 
         was_completed = bool(current.get("onboarding_completed"))
@@ -276,25 +285,26 @@ def build_profile_router(db, auth) -> APIRouter:
         goals_changed = "goals" in patch and list(patch.get("goals") or []) != list(current.get("goals") or [])
         effective_goals = list(patch.get("goals") if "goals" in patch else (current.get("goals") or []))
 
+        has_user_module_config = any(
+            str(item.get("source") or "") == "user"
+            for item in (current.get("module_config") or {}).values()
+            if isinstance(item, dict)
+        ) if isinstance(current.get("module_config"), dict) else False
+
         if "module_settings" not in patch and (finishing_onboarding or goals_changed):
             current_settings = current.get("module_settings") or {}
-            if finishing_onboarding or not current_settings or current.get("module_settings_source") == "goals":
+            if not has_user_module_config and (finishing_onboarding or not current_settings or current.get("module_settings_source") == "goals"):
                 patch["module_settings"] = _module_settings_for_goals(effective_goals)
                 patch["module_settings_source"] = "goals"
 
         patch["updated_at"] = _now()
         await db.profiles.update_one({"id": profile_id}, {"$set": patch})
 
-        # Do not block the final onboarding response on optional Puzzle I/O.
-        # Home can already derive the same layout from profile goals if this
-        # background persistence is delayed by Google Sheets quota/backoff.
         if finishing_onboarding:
             background_tasks.add_task(sync_goal_puzzle, profile_id, effective_goals)
         elif was_completed and goals_changed:
             await sync_goal_puzzle(profile_id, effective_goals)
 
-        # The update result is already known; avoid two more Sheets reads just
-        # to re-read the row and its grant before returning it to the browser.
         doc = dict(current)
         doc.update(patch)
         return _normalize(doc, str(grant.get("role") or "viewer"))
