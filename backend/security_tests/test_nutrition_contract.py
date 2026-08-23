@@ -14,6 +14,12 @@ def test_nutrition_is_explicit_opt_in_in_ai_context():
     assert '"never_recommend_stopping_or_changing_medication_dose_from_nutrition_data": True' in source
 
 
+def test_nutrition_context_respects_other_disabled_modules():
+    source = (ROOT / "backend/nutrition_api.py").read_text(encoding="utf-8")
+    assert 'modules.get("mental") is not False' in source
+    assert 'modules.get("meds") is not False' in source
+
+
 def test_frontend_sends_device_local_meal_clock_and_has_profile_setting():
     screen = (ROOT / "frontend/app/nutrition.tsx").read_text(encoding="utf-8")
     profile = (ROOT / "frontend/app/(tabs)/profile.tsx").read_text(encoding="utf-8")
@@ -22,6 +28,11 @@ def test_frontend_sends_device_local_meal_clock_and_has_profile_setting():
     assert "timezone_offset_min: -now.getTimezoneOffset()" in screen
     assert 'testID="nutrition-setting-toggle"' in profile
     assert 'router.push("/nutrition"' in profile
+
+
+def test_profile_delete_cascades_to_nutrition_entries():
+    source = (ROOT / "backend/profile_api.py").read_text(encoding="utf-8")
+    assert "db.nutrition_entries" in source
 
 
 def test_fatsecret_provider_data_uses_short_lived_ram_cache_only():
