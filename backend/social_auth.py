@@ -43,6 +43,15 @@ def _pkce_challenge(verifier: str) -> str:
     return base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
 
 
+def _vk_stats_info(session_id: str) -> str:
+    raw = json.dumps(
+        {"flow_source": "auth", "session_id": session_id},
+        separators=(",", ":"),
+        ensure_ascii=True,
+    ).encode("utf-8")
+    return base64.b64encode(raw).decode("ascii")
+
+
 def _json_object(response: httpx.Response, error_message: str) -> Dict[str, Any]:
     try:
         data = response.json()
@@ -107,8 +116,6 @@ class SocialAuthService:
     def configured(self, provider: str) -> bool:
         cfg = self._config(provider)
         if provider == "vk":
-            # Current VK ID OAuth 2.1 code exchange is PKCE + APP_ID based and
-            # does not send the application secret over the authorization wire.
             return bool(cfg["client_id"] and cfg["callback"])
         return bool(cfg["client_id"] and cfg["client_secret"] and cfg["callback"])
 
@@ -164,18 +171,23 @@ class SocialAuthService:
             }
             url = "https://oauth.yandex.ru/authorize?" + urlencode(params)
         else:
-            # Match the current VK ID SDK wire contract. VK uses lowercase
-            # `s256` and sends both client_id and app_id for redirect auth.
+            # Mirror the current VK ID Web SDK redirect contract while keeping
+            # email scope explicitly enabled because Aida needs a verified email
+            # for account creation/linking.
+            version = os.environ.get("VK_ID_SDK_VERSION", "2.6.1").strip() or "2.6.1"
             params = {
-                "response_type": "code",
-                "client_id": cfg["client_id"],
-                "app_id": cfg["client_id"],
-                "redirect_uri": cfg["callback"],
-                "state": state,
                 "code_challenge": _pkce_challenge(verifier),
                 "code_challenge_method": "s256",
+                "client_id": cfg["client_id"],
+                "response_type": "code",
                 "scope": "email",
+                "state": state,
+                "v": json.dumps(version),
                 "sdk_type": "vkid",
+                "app_id": cfg["client_id"],
+                "redirect_uri": cfg["callback"],
+                "prompt": "",
+                "stats_info": _vk_stats_info(str(uuid.uuid4())),
             }
             url = "https://id.vk.ru/authorize?" + urlencode(params)
         return {"authorization_url": url}
@@ -258,8 +270,6 @@ class SocialAuthService:
 
         try:
             async with httpx.AsyncClient(timeout=20) as client:
-                # VK ID SDK sends OAuth metadata in the query string and the
-                # one-time authorization code in the form body.
                 token_res = await client.post(
                     "https://id.vk.ru/oauth2/auth",
                     params={
@@ -338,8 +348,6 @@ class SocialAuthService:
 
         now = _iso(_now())
         if existing:
-            # Recover a partially-created social account from an earlier callback
-            # failure. Direct password accounts are never auto-linked above.
             account = existing
             account_id = str(account["id"])
             profile = await self.db.profiles.find_one({"account_id": account_id, "kind": "me"}, {"_id": 0})

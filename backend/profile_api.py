@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from puzzle_api import widgets_for_goals
+
+logger = logging.getLogger(__name__)
 
 
 def _now():
@@ -161,20 +164,46 @@ def _normalize(doc: Dict[str, Any], access_role: Optional[str] = None) -> Dict[s
 def build_profile_router(db, auth) -> APIRouter:
     router = APIRouter(prefix="/api/profiles", tags=["profiles"])
 
-    async def require_access(account_id: str, profile_id: str, write: bool = False):
-        if not await auth.has_profile_access(account_id, profile_id, write=write):
-            raise HTTPException(404, "Profile not found")
-
     async def current_grant(account_id: str, profile_id: str):
         grant = await db.access_grants.find_one({"account_id": account_id, "profile_id": profile_id}, {"_id": 0})
         if not grant or grant.get("revoked_at"):
             return None
         return grant
 
+    async def require_access(account_id: str, profile_id: str, write: bool = False):
+        grant = await current_grant(account_id, profile_id)
+        if not grant:
+            raise HTTPException(404, "Profile not found")
+        role = str(grant.get("role") or "viewer")
+        if write and role not in {"owner", "editor"}:
+            raise HTTPException(404, "Profile not found")
+        return grant
+
     async def require_owner(account_id: str, profile_id: str):
         grant = await current_grant(account_id, profile_id)
         if not grant or str(grant.get("role") or "") != "owner":
             raise HTTPException(404, "Profile not found")
+
+    async def sync_goal_puzzle(profile_id: str, effective_goals: List[str]) -> None:
+        try:
+            existing_puzzle = await db.puzzle.find_one({"profile_id": profile_id}, {"_id": 0})
+            puzzle_source = str((existing_puzzle or {}).get("source") or "")
+            can_sync_goal_puzzle = not existing_puzzle or puzzle_source in {"onboarding_goals", "goals", "goals_fallback"}
+            if can_sync_goal_puzzle:
+                await db.puzzle.update_one(
+                    {"profile_id": profile_id},
+                    {"$set": {
+                        "profile_id": profile_id,
+                        "widgets": widgets_for_goals(effective_goals),
+                        "source": "goals",
+                        "updated_at": _now(),
+                    }},
+                    upsert=True,
+                )
+        except Exception:
+            # Puzzle GET already has a goal-based fallback, so a delayed Sheets
+            # write must never make onboarding completion fail or stall.
+            logger.exception("Goal puzzle background sync failed: profile_id=%s", profile_id)
 
     @router.get("", response_model=List[ProfileFull])
     async def list_profiles(account: Dict[str, Any] = Depends(auth.require_account)):
@@ -214,17 +243,21 @@ def build_profile_router(db, auth) -> APIRouter:
     @router.get("/{profile_id}", response_model=ProfileFull)
     async def get_profile(profile_id: str, account: Dict[str, Any] = Depends(auth.require_account)):
         account_id = str(account["id"])
-        await require_access(account_id, profile_id)
+        grant = await require_access(account_id, profile_id)
         doc = await db.profiles.find_one({"id": profile_id}, {"_id": 0})
         if not doc:
             raise HTTPException(404, "Profile not found")
-        grant = await current_grant(account_id, profile_id)
-        return _normalize(doc, str((grant or {}).get("role") or "viewer"))
+        return _normalize(doc, str(grant.get("role") or "viewer"))
 
     @router.put("/{profile_id}", response_model=ProfileFull)
-    async def update_profile(profile_id: str, data: ProfileUpdate, account: Dict[str, Any] = Depends(auth.require_account)):
+    async def update_profile(
+        profile_id: str,
+        data: ProfileUpdate,
+        background_tasks: BackgroundTasks,
+        account: Dict[str, Any] = Depends(auth.require_account),
+    ):
         account_id = str(account["id"])
-        await require_access(account_id, profile_id, write=True)
+        grant = await require_access(account_id, profile_id, write=True)
         current = await db.profiles.find_one({"id": profile_id}, {"_id": 0})
         if not current:
             raise HTTPException(404, "Profile not found")
@@ -235,8 +268,6 @@ def build_profile_router(db, auth) -> APIRouter:
             merged.update(patch["privacy"] or {})
             patch["privacy"] = merged
 
-        # A direct module-settings write is a deliberate user customization and
-        # must never be silently replaced by later goal edits.
         if "module_settings" in patch and patch["module_settings"] is not None:
             patch["module_settings_source"] = "user"
 
@@ -245,9 +276,6 @@ def build_profile_router(db, auth) -> APIRouter:
         goals_changed = "goals" in patch and list(patch.get("goals") or []) != list(current.get("goals") or [])
         effective_goals = list(patch.get("goals") if "goals" in patch else (current.get("goals") or []))
 
-        # Goals are the source of the first module configuration. Keep that
-        # mapping current while the user has not explicitly customized module
-        # settings. Explicit module settings always win.
         if "module_settings" not in patch and (finishing_onboarding or goals_changed):
             current_settings = current.get("module_settings") or {}
             if finishing_onboarding or not current_settings or current.get("module_settings_source") == "goals":
@@ -257,29 +285,19 @@ def build_profile_router(db, auth) -> APIRouter:
         patch["updated_at"] = _now()
         await db.profiles.update_one({"id": profile_id}, {"$set": patch})
 
-        # Draft goal changes during onboarding are frequent and must not fan out
-        # into extra puzzle reads/writes. Build the goal-based puzzle once when
-        # onboarding completes; after completion, keep syncing future goal edits.
-        sync_goal_puzzle = finishing_onboarding or (was_completed and goals_changed)
-        if sync_goal_puzzle:
-            existing_puzzle = await db.puzzle.find_one({"profile_id": profile_id}, {"_id": 0})
-            puzzle_source = str((existing_puzzle or {}).get("source") or "")
-            can_sync_goal_puzzle = not existing_puzzle or puzzle_source in {"onboarding_goals", "goals", "goals_fallback"}
-            if can_sync_goal_puzzle:
-                await db.puzzle.update_one(
-                    {"profile_id": profile_id},
-                    {"$set": {
-                        "profile_id": profile_id,
-                        "widgets": widgets_for_goals(effective_goals),
-                        "source": "goals",
-                        "updated_at": _now(),
-                    }},
-                    upsert=True,
-                )
+        # Do not block the final onboarding response on optional Puzzle I/O.
+        # Home can already derive the same layout from profile goals if this
+        # background persistence is delayed by Google Sheets quota/backoff.
+        if finishing_onboarding:
+            background_tasks.add_task(sync_goal_puzzle, profile_id, effective_goals)
+        elif was_completed and goals_changed:
+            await sync_goal_puzzle(profile_id, effective_goals)
 
-        doc = await db.profiles.find_one({"id": profile_id}, {"_id": 0})
-        grant = await current_grant(account_id, profile_id)
-        return _normalize(doc, str((grant or {}).get("role") or "viewer"))
+        # The update result is already known; avoid two more Sheets reads just
+        # to re-read the row and its grant before returning it to the browser.
+        doc = dict(current)
+        doc.update(patch)
+        return _normalize(doc, str(grant.get("role") or "viewer"))
 
     @router.delete("/{profile_id}")
     async def delete_profile(profile_id: str, account: Dict[str, Any] = Depends(auth.require_account)):
