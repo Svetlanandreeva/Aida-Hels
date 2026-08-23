@@ -64,7 +64,10 @@ def _compact(kind: str, row: Dict[str, Any], keys: Iterable[str]) -> Dict[str, A
     observed_at = row.get("observed_at") or row.get("date") or row.get("created_at")
     item["evidence_id"] = _evidence_id(kind, row)
     item["source"] = row.get("source") or row.get("provider_id") or "user"
-    item["verification_status"] = row.get("verification_status") or "unverified"
+    if kind == "medication" and row.get("reference_verification_status"):
+        item["verification_status"] = row.get("reference_verification_status")
+    else:
+        item["verification_status"] = row.get("verification_status") or "unverified"
     item["quality"] = row.get("quality") or row.get("quality_status") or "unknown"
     item["observed_at"] = observed_at
     item["freshness"] = _freshness(observed_at)
@@ -122,6 +125,11 @@ async def build_ai_context(db, profile_id: str, *, as_json: bool = True) -> str 
                     "reference_source",
                     "reference_id",
                     "normalization_status",
+                    "reference_verification_status",
+                    "reference_confidence",
+                    "reference_sources",
+                    "reference_urls",
+                    "reference_updated_at",
                     "dosage_form",
                     "strength",
                     "dose",
@@ -147,7 +155,9 @@ async def build_ai_context(db, profile_id: str, *, as_json: bool = True) -> str 
             "wearable_values_are_source_reported_not_diagnoses": True,
             "freshness_and_quality_must_be_considered": True,
             "respect_module_settings": True,
-            "medication_interactions_require_verified_active_substances": True,
+            "medication_interactions_require_normalized_active_substances": True,
+            "probable_medication_normalization_requires_uncertainty_warning": True,
+            "manual_unverified_medication_names_are_not_active_substance_evidence": True,
         },
     }
     return json.dumps(context, ensure_ascii=False, default=str) if as_json else context
