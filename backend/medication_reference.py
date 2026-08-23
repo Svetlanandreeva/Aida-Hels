@@ -135,12 +135,13 @@ class MedicationReferenceService:
         if isinstance(payload, list):
             return [row for row in payload if isinstance(row, dict)]
         if isinstance(payload, dict):
-            # Be tolerant if a provider wrapper returns a collection under a
-            # conventional key instead of a bare JSON array.
             for key in ("items", "data", "results"):
                 rows = payload.get(key)
                 if isinstance(rows, list):
                     return [row for row in rows if isinstance(row, dict)]
+            # Some lookup methods return one inventory object directly.
+            if payload.get("packing_id") is not None:
+                return [payload]
         return []
 
     async def search(self, query: str, limit: int = 12) -> Dict[str, Any]:
@@ -185,6 +186,27 @@ class MedicationReferenceService:
             "provider_available": successful_calls > 0,
             "minimum_query_length": 3,
         }
+
+    async def resolve_reference(self, reference_source: str, reference_id: str) -> Optional[Dict[str, Any]]:
+        """Resolve a client selection to canonical provider data.
+
+        Client-supplied active ingredients are never trusted. A selected RLS
+        packing is looked up again on the backend before it becomes part of the
+        medical profile or AI context.
+        """
+        if reference_source != _PROVIDER or not self.configured:
+            return None
+        prefix, separator, raw_id = str(reference_id or "").partition(":")
+        if separator != ":" or prefix != "packing":
+            return None
+        packing_id = _integer(raw_id)
+        if packing_id is None:
+            return None
+        rows = await self._inventory(packing_id=packing_id)
+        for row in rows:
+            if _integer(row.get("packing_id")) == packing_id:
+                return normalize_rls_item(row)
+        return None
 
     async def resolve_exact_trade_name(self, name: str) -> Optional[Dict[str, Any]]:
         """Best-effort normalization for legacy/manual create flows.
