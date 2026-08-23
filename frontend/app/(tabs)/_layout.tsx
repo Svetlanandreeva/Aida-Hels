@@ -1,21 +1,60 @@
-import React from "react";
-import { Tabs } from "expo-router";
+import React, { useCallback, useState } from "react";
+import { Tabs, useFocusEffect } from "expo-router";
 import { colors } from "@/src/theme";
 import { useI18n } from "@/src/i18n";
 import { ResponsiveTabBar } from "@/src/components/ResponsiveTabBar";
 import { useResponsiveLayout } from "@/src/hooks/use-responsive-layout";
+import { useApp } from "@/src/store";
+import { getModuleConfig } from "@/src/moduleConfigApi";
 
-const PRIMARY_TABS = new Set(["index", "mind", "pressure", "body", "labs", "chat", "tasks"]);
+const PRIMARY_TAB_MODULES: Record<string, string | null> = {
+  index: null,
+  mind: "mental",
+  pressure: "pressure",
+  body: "body",
+  labs: "labs",
+  chat: null,
+  tasks: "tasks",
+};
 
 export default function TabsLayout() {
   const { lang } = useI18n();
   const responsive = useResponsiveLayout();
+  const { activeId, refreshTick } = useApp();
+  const [enabledModules, setEnabledModules] = useState<Set<string> | null>(null);
+
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      if (!activeId || activeId === "preview-profile") {
+        setEnabledModules(null);
+        return () => { cancelled = true; };
+      }
+
+      void getModuleConfig(activeId)
+        .then((response) => {
+          if (cancelled) return;
+          setEnabledModules(new Set((response.modules || []).filter((module) => module.enabled).map((module) => module.module_code)));
+        })
+        .catch(() => {
+          if (!cancelled) setEnabledModules(null);
+        });
+
+      return () => { cancelled = true; };
+    }, [activeId, refreshTick]),
+  );
+
+  const routeVisible = (name: string) => {
+    if (!(name in PRIMARY_TAB_MODULES)) return false;
+    const moduleCode = PRIMARY_TAB_MODULES[name];
+    return moduleCode === null || enabledModules === null || enabledModules.has(moduleCode);
+  };
 
   return (
     <Tabs
       detachInactiveScreens
       tabBar={(props) => {
-        const visibleRoutes = props.state.routes.filter((route) => PRIMARY_TABS.has(route.name));
+        const visibleRoutes = props.state.routes.filter((route) => routeVisible(route.name));
         const activeName = props.state.routes[props.state.index]?.name;
         const visibleIndex = Math.max(0, visibleRoutes.findIndex((route) => route.name === activeName));
         return <ResponsiveTabBar {...props} state={{ ...props.state, routes: visibleRoutes, index: visibleIndex }} />;
