@@ -120,7 +120,7 @@ export default function ChatScreen() {
         <ScrollView
           ref={scrollRef}
           style={styles.flex}
-          contentContainerStyle={{ paddingHorizontal: responsive.contentPadding, paddingTop: spacing.lg, paddingBottom: spacing.lg, gap: spacing.md }}
+          contentContainerStyle={{ width: "100%", maxWidth: 720, alignSelf: "center", paddingHorizontal: responsive.contentPadding, paddingTop: spacing.lg, paddingBottom: spacing.lg, gap: spacing.md }}
           onContentSizeChange={scrollDown}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}

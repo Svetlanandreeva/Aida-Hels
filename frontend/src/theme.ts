@@ -1,45 +1,42 @@
-import { Platform } from "react-native";
-
-// Emergent design system: a low-glare clinical canvas with warm editorial type,
-// translucent graphite surfaces and a restrained coral/blue data palette.
+// Tokens are kept in lockstep with the Emergent reference application.
 export const colors = {
-  surface: "#09090B",
-  onSurface: "#F7F4EF",
-  surfaceSecondary: "#151517",
-  onSurfaceSecondary: "#A5A2A0",
-  surfaceTertiary: "#202023",
-  onSurfaceTertiary: "#CBC7C2",
-  surfaceInverse: "#F7F4EF",
-  onSurfaceInverse: "#111113",
+  surface: "#050505",
+  onSurface: "#FFFFFF",
+  surfaceSecondary: "#111111",
+  onSurfaceSecondary: "#8E8E93",
+  surfaceTertiary: "#1C1C1E",
+  onSurfaceTertiary: "#FFFFFF",
+  surfaceInverse: "#FFFFFF",
+  onSurfaceInverse: "#050505",
 
   // glass
-  glass: "rgba(24,24,27,0.76)",
-  glassBorder: "rgba(255,255,255,0.10)",
-  glassStrong: "rgba(31,31,35,0.92)",
+  glass: "rgba(17,17,17,0.82)",
+  glassBorder: "#38383A",
+  glassStrong: "rgba(28,28,30,0.94)",
 
-  brand: "#F0445B",
-  brandPrimary: "#F0445B",
+  brand: "#FF2D55",
+  brandPrimary: "#FF2D55",
   onBrandPrimary: "#FFFFFF",
-  brandSecondary: "#3B82F6",
-  onBrandSecondary: "#FFFFFF",
-  brandTertiary: "#2A171B",
-  onBrandTertiary: "#FF9AAA",
+  brandSecondary: "#3A000A",
+  onBrandSecondary: "#FFB3C1",
+  brandTertiary: "#3A000A",
+  onBrandTertiary: "#FFB3C1",
 
-  accent: "#F0445B",
+  accent: "#FF2D55",
   onAccent: "#FFFFFF",
 
-  success: "#4FB286",
-  onSuccess: "#07130F",
-  warning: "#F2A65A",
-  onWarning: "#171006",
-  error: "#FF6577",
-  onError: "#19080B",
-  info: "#5B9BFF",
-  onInfo: "#07101E",
+  success: "#30D158",
+  onSuccess: "#FFFFFF",
+  warning: "#FF9F0A",
+  onWarning: "#FFFFFF",
+  error: "#FF453A",
+  onError: "#FFFFFF",
+  info: "#0A84FF",
+  onInfo: "#FFFFFF",
 
-  border: "rgba(255,255,255,0.08)",
-  borderStrong: "rgba(255,255,255,0.16)",
-  divider: "rgba(255,255,255,0.08)",
+  border: "#38383A",
+  borderStrong: "#48484A",
+  divider: "#38383A",
 };
 
 // Gradient palettes for hero cards
@@ -62,10 +59,10 @@ export const spacing = {
 };
 
 export const radius = {
-  sm: 10,
-  md: 18,
-  lg: 26,
-  xl: 34,
+  sm: 8,
+  md: 16,
+  lg: 24,
+  xl: 24,
   pill: 999,
 };
 
@@ -74,15 +71,23 @@ export const fontSize = {
   base: 14,
   lg: 16,
   xl: 20,
-  "2xl": 26,
-  "3xl": 34,
-  "4xl": 46,
+  "2xl": 24,
+  "3xl": 32,
+  "4xl": 40,
 };
 
 export const fonts = {
-  display: Platform.select({ ios: "Georgia", android: "serif", default: "Georgia" }),
-  text: Platform.select({ ios: "System", android: "sans-serif", default: "System" }),
+  regular: "Manrope-Regular",
+  display: "Manrope-ExtraBold",
+  text: "Manrope-Regular",
+  medium: "Manrope-Medium",
+  semibold: "Manrope-SemiBold",
+  bold: "Manrope-Bold",
+  extrabold: "Manrope-ExtraBold",
 };
+
+export const CONTENT_MAX = 720;
+export const FORM_MAX = 460;
 
 export const statusColor = (status?: string | null) => {
   switch (status) {

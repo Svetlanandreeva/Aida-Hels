@@ -93,7 +93,7 @@ export default function LabsScreen() {
       ) : loadError ? (
         <View style={styles.stateWrap}><Ionicons name="cloud-offline-outline" size={56} color={colors.onSurfaceSecondary} /><Text style={styles.stateTitle}>{lang === "ru" ? "Не удалось загрузить анализы" : "Could not load labs"}</Text><Pressable onPress={load} style={styles.retryBtn}><Text style={styles.retryText}>{lang === "ru" ? "Повторить" : "Retry"}</Text></Pressable></View>
       ) : (
-        <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 40 + insets.bottom, gap: spacing.md }} showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={{ width: "100%", maxWidth: 720, alignSelf: "center", padding: spacing.lg, paddingBottom: 100 + insets.bottom, gap: spacing.md }} showsVerticalScrollIndicator={false}>
           {labs.length > 0 && (
             <Pressable style={styles.trendsCard} onPress={() => router.push("/lab-trends" as any)} testID="open-lab-trends">
               <View style={styles.trendsIcon}><Ionicons name="analytics-outline" size={22} color={colors.onSurface} /></View>

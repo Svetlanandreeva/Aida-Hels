@@ -72,7 +72,14 @@ export const useIconFonts = (): readonly [boolean, Error | null] => {
   const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
 
   const [loaded, error] = useFonts(
-    isWeb ? WEB_CRITICAL_ICON_FONTS : isExpoGo ? cdnIconFontMap() : {},
+    {
+      ...(isWeb ? WEB_CRITICAL_ICON_FONTS : isExpoGo ? cdnIconFontMap() : {}),
+      "Manrope-Regular": require("../../assets/fonts/Manrope-Variable.ttf"),
+      "Manrope-Medium": require("../../assets/fonts/Manrope-Variable.ttf"),
+      "Manrope-SemiBold": require("../../assets/fonts/Manrope-Variable.ttf"),
+      "Manrope-Bold": require("../../assets/fonts/Manrope-Variable.ttf"),
+      "Manrope-ExtraBold": require("../../assets/fonts/Manrope-Variable.ttf"),
+    },
   );
 
   useEffect(() => {

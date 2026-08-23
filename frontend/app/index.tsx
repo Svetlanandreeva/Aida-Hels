@@ -1,7 +1,7 @@
 import React from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { Image, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { Image, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { colors, fontSize, fonts, radius, spacing } from "@/src/theme";
@@ -31,11 +31,7 @@ export default function LandingScreen() {
       <View style={[styles.shell, mobile && styles.shellCompact, { paddingTop: insets.top + (mobile ? 6 : 12) }]}>
         <View style={[styles.header, mobile && styles.headerCompact]}>
           <Pressable style={styles.brandRow} onPress={() => router.replace("/")} accessibilityRole="link" accessibilityLabel="Aida">
-            {Platform.OS === "web" ? (
-              <Image source={{ uri: "/aida-logo.svg" }} style={[styles.brandLogo, mobile && styles.brandLogoCompact]} resizeMode="contain" accessibilityLabel="Aida" />
-            ) : (
-              <><View style={styles.logo}><Ionicons name="pulse" size={18} color={colors.onBrandPrimary} /></View><Text style={styles.brand}>Аида</Text></>
-            )}
+            <View style={styles.logo}><Ionicons name="pulse" size={16} color={colors.onBrandPrimary} /></View><Text style={styles.brand}>Аида</Text>
           </Pressable>
           <View style={[styles.headerActions, mobile && styles.headerActionsCompact]}>
             <Pressable style={[styles.loginButton, mobile && styles.loginButtonCompact]} onPress={() => router.push("/auth")}>
@@ -49,7 +45,7 @@ export default function LandingScreen() {
           </View>
         </View>
 
-        <View style={[styles.hero, mobile && styles.heroMobile, desktop && styles.heroDesktop]}>
+        <View style={[styles.hero, mobile && styles.heroMobile]}>
           <View style={styles.heroCopy}>
             <View style={[styles.badge, mobile && styles.badgeMobile]}><View style={styles.badgeDot} /><Text style={[styles.badgeText, mobile && styles.badgeTextMobile]}>Персональный ассистент здоровья</Text></View>
             <Text style={[styles.heroTitle, mobile && styles.heroTitleMobile, narrow && styles.heroTitleNarrow, desktop && styles.heroTitleDesktop]}>Здоровье — не набор цифр. Аида собирает их в понятную картину.</Text>
@@ -68,6 +64,12 @@ export default function LandingScreen() {
           </View>
 
           <View style={[styles.heroVisual, mobile && styles.heroVisualMobile]}>
+            <View style={styles.heroImage}>
+              <Image source={{ uri: "https://images.pexels.com/photos/9665187/pexels-photo-9665187.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940" }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+              <View style={[StyleSheet.absoluteFill, styles.heroImageShade]} />
+              <View style={styles.heroPulse}><Ionicons name="pulse" size={72} color="rgba(255,255,255,0.9)" /></View>
+            </View>
+            <View style={styles.demoCard}>
             <View style={styles.visualTop}>
               <Text style={styles.visualEyebrow}>ИИ-ИТОГ ДНЯ</Text>
               <View style={[styles.livePill, mobile && styles.livePillMobile]}><View style={styles.liveDot} /><Text style={styles.liveText}>по вашим данным</Text></View>
@@ -85,6 +87,7 @@ export default function LandingScreen() {
               <View style={[styles.orbitDot, { bottom: 24, left: "42%" }]} />
               <View style={styles.orbitLine} />
               <View style={[styles.orbitLine, styles.orbitLineTwo]} />
+            </View>
             </View>
           </View>
         </View>
@@ -151,15 +154,15 @@ function Section({ eyebrow, title, children, mobile, narrow }: { eyebrow: string
 
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: colors.surface },
-  shell: { width: "100%", maxWidth: 1180, alignSelf: "center", paddingHorizontal: spacing.xl },
+  shell: { width: "100%", maxWidth: 720, alignSelf: "center", paddingHorizontal: spacing.xl },
   shellCompact: { paddingHorizontal: 20 },
   header: { minHeight: 64, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md },
   headerCompact: { minHeight: 54, gap: 8 },
   brandRow: { flexDirection: "row", alignItems: "center", gap: 10, flexShrink: 1 },
   brandLogo: { width: 116, height: 48, borderRadius: 12, backgroundColor: colors.onSurface, paddingHorizontal: 8 },
   brandLogoCompact: { width: 92, height: 38 },
-  logo: { width: 36, height: 36, borderRadius: 12, backgroundColor: colors.brandPrimary, alignItems: "center", justifyContent: "center" },
-  brand: { fontFamily: fonts.text, fontSize: 13, fontWeight: "900", letterSpacing: 2.4, color: colors.onSurface },
+  logo: { width: 30, height: 30, borderRadius: 9, backgroundColor: colors.brandPrimary, alignItems: "center", justifyContent: "center" },
+  brand: { fontFamily: fonts.extrabold, fontSize: 20, color: colors.onSurface },
   headerActions: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   headerActionsCompact: { gap: 2, flexShrink: 0 },
   loginButton: { minHeight: 42, paddingHorizontal: spacing.lg, borderRadius: radius.pill, alignItems: "center", justifyContent: "center" },
@@ -168,19 +171,19 @@ const styles = StyleSheet.create({
   primarySmall: { minHeight: 42, paddingHorizontal: spacing.lg, borderRadius: radius.pill, backgroundColor: colors.brandPrimary, alignItems: "center", justifyContent: "center" },
   headerActionTextCompact: { fontSize: 14 },
   primaryText: { color: colors.onBrandPrimary, fontFamily: fonts.text, fontWeight: "800", fontSize: fontSize.base },
-  hero: { paddingTop: 64, paddingBottom: 72, gap: 32 },
+  hero: { paddingTop: 48, paddingBottom: 48, gap: 24 },
   heroMobile: { paddingTop: 34, paddingBottom: 44, gap: 24 },
-  heroDesktop: { flexDirection: "row", alignItems: "center", gap: 56, paddingTop: 88, paddingBottom: 96 },
+  heroDesktop: {},
   heroCopy: { flex: 1 },
   badge: { alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 8, borderWidth: 1, borderColor: colors.borderStrong, backgroundColor: colors.surfaceSecondary, paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.pill },
   badgeMobile: { paddingHorizontal: 11, paddingVertical: 7 },
   badgeDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.accent },
   badgeText: { color: colors.onSurface, fontFamily: fonts.text, fontWeight: "800", fontSize: fontSize.sm },
   badgeTextMobile: { fontSize: 13 },
-  heroTitle: { marginTop: spacing.xl, color: colors.onSurface, fontFamily: fonts.display, fontSize: 42, lineHeight: 47, letterSpacing: -1.2, fontWeight: "800" },
+  heroTitle: { marginTop: spacing.lg, color: colors.onSurface, fontFamily: fonts.extrabold, fontSize: 46, lineHeight: 52, letterSpacing: -1.2 },
   heroTitleMobile: { marginTop: 20, fontSize: 36, lineHeight: 40, letterSpacing: -1.1 },
   heroTitleNarrow: { fontSize: 32, lineHeight: 36, letterSpacing: -0.9 },
-  heroTitleDesktop: { fontSize: 58, lineHeight: 62, letterSpacing: -2 },
+  heroTitleDesktop: { fontSize: 46, lineHeight: 52, letterSpacing: -1.2 },
   heroBody: { marginTop: spacing.lg, maxWidth: 680, color: colors.onSurfaceSecondary, fontFamily: fonts.text, fontSize: 17, lineHeight: 26 },
   heroBodyMobile: { marginTop: 16, fontSize: 16, lineHeight: 23 },
   heroActions: { marginTop: spacing.xl, flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
@@ -189,8 +192,12 @@ const styles = StyleSheet.create({
   primaryMobile: { width: "100%", minHeight: 52 },
   secondary: { minHeight: 50, paddingHorizontal: 20, borderRadius: radius.pill, backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.borderStrong, alignItems: "center", justifyContent: "center" },
   secondaryText: { color: colors.onSurface, fontFamily: fonts.text, fontWeight: "800", fontSize: fontSize.base },
-  heroVisual: { flex: 0.82, minHeight: 430, borderRadius: radius.xl, padding: spacing.xl, backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.glassBorder, overflow: "hidden" },
-  heroVisualMobile: { flex: 0, minHeight: 0, padding: 20, borderRadius: 26 },
+  heroVisual: { minHeight: 430, marginTop: spacing.xl, alignItems: "center" },
+  heroVisualMobile: { minHeight: 430 },
+  heroImage: { width: "100%", height: 260, borderRadius: radius.lg, alignItems: "center", justifyContent: "center", overflow: "hidden" },
+  heroImageShade: { backgroundColor: "rgba(5,5,5,0.42)" },
+  heroPulse: { width: 150, height: 150, borderRadius: 75, borderWidth: 1, borderColor: "rgba(255,255,255,0.25)", alignItems: "center", justifyContent: "center" },
+  demoCard: { position: "absolute", left: spacing.md, right: spacing.md, bottom: 0, padding: spacing.lg, borderRadius: radius.lg, backgroundColor: "rgba(17,17,17,0.94)", borderWidth: 1, borderColor: colors.border },
   visualTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10 },
   visualEyebrow: { color: colors.onSurfaceSecondary, fontSize: 11, fontWeight: "900", letterSpacing: 1.5 },
   livePill: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: colors.surfaceTertiary, borderRadius: radius.pill, paddingHorizontal: 10, paddingVertical: 6 },

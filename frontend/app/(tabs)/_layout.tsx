@@ -3,7 +3,6 @@ import { Tabs, useFocusEffect } from "expo-router";
 import { colors } from "@/src/theme";
 import { useI18n } from "@/src/i18n";
 import { ResponsiveTabBar } from "@/src/components/ResponsiveTabBar";
-import { useResponsiveLayout } from "@/src/hooks/use-responsive-layout";
 import { useApp } from "@/src/store";
 import { getModuleConfig } from "@/src/moduleConfigApi";
 import { getPetGame } from "@/src/gameApi";
@@ -20,7 +19,6 @@ const PRIMARY_TAB_MODULES: Record<string, string | null> = {
 
 export default function TabsLayout() {
   const { lang } = useI18n();
-  const responsive = useResponsiveLayout();
   const { activeId, refreshTick } = useApp();
   const [enabledModules, setEnabledModules] = useState<Set<string> | null>(null);
   const [petUnlocked, setPetUnlocked] = useState(false);
@@ -75,23 +73,14 @@ export default function TabsLayout() {
         headerShown: false,
         lazy: true,
         freezeOnBlur: true,
-        tabBarPosition: responsive.isDesktop ? "left" : "bottom",
+        tabBarPosition: "bottom",
         tabBarHideOnKeyboard: true,
-        sceneStyle: responsive.isDesktop
-          ? {
-              flex: 1,
-              minWidth: 0,
-              width: "100%",
-              maxWidth: 1360,
-              alignSelf: "center",
-              backgroundColor: colors.surface,
-            }
-          : {
-              flex: 1,
-              minWidth: 0,
-              width: "100%",
-              backgroundColor: colors.surface,
-            },
+        sceneStyle: {
+          flex: 1,
+          minWidth: 0,
+          width: "100%",
+          backgroundColor: colors.surface,
+        },
       }}
     >
       <Tabs.Screen name="index" options={{ title: lang === "ru" ? "Главная" : "Home" }} />

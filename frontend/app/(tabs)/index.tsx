@@ -378,7 +378,7 @@ export default function HomeScreen() {
     <View style={styles.container}>
       <View style={[styles.header, { paddingTop: insets.top + spacing.sm, paddingHorizontal: responsive.contentPadding }]}><TopBar subtitle={`${t("hello")}, ${activeProfile?.name || ""} · ${t("home_subtitle")}`} /></View>
       {loading ? <View style={styles.center}><ActivityIndicator size="large" color={colors.onSurface} /></View> : homeLoadError ? (
-        <ScrollView contentContainerStyle={{ paddingHorizontal: responsive.contentPadding, paddingTop: spacing.xl, paddingBottom: 96 + insets.bottom }} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.onSurface} />}>
+        <ScrollView contentContainerStyle={{ width: "100%", maxWidth: 720, alignSelf: "center", paddingHorizontal: responsive.contentPadding, paddingTop: spacing.xl, paddingBottom: 96 + insets.bottom }} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.onSurface} />}>
           <Card testID="home-load-error">
             <View style={styles.errorBlock}>
               <Ionicons name="cloud-offline-outline" size={28} color={colors.onSurfaceSecondary} />
@@ -391,7 +391,7 @@ export default function HomeScreen() {
           </Card>
         </ScrollView>
       ) : (
-        <ScrollView contentContainerStyle={{ paddingHorizontal: responsive.contentPadding, paddingTop: spacing.lg, paddingBottom: (responsive.isDesktop ? 40 : 96) + insets.bottom }} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.onSurface} />}>
+        <ScrollView contentContainerStyle={{ width: "100%", maxWidth: 720, alignSelf: "center", paddingHorizontal: responsive.contentPadding, paddingTop: spacing.lg, paddingBottom: 96 + insets.bottom }} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.onSurface} />}>
           <View style={styles.statStrip}><View style={styles.statPill}><Text style={styles.statNum}>{sectionStates.labs !== "error" && hasLabStatusData ? inRange : "—"}</Text><View style={[styles.statTag, { backgroundColor: colors.accent }]}><Text style={styles.statTagText}>{lang === "ru" ? "В норме" : "In range"}</Text></View></View><View style={styles.statPill}><Text style={styles.statNum}>{sectionStates.labs !== "error" && hasLabStatusData ? outRange : "—"}</Text><View style={[styles.statTag, { backgroundColor: "#F6D8CE" }]}><Text style={[styles.statTagText, { color: colors.error }]}>{lang === "ru" ? "Вне нормы" : "Out of range"}</Text></View></View></View>
           {sectionStates.labs === "error" ? <View style={styles.sectionNotice}><SourceError text={lang === "ru" ? "Статус анализов временно недоступен" : "Lab status is temporarily unavailable"} /></View> : null}
           {readinessOn && (sectionStates.readiness === "error" ? (
@@ -540,7 +540,7 @@ const CompanionWidget: React.FC<{ game: any; state: DataState; lang: string }> =
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.surface },
-  header: { paddingHorizontal: spacing.lg, paddingBottom: spacing.md, backgroundColor: colors.surface },
+  header: { width: "100%", maxWidth: 720, alignSelf: "center", paddingHorizontal: spacing.lg, paddingBottom: spacing.md, backgroundColor: colors.surface },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   errorBlock: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md },
   errorTitle: { fontSize: fontSize.lg, fontWeight: "700", color: colors.onSurface, fontFamily: fonts.text, marginBottom: 3 },

@@ -324,7 +324,7 @@ function InlineState({ text, loading = false, action, onAction }: { text: string
 
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: colors.surface },
-  content: { width: "100%", maxWidth: 900, alignSelf: "center", paddingHorizontal: spacing.xl },
+  content: { width: "100%", maxWidth: 720, alignSelf: "center", paddingHorizontal: spacing.xl },
   back: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.surfaceSecondary, alignItems: "center", justifyContent: "center" },
   title: { fontSize: 32, fontWeight: "800", fontFamily: fonts.display, color: colors.onSurface, marginTop: spacing.lg },
   sub: { fontSize: fontSize.base, lineHeight: 22, color: colors.onSurfaceSecondary, marginTop: spacing.sm },
