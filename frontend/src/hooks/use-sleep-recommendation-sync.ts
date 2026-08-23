@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { Platform } from "react-native";
 
 import { getCircadianDay, getSleepInsight, saveRecommendationReminder } from "@/src/circadianApi";
+import { findModule, getModuleConfig } from "@/src/moduleConfigApi";
 import { useApp } from "@/src/store";
 
 function localDate() {
@@ -26,19 +27,21 @@ export function useSleepRecommendationSync() {
         if (cancelled) return;
 
         const date = localDate();
-        const [day, insight, permission] = await Promise.all([
+        const [day, insight, permission, moduleResponse] = await Promise.all([
           getCircadianDay(activeId, date).catch(() => null),
           getSleepInsight(activeId).catch(() => null),
           getNotificationPermissionState(),
+          getModuleConfig(activeId).catch(() => null),
         ]);
         if (cancelled || !day || !insight) return;
 
         const previousId = day.plan?.recommendation_notification_id || null;
         const signalsEnabled = activeProfile.privacy?.notification_preferences?.aida_signals === true;
-        const sleepModuleEnabled = activeProfile.module_settings?.sleep !== false;
+        const sleepModule = findModule(moduleResponse, "sleep");
+        const sleepNotificationsEnabled = !!sleepModule?.enabled && !!sleepModule?.notifications_enabled;
         const personalized = insight.status === "personalized" && !!insight.suggested_window;
         const clinicallyFlagged = !!insight.clinical_prompt;
-        const canSchedule = signalsEnabled && sleepModuleEnabled && permission === "granted" && personalized && !clinicallyFlagged;
+        const canSchedule = signalsEnabled && sleepNotificationsEnabled && permission === "granted" && personalized && !clinicallyFlagged;
 
         if (!canSchedule) {
           if (previousId) {
@@ -72,7 +75,6 @@ export function useSleepRecommendationSync() {
     };
   }, [
     activeId,
-    activeProfile?.module_settings?.sleep,
     activeProfile?.privacy?.notification_preferences?.aida_signals,
     refreshTick,
   ]);
