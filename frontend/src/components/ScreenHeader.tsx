@@ -51,6 +51,9 @@ export const ScreenHeader: React.FC<{ title: string; right?: React.ReactNode; fa
 
 const styles = StyleSheet.create({
   header: {
+    width: "100%",
+    maxWidth: 720,
+    alignSelf: "center",
     flexDirection: "row",
     alignItems: "center",
     paddingBottom: spacing.md,
@@ -76,7 +79,7 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: colors.onSurface,
     letterSpacing: -0.4,
-    fontFamily: fonts.display,
+    fontFamily: fonts.extrabold,
   },
   right: { minWidth: 44, alignItems: "flex-end" },
 });

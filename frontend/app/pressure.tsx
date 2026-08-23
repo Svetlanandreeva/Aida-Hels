@@ -130,9 +130,9 @@ export default function PressureScreen() {
       {loading ? (
         <View style={styles.center}><ActivityIndicator size="large" color={colors.onSurface} /></View>
       ) : stateView ? (
-        <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 130 + insets.bottom }}>{stateView}</ScrollView>
+        <ScrollView contentContainerStyle={{ width: "100%", maxWidth: 720, alignSelf: "center", padding: spacing.lg, paddingBottom: 130 + insets.bottom }}>{stateView}</ScrollView>
       ) : (
-        <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 130 + insets.bottom, gap: spacing.md }} showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={{ width: "100%", maxWidth: 720, alignSelf: "center", padding: spacing.lg, paddingBottom: 130 + insets.bottom, gap: spacing.md }} showsVerticalScrollIndicator={false}>
           {stats && (
             <View style={styles.statRow}>
               <Card style={styles.statCard}>

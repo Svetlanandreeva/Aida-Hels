@@ -168,7 +168,7 @@ export default function MindScreen() {
       <ScreenHeader title={t("m_mind")} />
 
       {!activeId ? (
-        <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 130 + insets.bottom }}>
+        <ScrollView contentContainerStyle={{ width: "100%", maxWidth: 720, alignSelf: "center", padding: spacing.lg, paddingBottom: 130 + insets.bottom }}>
           <View style={styles.empty}>
             <Ionicons name="person-circle-outline" size={56} color={colors.onSurfaceSecondary} />
             <Text style={styles.emptyTitle}>{lang === "ru" ? "Сначала выберите профиль" : "Choose a profile first"}</Text>
@@ -177,7 +177,7 @@ export default function MindScreen() {
         </ScrollView>
       ) : (
         <ScrollView
-          contentContainerStyle={{ padding: spacing.lg, paddingBottom: 130 + insets.bottom, gap: spacing.md }}
+          contentContainerStyle={{ width: "100%", maxWidth: 720, alignSelf: "center", padding: spacing.lg, paddingBottom: 130 + insets.bottom, gap: spacing.md }}
           showsVerticalScrollIndicator={false}
         >
           {mentalConditions.length > 0 ? (

@@ -236,7 +236,7 @@ export default function TasksScreen() {
       </View>
 
       <ScrollView
-        contentContainerStyle={{ paddingHorizontal: responsive.contentPadding, paddingTop: spacing.lg, paddingBottom: (responsive.isDesktop ? 40 : 92) + insets.bottom }}
+        contentContainerStyle={{ width: "100%", maxWidth: 720, alignSelf: "center", paddingHorizontal: responsive.contentPadding, paddingTop: spacing.lg, paddingBottom: 92 + insets.bottom }}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.onSurface} />}
       >
