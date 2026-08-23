@@ -1,35 +1,42 @@
-"""Nutrition diary, optional FatSecret lookup and evidence-aware summaries.
+"""Nutrition diary with open food references and privacy-preserving history.
 
-Aida owns the diary. FatSecret is only an optional food reference provider.
-Provider-returned names and nutrient data are cached in VDS RAM for less than
-24 hours and are never persisted to Google Sheets. Persistent provider fields
-are limited to FatSecret food/serving identifiers plus Aida-owned diary data.
+Aida persists nutrition data from open sources (USDA FoodData Central and Open
+Food Facts) or user-entered values. Detailed food names are kept only for a
+short recent window. After 20 hours, detailed rows are compacted into one
+meal-level aggregate containing the meal type, local timing and nutrition
+summary. This keeps long-term analysis useful without retaining an unnecessary
+product-by-product history.
 """
 from __future__ import annotations
 
-import os
 import re
 import statistics
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
-import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from access_control import require_profile_access, require_record_access
-
+from nutrition_reference import cross_check_reference, provider_status, resolve_reference, search_food_references
 
 _ALLOWED_MEALS = {"breakfast", "lunch", "dinner", "snack", "other"}
-_ALLOWED_SOURCES = {"manual", "fatsecret"}
-_PROVIDER_CACHE_HOURS = 20
-_TOKEN_SKEW_SECONDS = 120
+_ALLOWED_SOURCES = {"manual", "usda", "openfoodfacts"}
+_COMPACTION_HOURS = 20
 _TIME_RE = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-
-_TOKEN_CACHE: Dict[str, Any] = {"token": None, "expires_at": None}
-_FOOD_CACHE: Dict[str, Dict[str, Any]] = {}
+_NUTRIENT_KEYS = (
+    "calories",
+    "protein_g",
+    "carbs_g",
+    "fat_g",
+    "fiber_g",
+    "sugar_g",
+    "saturated_fat_g",
+    "sodium_mg",
+    "potassium_mg",
+)
 
 # Conservative checks run only for normalized medication active ingredients.
 _GRAPEFRUIT_MEDICATIONS = {
@@ -78,184 +85,19 @@ def _parse_dt(value: Any) -> Optional[datetime]:
     return dt.astimezone(timezone.utc)
 
 
-def _fatsecret_configured() -> bool:
-    return bool(os.environ.get("FATSECRET_CLIENT_ID", "").strip() and os.environ.get("FATSECRET_CLIENT_SECRET", "").strip())
-
-
-async def _fatsecret_token() -> str:
-    if not _fatsecret_configured():
-        raise HTTPException(503, "FatSecret is not configured")
-    cached = str(_TOKEN_CACHE.get("token") or "")
-    expires_at = _TOKEN_CACHE.get("expires_at")
-    if cached and isinstance(expires_at, datetime) and expires_at > _now() + timedelta(seconds=_TOKEN_SKEW_SECONDS):
-        return cached
-
-    async with httpx.AsyncClient(timeout=8.0) as client:
-        response = await client.post(
-            "https://oauth.fatsecret.com/connect/token",
-            data={"grant_type": "client_credentials", "scope": "basic"},
-            auth=(os.environ["FATSECRET_CLIENT_ID"].strip(), os.environ["FATSECRET_CLIENT_SECRET"].strip()),
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
-        )
-    if response.status_code >= 400:
-        raise HTTPException(502, "FatSecret authentication failed")
-    payload = response.json()
-    token = str(payload.get("access_token") or "").strip()
-    if not token:
-        raise HTTPException(502, "FatSecret returned no access token")
-    expires_in = max(300, int(payload.get("expires_in") or 3600))
-    _TOKEN_CACHE.update({"token": token, "expires_at": _now() + timedelta(seconds=expires_in)})
-    return token
-
-
-async def _fatsecret_get(path: str, params: Dict[str, Any]) -> Dict[str, Any]:
-    token = await _fatsecret_token()
-    async with httpx.AsyncClient(timeout=8.0) as client:
-        response = await client.get(
-            f"https://platform.fatsecret.com/rest/{path}",
-            params={**params, "format": "json"},
-            headers={"Authorization": f"Bearer {token}"},
-        )
-    if response.status_code >= 400:
-        raise HTTPException(502, "FatSecret request failed")
-    data = response.json()
-    return data if isinstance(data, dict) else {}
-
-
-async def _search_fatsecret(query: str) -> List[Dict[str, Any]]:
-    data = await _fatsecret_get(
-        "foods/search/v1",
-        {"search_expression": query, "max_results": 12, "page_number": 0},
-    )
-    foods = ((data.get("foods") or {}).get("food") if isinstance(data.get("foods"), dict) else None) or []
-    if isinstance(foods, dict):
-        foods = [foods]
-    results: List[Dict[str, Any]] = []
-    for row in foods[:12]:
-        if not isinstance(row, dict) or not row.get("food_id"):
-            continue
-        results.append({
-            "food_id": str(row.get("food_id")),
-            "name": str(row.get("food_name") or "").strip(),
-            "brand": str(row.get("brand_name") or "").strip() or None,
-            "description": str(row.get("food_description") or "").strip() or None,
-            "provider": "fatsecret",
-        })
-    return results
-
-
-def _servings_from_food(data: Dict[str, Any]) -> tuple[Dict[str, Any], List[Dict[str, Any]]]:
-    food = data.get("food") if isinstance(data.get("food"), dict) else data
-    if not isinstance(food, dict):
-        return {}, []
-    servings = ((food.get("servings") or {}).get("serving") if isinstance(food.get("servings"), dict) else None) or []
-    if isinstance(servings, dict):
-        servings = [servings]
-    return food, [row for row in servings if isinstance(row, dict)]
-
-
-async def _fetch_fatsecret_snapshot(food_id: str, serving_id: Optional[str] = None) -> Dict[str, Any]:
-    data = await _fatsecret_get("food/v4", {"food_id": food_id})
-    food, servings = _servings_from_food(data)
-    if not food:
-        raise HTTPException(404, "FatSecret food not found")
-    selected = None
-    if serving_id:
-        selected = next((row for row in servings if str(row.get("serving_id")) == str(serving_id)), None)
-    if selected is None:
-        selected = next((row for row in servings if str(row.get("is_default") or row.get("default_serving") or "").lower() == "true"), None)
-    if selected is None and servings:
-        selected = servings[0]
-    if selected is None:
-        raise HTTPException(502, "FatSecret food has no serving information")
-
-    nutrients = {
-        "calories": _as_float(selected.get("calories")),
-        "protein_g": _as_float(selected.get("protein")),
-        "carbs_g": _as_float(selected.get("carbohydrate")),
-        "fat_g": _as_float(selected.get("fat")),
-        "fiber_g": _as_float(selected.get("fiber")),
-        "sugar_g": _as_float(selected.get("sugar")),
-        "saturated_fat_g": _as_float(selected.get("saturated_fat")),
-        "sodium_mg": _as_float(selected.get("sodium")),
-        "potassium_mg": _as_float(selected.get("potassium")),
-    }
-    fetched_at = _now()
-    return {
-        "food_name": str(food.get("food_name") or "").strip(),
-        "brand_name": str(food.get("brand_name") or "").strip() or None,
-        "serving_id": str(selected.get("serving_id") or "").strip() or None,
-        "serving_description": str(selected.get("serving_description") or "").strip() or None,
-        "nutrients": {key: value for key, value in nutrients.items() if value is not None},
-        "fetched_at": fetched_at,
-        "expires_at": fetched_at + timedelta(hours=_PROVIDER_CACHE_HOURS),
-    }
-
-
-def _cache_key(food_id: str, serving_id: Optional[str]) -> str:
-    return f"{food_id}:{serving_id or 'default'}"
-
-
-async def _fatsecret_snapshot(food_id: str, serving_id: Optional[str] = None) -> Dict[str, Any]:
-    key = _cache_key(food_id, serving_id)
-    cached = _FOOD_CACHE.get(key)
-    expires = _parse_dt((cached or {}).get("expires_at"))
-    if cached and expires and expires > _now():
-        return dict(cached)
-    snapshot = await _fetch_fatsecret_snapshot(food_id, serving_id)
-    _FOOD_CACHE[key] = snapshot
-    selected_id = str(snapshot.get("serving_id") or "").strip() or None
-    if selected_id:
-        _FOOD_CACHE[_cache_key(food_id, selected_id)] = snapshot
-    return dict(snapshot)
-
-
 def _entry_nutrients(entry: Dict[str, Any]) -> Dict[str, float]:
-    raw = entry.get("manual_nutrients") or {} if entry.get("source") == "manual" else (entry.get("_provider_snapshot") or {}).get("nutrients") or {}
-    quantity = _as_float(entry.get("quantity")) or 1.0
+    if entry.get("source") == "aggregate" or entry.get("compacted") is True:
+        raw = entry.get("nutrients") or {}
+        quantity = 1.0
+    else:
+        raw = entry.get("stored_nutrients") or entry.get("manual_nutrients") or {}
+        quantity = _as_float(entry.get("quantity")) or 1.0
     out: Dict[str, float] = {}
-    for key, value in raw.items():
-        number = _as_float(value)
+    for key in _NUTRIENT_KEYS:
+        number = _as_float(raw.get(key)) if isinstance(raw, dict) else None
         if number is not None:
             out[key] = round(number * quantity, 2)
     return out
-
-
-async def _hydrate_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
-    hydrated = dict(entry)
-    if hydrated.get("source") == "fatsecret":
-        food_id = str(hydrated.get("external_food_id") or "").strip()
-        if food_id and _fatsecret_configured():
-            try:
-                hydrated["_provider_snapshot"] = await _fatsecret_snapshot(
-                    food_id,
-                    str(hydrated.get("external_serving_id") or "").strip() or None,
-                )
-            except HTTPException:
-                pass
-    hydrated["nutrients"] = _entry_nutrients(hydrated)
-    return hydrated
-
-
-def _public_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
-    snapshot = entry.get("_provider_snapshot") or {}
-    out = {key: value for key, value in entry.items() if not key.startswith("_") and key != "manual_nutrients"}
-    if entry.get("source") == "fatsecret":
-        out["label"] = snapshot.get("food_name") or "FatSecret food"
-        out["provider_name"] = snapshot.get("food_name")
-        out["provider_brand"] = snapshot.get("brand_name")
-        out["serving_description"] = snapshot.get("serving_description")
-    out["nutrients"] = entry.get("nutrients") or _entry_nutrients(entry)
-    return out
-
-
-def _minutes_of_day(entry: Dict[str, Any]) -> Optional[int]:
-    local_time = str(entry.get("local_time") or "").strip()
-    if _TIME_RE.match(local_time):
-        hour, minute = local_time.split(":", 1)
-        return int(hour) * 60 + int(minute)
-    dt = _parse_dt(entry.get("eaten_at"))
-    return dt.hour * 60 + dt.minute if dt else None
 
 
 def _entry_local_date(entry: Dict[str, Any]) -> Optional[str]:
@@ -267,6 +109,15 @@ def _entry_local_date(entry: Dict[str, Any]) -> Optional[str]:
             pass
     dt = _parse_dt(entry.get("eaten_at"))
     return dt.date().isoformat() if dt else None
+
+
+def _minutes_of_day(entry: Dict[str, Any]) -> Optional[int]:
+    local_time = str(entry.get("local_time") or "").strip()
+    if _TIME_RE.match(local_time):
+        hour, minute = local_time.split(":", 1)
+        return int(hour) * 60 + int(minute)
+    dt = _parse_dt(entry.get("eaten_at"))
+    return dt.hour * 60 + dt.minute if dt else None
 
 
 def _med_time_minutes(value: str) -> Optional[int]:
@@ -287,9 +138,126 @@ def _normalized_ingredient(med: Dict[str, Any]) -> str:
     return str(med.get("active_ingredient") or "").strip().lower()
 
 
+def _public_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
+    out = {
+        "id": entry.get("id"),
+        "profile_id": entry.get("profile_id"),
+        "label": entry.get("label") if entry.get("source") != "aggregate" else None,
+        "meal_type": entry.get("meal_type"),
+        "eaten_at": entry.get("eaten_at"),
+        "local_date": entry.get("local_date"),
+        "local_time": entry.get("local_time"),
+        "timezone_offset_min": entry.get("timezone_offset_min"),
+        "source": entry.get("source"),
+        "quantity": entry.get("quantity") or 1,
+        "serving_description": entry.get("serving_description"),
+        "nutrients": _entry_nutrients(entry),
+        "verification_status": entry.get("verification_status") or "unverified",
+        "compacted": bool(entry.get("compacted") or entry.get("source") == "aggregate"),
+        "detail_count": int(entry.get("detail_count") or 1),
+        "note": entry.get("note"),
+    }
+    if not out["compacted"]:
+        out["reference_source"] = entry.get("reference_source")
+        out["reference_id"] = entry.get("reference_id")
+        out["cross_check"] = entry.get("cross_check") or None
+    return out
+
+
+def _sum_nutrients(entries: List[Dict[str, Any]]) -> Dict[str, float]:
+    totals = {key: 0.0 for key in _NUTRIENT_KEYS}
+    present = set()
+    for entry in entries:
+        for key, value in _entry_nutrients(entry).items():
+            totals[key] = round(totals[key] + float(value), 2)
+            present.add(key)
+    return {key: totals[key] for key in _NUTRIENT_KEYS if key in present}
+
+
+async def _compact_old_entries(db, profile_id: str) -> int:
+    """Collapse detailed food rows older than 20h into meal-level aggregates.
+
+    The aggregate intentionally excludes product names and provider identifiers.
+    Open-source provenance is reduced to source names and verification counts so
+    long-term analysis can reason about data quality without keeping food detail.
+    """
+    rows = await db.nutrition_entries.find({"profile_id": profile_id}, {"_id": 0}).sort("eaten_at", 1).to_list(500)
+    cutoff = _now() - timedelta(hours=_COMPACTION_HOURS)
+    detailed: List[Dict[str, Any]] = []
+    aggregates: Dict[tuple[str, str], List[Dict[str, Any]]] = {}
+    for row in rows:
+        day = _entry_local_date(row)
+        meal = str(row.get("meal_type") or "other")
+        if not day:
+            continue
+        if row.get("source") == "aggregate" or row.get("compacted") is True:
+            aggregates.setdefault((day, meal), []).append(row)
+            continue
+        age_anchor = _parse_dt(row.get("created_at")) or _parse_dt(row.get("eaten_at"))
+        if age_anchor and age_anchor <= cutoff:
+            detailed.append(row)
+
+    grouped: Dict[tuple[str, str], List[Dict[str, Any]]] = {}
+    for row in detailed:
+        day = _entry_local_date(row)
+        if not day:
+            continue
+        grouped.setdefault((day, str(row.get("meal_type") or "other")), []).append(row)
+
+    compacted_count = 0
+    for key, group in grouped.items():
+        day, meal = key
+        existing = aggregates.get(key, [])
+        all_for_total = [*existing, *group]
+        nutrients = _sum_nutrients(all_for_total)
+        times = sorted(
+            str(row.get("local_time")) for row in all_for_total
+            if _TIME_RE.match(str(row.get("local_time") or ""))
+        )
+        eaten_values = [dt for dt in (_parse_dt(row.get("eaten_at")) for row in all_for_total) if dt]
+        detail_count = sum(int(row.get("detail_count") or 1) for row in all_for_total)
+        source_names = sorted({str(row.get("reference_source") or row.get("source") or "manual") for row in all_for_total if row.get("source") != "aggregate"})
+        verification_counts: Dict[str, int] = {}
+        for row in all_for_total:
+            status = str(row.get("verification_status") or "unverified")
+            verification_counts[status] = verification_counts.get(status, 0) + int(row.get("detail_count") or 1)
+        aggregate_payload = {
+            "profile_id": profile_id,
+            "label": None,
+            "meal_type": meal,
+            "eaten_at": min(eaten_values) if eaten_values else _now(),
+            "local_date": day,
+            "local_time": times[0] if times else None,
+            "timezone_offset_min": next((row.get("timezone_offset_min") for row in all_for_total if row.get("timezone_offset_min") is not None), None),
+            "source": "aggregate",
+            "quantity": 1.0,
+            "nutrients": nutrients,
+            "compacted": True,
+            "detail_count": detail_count,
+            "source_provenance": source_names,
+            "verification_counts": verification_counts,
+            "verification_status": "meal_aggregate",
+            "updated_at": _now(),
+        }
+        if existing:
+            keeper = existing[0]
+            await db.nutrition_entries.update_one({"id": keeper["id"]}, {"$set": aggregate_payload})
+            remove_ids = [str(row.get("id")) for row in [*existing[1:], *group] if row.get("id")]
+        else:
+            aggregate_payload.update({"id": str(uuid.uuid4()), "created_at": _now()})
+            await db.nutrition_entries.insert_one(aggregate_payload)
+            remove_ids = [str(row.get("id")) for row in group if row.get("id")]
+        if remove_ids:
+            await db.nutrition_entries.delete_many({"id": {"$in": remove_ids}})
+        compacted_count += len(group)
+    return compacted_count
+
+
 def _food_medication_flags(entries: List[Dict[str, Any]], medications: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     flags: List[Dict[str, Any]] = []
     seen = set()
+    # Compacted rows have no food label by design, so food-specific interaction
+    # checks apply only to the recent detailed window.
     for med in medications:
         ingredient = _normalized_ingredient(med)
         if not ingredient:
@@ -302,52 +270,39 @@ def _food_medication_flags(entries: List[Dict[str, Any]], medications: List[Dict
             if not label:
                 continue
             key_base = (str(entry.get("id")), str(med.get("id")))
-
             if any(name in ingredient for name in _GRAPEFRUIT_MEDICATIONS) and any(word in label for word in _GRAPEFRUIT_WORDS):
                 key = (*key_base, "grapefruit")
                 if key not in seen:
                     seen.add(key)
                     flags.append({
-                        "severity": "check",
-                        "kind": "food_medication",
-                        "food": entry.get("label"),
-                        "medication": med_name,
-                        "active_ingredient": med.get("active_ingredient"),
+                        "severity": "check", "kind": "food_medication", "food": entry.get("label"),
+                        "medication": med_name, "active_ingredient": med.get("active_ingredient"),
                         "message": "Грейпфрут может менять действие некоторых лекарств. Проверьте инструкцию именно к вашему препарату и уточните у врача или фармацевта.",
                         "action": "Не меняйте препарат самостоятельно; уточните, нужно ли исключить грейпфрут.",
                         "evidence_url": "https://www.fda.gov/consumers/consumer-updates/grapefruit-juice-and-some-drugs-dont-mix",
                     })
-
             if "fexofenadine" in ingredient and any(word in label for word in _FEXOFENADINE_JUICE_WORDS):
                 key = (*key_base, "fruit_juice")
                 if key not in seen:
                     seen.add(key)
                     flags.append({
-                        "severity": "check",
-                        "kind": "food_medication",
-                        "food": entry.get("label"),
-                        "medication": med_name,
-                        "active_ingredient": med.get("active_ingredient"),
+                        "severity": "check", "kind": "food_medication", "food": entry.get("label"),
+                        "medication": med_name, "active_ingredient": med.get("active_ingredient"),
                         "message": "Некоторые фруктовые соки могут снижать всасывание фексофенадина.",
                         "action": "Сверьте способ приёма с инструкцией к препарату или фармацевтом.",
                         "evidence_url": "https://www.fda.gov/consumers/consumer-updates/grapefruit-juice-and-some-drugs-dont-mix",
                     })
-
             if ("warfarin" in ingredient or "варфарин" in ingredient) and any(word in label for word in _WARFARIN_WORDS):
                 key = (*key_base, "vitamin_k")
                 if key not in seen:
                     seen.add(key)
                     flags.append({
-                        "severity": "info",
-                        "kind": "food_medication",
-                        "food": entry.get("label"),
-                        "medication": med_name,
-                        "active_ingredient": med.get("active_ingredient"),
+                        "severity": "info", "kind": "food_medication", "food": entry.get("label"),
+                        "medication": med_name, "active_ingredient": med.get("active_ingredient"),
                         "message": "При варфарине важнее стабильное потребление продуктов с витамином K, а не их резкая отмена.",
                         "action": "Не делайте больших изменений в рационе без согласования с врачом, который контролирует INR.",
                         "evidence_url": "https://medlineplus.gov/druginfo/meds/a682277.html",
                     })
-
             if "levothyroxine" in ingredient or "левотироксин" in ingredient:
                 meal_minute = _minutes_of_day(entry)
                 if meal_minute is not None and any(0 <= meal_minute - med_minute < 60 for med_minute in med_times):
@@ -355,32 +310,28 @@ def _food_medication_flags(entries: List[Dict[str, Any]], medications: List[Dict
                     if key not in seen:
                         seen.add(key)
                         flags.append({
-                            "severity": "check",
-                            "kind": "timing",
-                            "food": entry.get("label"),
-                            "medication": med_name,
-                            "active_ingredient": med.get("active_ingredient"),
+                            "severity": "check", "kind": "timing", "food": entry.get("label"),
+                            "medication": med_name, "active_ingredient": med.get("active_ingredient"),
                             "message": "Еда отмечена менее чем через час после левотироксина; пища может влиять на его всасывание.",
                             "action": "Сверьте назначенный интервал с инструкцией врача; не меняйте дозу самостоятельно.",
-                            "evidence_url": "https://www.dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=83854522-f22e-491f-8392-c8b1f9441760",
+                            "evidence_url": "https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=83854522-f22e-491f-8392-c8b1f9441760",
                         })
     return flags[:20]
 
 
 def _daily_totals(entries: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     days: Dict[str, Dict[str, Any]] = {}
-    nutrient_keys = ("calories", "protein_g", "carbs_g", "fat_g", "fiber_g", "sugar_g", "saturated_fat_g", "sodium_mg", "potassium_mg")
     for entry in entries:
         day = _entry_local_date(entry)
         if not day:
             continue
-        bucket = days.setdefault(day, {"date": day, "entries": 0, "entries_with_nutrients": 0, **{key: 0.0 for key in nutrient_keys}})
-        bucket["entries"] += 1
-        nutrients = entry.get("nutrients") or _entry_nutrients(entry)
+        bucket = days.setdefault(day, {"date": day, "entries": 0, "entries_with_nutrients": 0, **{key: 0.0 for key in _NUTRIENT_KEYS}})
+        bucket["entries"] += int(entry.get("detail_count") or 1)
+        nutrients = _entry_nutrients(entry)
         if nutrients:
-            bucket["entries_with_nutrients"] += 1
-        for key in nutrient_keys:
-            value = _as_float(nutrients.get(key)) if isinstance(nutrients, dict) else None
+            bucket["entries_with_nutrients"] += int(entry.get("detail_count") or 1)
+        for key in _NUTRIENT_KEYS:
+            value = _as_float(nutrients.get(key))
             if value is not None:
                 bucket[key] = round(float(bucket[key]) + value, 2)
     return sorted(days.values(), key=lambda row: row["date"], reverse=True)
@@ -393,10 +344,8 @@ def _pattern_insights(entries: List[Dict[str, Any]], daily: List[Dict[str, Any]]
         fiber = statistics.mean(float(day.get("fiber_g") or 0) for day in complete_days)
         if fiber < 18:
             insights.append({
-                "kind": "fiber_pattern",
-                "level": "attention",
-                "title": "В дневнике мало клетчатки",
-                "text": "По зарегистрированным продуктам среднее количество клетчатки выглядит низким. Аида может предложить более богатые клетчаткой замены, учитывая диагнозы и лекарства.",
+                "kind": "fiber_pattern", "level": "attention", "title": "В дневнике мало клетчатки",
+                "text": "По зарегистрированным приёмам пищи среднее количество клетчатки выглядит низким. Аида может предложить более богатые клетчаткой варианты, учитывая диагнозы и лекарства.",
             })
         sat_share = []
         for day in complete_days:
@@ -406,9 +355,7 @@ def _pattern_insights(entries: List[Dict[str, Any]], daily: List[Dict[str, Any]]
                 sat_share.append((saturated * 9) / calories)
         if sat_share and statistics.mean(sat_share) > 0.10:
             insights.append({
-                "kind": "saturated_fat_pattern",
-                "level": "attention",
-                "title": "Высокая доля насыщенных жиров",
+                "kind": "saturated_fat_pattern", "level": "attention", "title": "Высокая доля насыщенных жиров",
                 "text": "В зарегистрированном рационе заметна высокая доля энергии из насыщенных жиров. Это наблюдение по дневнику, а не диагноз.",
             })
 
@@ -425,9 +372,7 @@ def _pattern_insights(entries: List[Dict[str, Any]], daily: List[Dict[str, Any]]
             long_gap_days += 1
     if long_gap_days >= 2:
         insights.append({
-            "kind": "meal_gap_pattern",
-            "level": "info",
-            "title": "Есть длинные интервалы между приёмами пищи",
+            "kind": "meal_gap_pattern", "level": "info", "title": "Есть длинные интервалы между приёмами пищи",
             "text": "В нескольких днях дневника интервал между приёмами пищи был 6 часов или больше. Если провалы энергии возникают в те же часы, это стоит проверить как возможную связь.",
         })
 
@@ -439,48 +384,32 @@ def _pattern_insights(entries: List[Dict[str, Any]], daily: List[Dict[str, Any]]
         steady_cal = statistics.mean(float(day.get("calories") or 0) for day in steady_days)
         if dip_cal > 0 and steady_cal > 0 and dip_cal < steady_cal * 0.8:
             insights.append({
-                "kind": "energy_association",
-                "level": "info",
+                "kind": "energy_association", "level": "info",
                 "title": "Провалы энергии совпадают с более низким зарегистрированным рационом",
                 "text": "В дни с низкой оценкой энергии в дневнике зарегистрировано заметно меньше энергии из пищи, чем в ваши более энергичные дни. Это корреляция и не доказывает причину.",
             })
     return insights[:8]
 
 
-async def build_nutrition_context(db, profile_id: str, *, limit: int = 80) -> Dict[str, Any]:
+async def build_nutrition_context(db, profile_id: str, *, limit: int = 100) -> Dict[str, Any]:
     profile = await db.profiles.find_one({"id": profile_id}, {"_id": 0})
     modules = (profile or {}).get("module_settings") or {}
     if not profile or modules.get("nutrition") is not True:
         return {"enabled": False, "entries": [], "daily": [], "insights": [], "food_medication_flags": []}
-
+    await _compact_old_entries(db, profile_id)
     rows = await db.nutrition_entries.find({"profile_id": profile_id}, {"_id": 0}).sort("eaten_at", -1).to_list(limit)
-    hydrated = [await _hydrate_entry(row) for row in rows]
     checkins = await db.checkins.find({"profile_id": profile_id}, {"_id": 0}).sort("date", -1).to_list(30) if modules.get("mental") is not False else []
     medications = await db.medications.find({"profile_id": profile_id, "active": True}, {"_id": 0}).to_list(100) if modules.get("meds") is not False else []
-    daily = _daily_totals(hydrated)
-    public_entries = [_public_entry(row) for row in hydrated]
+    daily = _daily_totals(rows)
+    public_entries = [_public_entry(row) for row in rows]
     return {
         "enabled": True,
-        "provider": {"fatsecret_configured": _fatsecret_configured()},
-        "entries": [
-            {
-                "id": row.get("id"),
-                "label": row.get("label"),
-                "meal_type": row.get("meal_type"),
-                "eaten_at": row.get("eaten_at"),
-                "local_date": row.get("local_date"),
-                "local_time": row.get("local_time"),
-                "timezone_offset_min": row.get("timezone_offset_min"),
-                "source": row.get("source"),
-                "nutrients": row.get("nutrients") or {},
-                "external_food_id": row.get("external_food_id"),
-                "external_serving_id": row.get("external_serving_id"),
-            }
-            for row in public_entries[:40]
-        ],
+        "provider": provider_status(),
+        "entries": public_entries[:40],
         "daily": daily[:14],
-        "insights": _pattern_insights(hydrated, daily, checkins),
+        "insights": _pattern_insights(rows, daily, checkins),
         "food_medication_flags": _food_medication_flags(public_entries, medications),
+        "detail_retention_hours": _COMPACTION_HOURS,
     }
 
 
@@ -493,9 +422,8 @@ class NutritionEntryCreate(BaseModel):
     local_time: Optional[str] = None
     timezone_offset_min: Optional[int] = None
     source: str = "manual"
+    reference_id: Optional[str] = None
     quantity: float = 1.0
-    external_food_id: Optional[str] = None
-    external_serving_id: Optional[str] = None
     calories: Optional[float] = None
     protein_g: Optional[float] = None
     carbs_g: Optional[float] = None
@@ -538,8 +466,8 @@ def build_nutrition_router(db, auth) -> APIRouter:
         profile = await db.profiles.find_one({"id": profile_id}, {"_id": 0})
         return {
             "enabled": bool(((profile or {}).get("module_settings") or {}).get("nutrition") is True),
-            "fatsecret_configured": _fatsecret_configured(),
-            "fatsecret_mode": "food_reference",
+            **provider_status(),
+            "detail_retention_hours": _COMPACTION_HOURS,
         }
 
     @router.get("/foods/search")
@@ -549,9 +477,8 @@ def build_nutrition_router(db, auth) -> APIRouter:
         account: Dict[str, Any] = Depends(auth.require_account),
     ):
         await require_profile_access(auth, account, profile_id)
-        if not _fatsecret_configured():
-            return {"configured": False, "items": []}
-        return {"configured": True, "items": await _search_fatsecret(q.strip())}
+        items = await search_food_references(q.strip(), limit=12)
+        return {"providers": provider_status(), "items": items}
 
     @router.get("/entries")
     async def list_entries(
@@ -560,12 +487,14 @@ def build_nutrition_router(db, auth) -> APIRouter:
         account: Dict[str, Any] = Depends(auth.require_account),
     ):
         await require_profile_access(auth, account, profile_id)
+        await _compact_old_entries(db, profile_id)
         rows = await db.nutrition_entries.find({"profile_id": profile_id}, {"_id": 0}).sort("eaten_at", -1).to_list(limit)
-        return [_public_entry(await _hydrate_entry(row)) for row in rows]
+        return [_public_entry(row) for row in rows]
 
     @router.post("/entries")
     async def create_entry(data: NutritionEntryCreate, account: Dict[str, Any] = Depends(auth.require_account)):
         await require_profile_access(auth, account, data.profile_id, write=True)
+        await _compact_old_entries(db, data.profile_id)
         source = data.source.strip().lower()
         if source not in _ALLOWED_SOURCES:
             raise HTTPException(400, "Invalid nutrition source")
@@ -574,20 +503,47 @@ def build_nutrition_router(db, auth) -> APIRouter:
             raise HTTPException(400, "Invalid meal type")
         if data.quantity <= 0 or data.quantity > 100:
             raise HTTPException(400, "Quantity must be between 0 and 100")
-        label = data.label.strip()
-        if source == "manual" and not label:
-            raise HTTPException(400, "Food label is required")
-        food_id = str(data.external_food_id or "").strip() or None
-        serving_id = str(data.external_serving_id or "").strip() or None
-        if source == "fatsecret" and not food_id:
-            raise HTTPException(400, "FatSecret food_id is required")
-
         offset = None if data.timezone_offset_min is None else max(-840, min(840, int(data.timezone_offset_min)))
+        label = data.label.strip()
+        reference = None
+        cross_check = None
+        if source == "manual":
+            if not label:
+                raise HTTPException(400, "Food label is required")
+            stored_nutrients = {
+                key: value for key, value in {
+                    "calories": data.calories, "protein_g": data.protein_g, "carbs_g": data.carbs_g,
+                    "fat_g": data.fat_g, "fiber_g": data.fiber_g, "sugar_g": data.sugar_g,
+                    "saturated_fat_g": data.saturated_fat_g, "sodium_mg": data.sodium_mg,
+                    "potassium_mg": data.potassium_mg,
+                }.items() if value is not None and value >= 0
+            }
+            verification_status = "user_entered"
+            reference_source = None
+            reference_id = None
+            serving_description = None
+        else:
+            reference_id = str(data.reference_id or "").strip()
+            if not reference_id:
+                raise HTTPException(400, "Nutrition reference id is required")
+            reference = await resolve_reference(source, reference_id)
+            label = str(reference.get("name") or "").strip()
+            stored_nutrients = dict(reference.get("nutrients") or {})
+            if not label or not stored_nutrients:
+                raise HTTPException(502, "Nutrition reference is incomplete")
+            cross_check = await cross_check_reference(reference)
+            verification_status = {
+                "matched": "cross_checked",
+                "close": "cross_checked_close",
+                "mismatch": "source_disagreement",
+            }.get(str(cross_check.get("status") or ""), "source_only")
+            reference_source = source
+            serving_description = reference.get("serving_description") or "100 г"
+
         payload: Dict[str, Any] = {
             "id": str(uuid.uuid4()),
             "profile_id": data.profile_id,
-            # FatSecret labels are not persisted: provider data remains in RAM only.
-            "label": label if source == "manual" else None,
+            "label": label,
             "meal_type": meal,
             "eaten_at": data.eaten_at,
             "local_date": _validated_local_date(data.local_date, data.eaten_at),
@@ -595,38 +551,20 @@ def build_nutrition_router(db, auth) -> APIRouter:
             "timezone_offset_min": offset,
             "source": source,
             "quantity": float(data.quantity),
+            "stored_nutrients": stored_nutrients,
+            "serving_description": serving_description,
+            "reference_source": reference_source,
+            "reference_id": reference_id,
+            "reference_license": reference.get("license") if reference else None,
+            "cross_check": cross_check,
+            "verification_status": verification_status,
             "note": (data.note or "").strip() or None,
-            "external_food_id": food_id,
-            "external_serving_id": serving_id,
+            "compacted": False,
             "created_at": _now(),
             "updated_at": _now(),
-            "verification_status": "verified" if source == "fatsecret" else "unverified",
         }
-
-        snapshot = None
-        if source == "fatsecret":
-            snapshot = await _fatsecret_snapshot(food_id or "", serving_id)
-            payload["external_serving_id"] = snapshot.get("serving_id") or serving_id
-        else:
-            manual = {
-                "calories": data.calories,
-                "protein_g": data.protein_g,
-                "carbs_g": data.carbs_g,
-                "fat_g": data.fat_g,
-                "fiber_g": data.fiber_g,
-                "sugar_g": data.sugar_g,
-                "saturated_fat_g": data.saturated_fat_g,
-                "sodium_mg": data.sodium_mg,
-                "potassium_mg": data.potassium_mg,
-            }
-            payload["manual_nutrients"] = {key: value for key, value in manual.items() if value is not None and value >= 0}
-
         await db.nutrition_entries.insert_one(payload)
-        hydrated = dict(payload)
-        if snapshot:
-            hydrated["_provider_snapshot"] = snapshot
-        hydrated["nutrients"] = _entry_nutrients(hydrated)
-        return _public_entry(hydrated)
+        return _public_entry(payload)
 
     @router.delete("/entries/{entry_id}")
     async def delete_entry(entry_id: str, account: Dict[str, Any] = Depends(auth.require_account)):
