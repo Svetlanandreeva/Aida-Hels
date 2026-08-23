@@ -1,52 +1,37 @@
 import React, { useEffect, useState } from "react";
-import {
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Linking,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { ActivityIndicator, Linking, Platform, Pressable, StyleSheet, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { StatusBar } from "expo-status-bar";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
+import Animated, { FadeIn } from "react-native-reanimated";
+import * as Haptics from "expo-haptics";
 
 import { withTimeout } from "@/src/async";
 import { SocialProvider, useAuth } from "@/src/auth";
-import { useI18n } from "@/src/i18n";
-import { colors, fontSize, fonts, radius, spacing } from "@/src/theme";
+import { useApp } from "@/src/emergent/AppContext";
+import { font, fontSize, radius, spacing, CONTENT_MAX, FORM_MAX } from "@/src/emergent/tokens";
+import { LangToggle, ThemeToggle, Txt } from "@/src/emergent/ui";
 
 type Mode = "login" | "forgot";
 
 function socialCallbackError(code: string, provider: string | null, ru: boolean) {
   const label = provider === "vk" ? "VK ID" : provider === "yandex" ? "Яндекс ID" : (ru ? "внешний аккаунт" : "social account");
-  if (code === "account_exists") {
-    return ru
-      ? "Аккаунт Aida с этой почтой уже существует. Войдите по email и паролю."
-      : "An Aida account with this email already exists. Sign in with email and password.";
-  }
-  if (code === "provider_rejected") {
-    return ru ? `${label} не завершил авторизацию. Попробуйте ещё раз.` : `${label} did not complete authorization. Try again.`;
-  }
-  if (code === "provider_exchange_failed") {
-    return ru ? `Не удалось подтвердить вход через ${label}. Попробуйте ещё раз.` : `Could not verify the ${label} sign-in. Try again.`;
-  }
-  if (code === "temporary_unavailable") {
-    return ru ? "Вход через внешний аккаунт временно недоступен. Попробуйте ещё раз." : "Social sign-in is temporarily unavailable. Try again.";
-  }
+  if (code === "account_exists") return ru ? "Аккаунт Aida с этой почтой уже существует. Войдите по email и паролю." : "An Aida account with this email already exists. Sign in with email and password.";
+  if (code === "provider_rejected") return ru ? `${label} не завершил авторизацию. Попробуйте ещё раз.` : `${label} did not complete authorization. Try again.`;
+  if (code === "provider_exchange_failed") return ru ? `Не удалось подтвердить вход через ${label}. Попробуйте ещё раз.` : `Could not verify the ${label} sign-in. Try again.`;
+  if (code === "temporary_unavailable") return ru ? "Вход через внешний аккаунт временно недоступен. Попробуйте ещё раз." : "Social sign-in is temporarily unavailable. Try again.";
   return ru ? "Не удалось завершить вход через внешний аккаунт." : "Could not finish social sign-in.";
 }
 
 export default function AuthScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { lang } = useI18n();
+  const { colors, theme, lang, t } = useApp();
   const { login, forgotPassword, startSocialLogin, completeSocialLogin } = useAuth();
   const ru = lang === "ru";
+  const a = t.auth;
 
   const [mode, setMode] = useState<Mode>("login");
   const [identifier, setIdentifier] = useState("");
@@ -76,11 +61,8 @@ export default function AuthScreen() {
       return;
     }
     if (!ticket) return;
-
     let active = true;
     setBusy(true);
-    // OAuth completion can legitimately include bounded Google Sheets retry/backoff.
-    // Give it enough time to finish instead of abandoning a one-time ticket at 8s.
     withTimeout(completeSocialLogin(ticket), 20000, "social_callback")
       .then(() => {
         if (!active) return;
@@ -104,7 +86,6 @@ export default function AuthScreen() {
       setError(ru ? "Введите пароль." : "Enter your password.");
       return;
     }
-
     setBusy(true);
     try {
       if (mode === "login") {
@@ -114,15 +95,13 @@ export default function AuthScreen() {
         await withTimeout(forgotPassword(value), 8000, "password_recovery");
         setMessage(ru ? "Если аккаунт существует, ссылка для восстановления отправлена на привязанный email." : "If the account exists, a recovery link was sent to the email connected to the account.");
       }
-    } catch (e: any) {
-      const raw = String(e?.message || "").toLowerCase();
-      setError(
-        raw.includes("invalid email/phone") || raw.includes("401")
-          ? (ru ? "Неверный email/телефон или пароль." : "Invalid email/phone or password.")
-          : raw.includes("timeout")
-            ? (ru ? "Сервис отвечает слишком долго. Попробуйте ещё раз." : "The service is taking too long. Try again.")
-            : (ru ? "Не удалось выполнить запрос. Попробуйте ещё раз." : "Could not complete the request. Try again.")
-      );
+    } catch (cause: any) {
+      const raw = String(cause?.message || "").toLowerCase();
+      setError(raw.includes("invalid email/phone") || raw.includes("401")
+        ? (ru ? "Неверный email/телефон или пароль." : "Invalid email/phone or password.")
+        : raw.includes("timeout")
+          ? (ru ? "Сервис отвечает слишком долго. Попробуйте ещё раз." : "The service is taking too long. Try again.")
+          : (ru ? "Не удалось выполнить запрос. Попробуйте ещё раз." : "Could not complete the request. Try again."));
     } finally {
       setBusy(false);
     }
@@ -132,166 +111,127 @@ export default function AuthScreen() {
     setError(null);
     setSocialBusy(provider);
     try {
-      const returnUri = Platform.OS === "web" && typeof window !== "undefined"
-        ? `${window.location.origin}/auth`
-        : "https://aidaassistent.ru/auth";
+      const returnUri = Platform.OS === "web" && typeof window !== "undefined" ? `${window.location.origin}/auth` : "https://aidaassistent.ru/auth";
       const authorizationUrl = await withTimeout(startSocialLogin(provider, returnUri), 6500, `social_${provider}`);
       if (Platform.OS === "web" && typeof window !== "undefined") window.location.assign(authorizationUrl);
       else await Linking.openURL(authorizationUrl);
-    } catch (e: any) {
-      const slow = String(e?.message || "").includes("timeout");
+    } catch (cause: any) {
+      const slow = String(cause?.message || "").includes("timeout");
       setError(slow ? (ru ? "Сервис входа отвечает слишком долго. Попробуйте ещё раз." : "Sign-in provider is taking too long. Try again.") : (ru ? "Не удалось начать вход." : "Could not start sign-in."));
       setSocialBusy(null);
     }
   };
 
-  const switchToForgot = () => { setMode("forgot"); setError(null); setMessage(null); };
-  const submitLabel = mode === "login" ? (ru ? "Войти" : "Sign in") : (ru ? "Отправить ссылку" : "Send reset link");
+  const switchToForgot = () => { void Haptics.selectionAsync(); setMode("forgot"); setError(null); setMessage(null); };
+  const returnToLogin = () => { void Haptics.selectionAsync(); setMode("login"); setError(null); setMessage(null); };
+  const unavailable = busy || socialBusy !== null;
+  const submitLabel = mode === "login" ? a.loginCta : (ru ? "Отправить ссылку" : "Send reset link");
   const identifierLabel = ru ? "Email или телефон" : "Email or phone";
-  const passwordLabel = ru ? "Пароль" : "Password";
 
   return (
-    <KeyboardAvoidingView style={styles.page} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.content, { paddingTop: insets.top + 36, paddingBottom: insets.bottom + 34 }]}>
-        <View style={styles.brandIcon}><Ionicons name="sparkles" size={20} color={colors.onSurfaceInverse} /></View>
-        <Text style={styles.eyebrow}>AIDA</Text>
-        <Text style={styles.title}>{mode === "login" ? (ru ? "С возвращением" : "Welcome back") : (ru ? "Восстановление пароля" : "Reset password")}</Text>
-        <Text style={styles.subtitle}>{mode === "login" ? (ru ? "Войдите по email или номеру телефона." : "Sign in with your email or phone number.") : (ru ? "Укажите email или телефон. Ссылку мы отправим на email, привязанный к аккаунту." : "Enter your email or phone. We will send the link to the email connected to the account.")}</Text>
+    <View style={{ flex: 1, backgroundColor: colors.surface }}>
+      <StatusBar style={theme === "dark" ? "light" : "dark"} />
+      <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
+        <View style={styles.headerInner}>
+          <Pressable testID="auth-back-button" onPress={() => router.back()} hitSlop={8} style={[styles.iconBtn, { backgroundColor: colors.surfaceTertiary }]}><Ionicons name="chevron-back" size={22} color={colors.onSurface} /></Pressable>
+          <View style={styles.headerControls}><LangToggle /><ThemeToggle /></View>
+        </View>
+      </View>
 
-        <View style={styles.form}>
-          <View style={styles.field}>
-            <View style={styles.labelRow}><Ionicons name="person-circle-outline" size={16} color={colors.onSurfaceSecondary} /><Text style={styles.label}>{identifierLabel}</Text></View>
-            <TextInput
-              value={identifier}
-              onChangeText={setIdentifier}
-              style={styles.input}
-              placeholder={ru ? "name@example.com или +7 999 000-00-00" : "name@example.com or +1 555 000 0000"}
-              placeholderTextColor={colors.onSurfaceSecondary}
-              autoCapitalize="none"
-              autoCorrect={false}
-              autoComplete="username"
-              textContentType="username"
-              accessibilityLabel={identifierLabel}
-              returnKeyType={mode === "forgot" ? "go" : "next"}
-              onSubmitEditing={mode === "forgot" ? submit : undefined}
-              testID="auth-identifier"
-            />
+      <KeyboardAwareScrollView bottomOffset={24} showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: spacing.xl, paddingBottom: spacing["3xl"], alignItems: "center" }} keyboardShouldPersistTaps="handled">
+        <View style={styles.formWrap}>
+          <View style={styles.brandRow}><View style={[styles.logoDot, { backgroundColor: colors.brand }]}><Ionicons name="pulse" size={18} color={colors.onBrandPrimary} /></View><Txt variant="h2" weight="extrabold">{t.brand}</Txt></View>
+
+          <View style={[styles.segment, { backgroundColor: colors.surfaceTertiary }]}>
+            <Pressable testID="auth-tab-login" onPress={returnToLogin} style={[styles.segmentBtn, { backgroundColor: colors.surfaceSecondary }]}><Txt variant="label" weight="bold">{a.loginTab}</Txt></Pressable>
+            <Pressable testID="auth-tab-register" onPress={() => router.push("/register")} style={styles.segmentBtn}><Txt variant="label" weight="bold" color={colors.muted}>{a.registerTab}</Txt></Pressable>
           </View>
 
-          {mode === "login" ? (
-            <>
-              <View style={styles.field}>
-                <View style={styles.labelRow}><Ionicons name="lock-closed-outline" size={16} color={colors.onSurfaceSecondary} /><Text style={styles.label}>{passwordLabel}</Text></View>
-                <View style={styles.passwordWrap}>
-                  <TextInput
-                    value={password}
-                    onChangeText={setPassword}
-                    style={[styles.input, styles.passwordInput]}
-                    placeholder="••••••••"
-                    placeholderTextColor={colors.onSurfaceSecondary}
-                    secureTextEntry={!showPassword}
-                    textContentType="password"
-                    autoComplete="current-password"
-                    accessibilityLabel={passwordLabel}
-                    returnKeyType="go"
-                    onSubmitEditing={submit}
-                    testID="auth-password"
-                  />
-                  <Pressable onPress={() => setShowPassword((value) => !value)} style={styles.eyeButton} accessibilityRole="button" accessibilityLabel={showPassword ? (ru ? "Скрыть пароль" : "Hide password") : (ru ? "Показать пароль" : "Show password")} accessibilityState={{ selected: showPassword }}>
-                    <Ionicons name={showPassword ? "eye-off-outline" : "eye-outline"} size={21} color={colors.onSurfaceSecondary} />
-                  </Pressable>
-                </View>
-              </View>
-              <Pressable onPress={switchToForgot} style={styles.forgotButton} accessibilityRole="button" accessibilityLabel={ru ? "Забыли пароль?" : "Forgot password?"} testID="auth-forgot-link">
-                <Text style={styles.forgotText}>{ru ? "Забыли пароль?" : "Forgot password?"}</Text>
-              </Pressable>
-            </>
-          ) : null}
+          <Animated.View key={mode} entering={FadeIn.duration(250)}>
+            <Txt variant="h1" style={{ marginTop: spacing.xl }}>{mode === "login" ? a.loginTitle : (ru ? "Восстановление пароля" : "Reset password")}</Txt>
+            <Txt variant="body" color={colors.muted} style={{ marginTop: 6 }}>{mode === "login" ? (ru ? "Войдите по email или номеру телефона." : "Sign in with your email or phone number.") : (ru ? "Укажите email или телефон. Ссылку мы отправим на email, привязанный к аккаунту." : "Enter your email or phone. We will send the link to the email connected to the account.")}</Txt>
 
-          {error ? <Notice kind="error" text={error} /> : null}
-          {message ? <Notice kind="success" text={message} /> : null}
-
-          <Pressable style={[styles.primary, busy && styles.disabled]} onPress={submit} disabled={busy || socialBusy !== null} accessibilityRole="button" accessibilityLabel={submitLabel} accessibilityState={{ disabled: busy || socialBusy !== null, busy }} testID="auth-submit">
-            {busy ? <ActivityIndicator color={colors.onSurfaceInverse} /> : <><Text style={styles.primaryText}>{submitLabel}</Text><Ionicons name="arrow-forward" size={18} color={colors.onSurfaceInverse} /></>}
-          </Pressable>
-
-          {mode === "login" ? (
-            <>
-              <View style={styles.dividerRow}><View style={styles.divider} /><Text style={styles.dividerText}>{ru ? "или" : "or"}</Text><View style={styles.divider} /></View>
-              <SocialButton label={ru ? "Продолжить с Яндекс ID" : "Continue with Yandex ID"} busy={socialBusy === "yandex"} disabled={socialBusy !== null && socialBusy !== "yandex"} onPress={() => socialLogin("yandex")} />
-              <SocialButton label={ru ? "Продолжить с VK ID" : "Continue with VK ID"} busy={socialBusy === "vk"} disabled={socialBusy !== null && socialBusy !== "vk"} onPress={() => socialLogin("vk")} />
-
-              <View style={styles.legalBlock}>
-                <Text style={styles.legalText}>{ru ? "Продолжая, вы соглашаетесь с" : "By continuing, you agree to the"}</Text>
-                <View style={styles.legalLinks}>
-                  <Pressable onPress={() => router.push("/terms")} accessibilityRole="link"><Text style={styles.legalLink}>{ru ? "Условиями использования" : "Terms of Use"}</Text></Pressable>
-                  <Text style={styles.legalText}>{ru ? "и" : "and"}</Text>
-                  <Pressable onPress={() => router.push("/privacy-policy")} accessibilityRole="link"><Text style={styles.legalLink}>{ru ? "Политикой конфиденциальности" : "Privacy Policy"}</Text></Pressable>
-                </View>
+            <View style={styles.fields}>
+              <View>
+                <Txt variant="label" weight="semibold" color={colors.muted} style={styles.fieldLabel}>{identifierLabel}</Txt>
+                <TextInput value={identifier} onChangeText={setIdentifier} style={[styles.input, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border, color: colors.onSurface }]} placeholder={ru ? "name@example.com или +7 999 000-00-00" : "name@example.com or +1 555 000 0000"} placeholderTextColor={colors.muted} autoCapitalize="none" autoCorrect={false} autoComplete="username" textContentType="username" accessibilityLabel={identifierLabel} returnKeyType={mode === "forgot" ? "go" : "next"} onSubmitEditing={mode === "forgot" ? submit : undefined} testID="auth-identifier" />
               </View>
 
-              <Pressable onPress={() => router.push("/register")} style={styles.registerButton} accessibilityRole="link" accessibilityLabel={ru ? "Нет аккаунта? Создать" : "No account? Create one"} testID="auth-register-link">
-                <Text style={styles.registerText}>{ru ? "Нет аккаунта? Создать" : "No account? Create one"}</Text>
-              </Pressable>
-            </>
-          ) : (
-            <Pressable onPress={() => { setMode("login"); setError(null); setMessage(null); }} style={styles.textButton} accessibilityRole="button" accessibilityLabel={ru ? "Вернуться ко входу" : "Back to sign in"}>
-              <Ionicons name="arrow-back" size={16} color={colors.onSurface} /><Text style={styles.textButtonText}>{ru ? "Вернуться ко входу" : "Back to sign in"}</Text>
+              {mode === "login" ? <>
+                <View>
+                  <Txt variant="label" weight="semibold" color={colors.muted} style={styles.fieldLabel}>{a.password}</Txt>
+                  <View style={styles.passwordWrap}>
+                    <TextInput value={password} onChangeText={setPassword} style={[styles.input, styles.passwordInput, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border, color: colors.onSurface }]} placeholder={a.passwordPlaceholder} placeholderTextColor={colors.muted} secureTextEntry={!showPassword} textContentType="password" autoComplete="current-password" returnKeyType="go" onSubmitEditing={submit} testID="auth-password" />
+                    <Pressable testID="auth-toggle-password" onPress={() => setShowPassword((value) => !value)} style={styles.eyeButton} accessibilityRole="button" accessibilityLabel={showPassword ? (ru ? "Скрыть пароль" : "Hide password") : (ru ? "Показать пароль" : "Show password")}><Ionicons name={showPassword ? "eye-off-outline" : "eye-outline"} size={20} color={colors.muted} /></Pressable>
+                  </View>
+                </View>
+                <Pressable onPress={switchToForgot} style={styles.forgotButton} testID="auth-forgot-link"><Txt variant="label" weight="bold" color={colors.brand}>{a.forgot}</Txt></Pressable>
+              </> : null}
+            </View>
+
+            {error ? <Notice kind="error" text={error} /> : null}
+            {message ? <Notice kind="success" text={message} /> : null}
+
+            <Pressable testID="auth-submit" onPress={submit} disabled={unavailable} style={[styles.primary, { backgroundColor: colors.brandPrimary }, unavailable && styles.disabled]} accessibilityRole="button" accessibilityState={{ disabled: unavailable, busy }}>
+              {busy ? <ActivityIndicator color={colors.onBrandPrimary} /> : <><Txt variant="body" weight="bold" color={colors.onBrandPrimary}>{submitLabel}</Txt><Ionicons name="arrow-forward" size={18} color={colors.onBrandPrimary} /></>}
             </Pressable>
-          )}
+
+            {mode === "login" ? <>
+              <View style={styles.dividerRow}><View style={[styles.divider, { backgroundColor: colors.border }]} /><Txt variant="label" weight="semibold" color={colors.muted}>{a.or}</Txt><View style={[styles.divider, { backgroundColor: colors.border }]} /></View>
+              <View style={{ gap: spacing.md }}>
+                <SocialButton provider="yandex" label={a.yandex} busy={socialBusy === "yandex"} disabled={unavailable && socialBusy !== "yandex"} onPress={() => socialLogin("yandex")} />
+                <SocialButton provider="vk" label={a.vk} busy={socialBusy === "vk"} disabled={unavailable && socialBusy !== "vk"} onPress={() => socialLogin("vk")} />
+              </View>
+              <View style={styles.switchRow}><Txt variant="caption" color={colors.muted}>{a.switchToRegisterQ}</Txt><Pressable testID="auth-register-link" onPress={() => router.push("/register")} hitSlop={6} style={{ marginLeft: 6 }}><Txt variant="caption" weight="bold" color={colors.brand}>{a.switchToRegister}</Txt></Pressable></View>
+              <View style={styles.legalBlock}>
+                <Txt variant="label" color={colors.muted} weight="medium" center>{ru ? "Продолжая, вы соглашаетесь с" : "By continuing, you agree to the"}</Txt>
+                <View style={styles.legalLinks}><Pressable onPress={() => router.push("/terms")}><Txt variant="label" weight="bold" color={colors.brand}>{ru ? "Условиями использования" : "Terms of Use"}</Txt></Pressable><Txt variant="label" color={colors.muted}>{ru ? "и" : "and"}</Txt><Pressable onPress={() => router.push("/privacy-policy")}><Txt variant="label" weight="bold" color={colors.brand}>{ru ? "Политикой конфиденциальности" : "Privacy Policy"}</Txt></Pressable></View>
+              </View>
+            </> : <Pressable onPress={returnToLogin} style={styles.backToLogin}><Ionicons name="arrow-back" size={16} color={colors.brand} /><Txt variant="caption" weight="bold" color={colors.brand}>{ru ? "Вернуться ко входу" : "Back to sign in"}</Txt></Pressable>}
+          </Animated.View>
         </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+      </KeyboardAwareScrollView>
+    </View>
   );
 }
 
-function SocialButton({ label, busy, disabled, onPress }: { label: string; busy: boolean; disabled: boolean; onPress: () => void }) {
-  return (
-    <Pressable style={[styles.socialButton, disabled && styles.disabled]} onPress={onPress} disabled={busy || disabled} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled: busy || disabled, busy }}>
-      {busy ? <ActivityIndicator color={colors.onSurface} /> : <><Ionicons name="log-in-outline" size={18} color={colors.onSurface} /><Text style={styles.socialText}>{label}</Text></>}
-    </Pressable>
-  );
+function SocialButton({ provider, label, busy, disabled, onPress }: { provider: SocialProvider; label: string; busy: boolean; disabled: boolean; onPress: () => void }) {
+  const { colors } = useApp();
+  return <Pressable testID={`auth-${provider}-button`} onPress={onPress} disabled={busy || disabled} style={[styles.social, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }, disabled && styles.disabled]} accessibilityRole="button">{busy ? <ActivityIndicator color={colors.onSurface} /> : <><View style={[styles.socialBadge, { backgroundColor: provider === "yandex" ? "#FC3F1D" : "#0077FF" }]}><Txt variant="label" weight="extrabold" color="#FFFFFF" style={{ fontSize: provider === "yandex" ? 16 : 12 }}>{provider === "yandex" ? "Я" : "VK"}</Txt></View><Txt variant="body" weight="bold" style={{ marginLeft: spacing.md }}>{label}</Txt></>}</Pressable>;
 }
 
 function Notice({ kind, text }: { kind: "error" | "success"; text: string }) {
-  return <View style={[styles.notice, kind === "error" ? styles.noticeError : styles.noticeSuccess]} accessibilityRole="alert" accessibilityLiveRegion="polite"><Ionicons name={kind === "error" ? "alert-circle-outline" : "checkmark-circle-outline"} size={18} color={kind === "error" ? colors.error : colors.success} /><Text style={styles.noticeText}>{text}</Text></View>;
+  const { colors } = useApp();
+  const accent = kind === "error" ? colors.error : colors.success;
+  return <View style={[styles.notice, { borderColor: accent, backgroundColor: colors.surfaceSecondary }]} accessibilityRole="alert" accessibilityLiveRegion="polite"><Ionicons name={kind === "error" ? "alert-circle-outline" : "checkmark-circle-outline"} size={18} color={accent} /><Txt variant="label" style={{ flex: 1 }}>{text}</Txt></View>;
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: colors.surface },
-  content: { width: "100%", maxWidth: 620, alignSelf: "center", paddingHorizontal: spacing.xl },
-  brandIcon: { width: 46, height: 46, borderRadius: 23, backgroundColor: colors.onSurface, alignItems: "center", justifyContent: "center" },
-  eyebrow: { marginTop: spacing.lg, color: colors.onSurfaceSecondary, fontFamily: fonts.text, fontSize: 11, fontWeight: "900", letterSpacing: 2 },
-  title: { marginTop: spacing.sm, color: colors.onSurface, fontFamily: fonts.display, fontSize: 38, lineHeight: 43, fontWeight: "800", letterSpacing: -1.1 },
-  subtitle: { marginTop: spacing.md, color: colors.onSurfaceSecondary, fontFamily: fonts.text, fontSize: fontSize.base, lineHeight: 23 },
-  form: { marginTop: spacing.xl, gap: spacing.lg },
-  field: { gap: spacing.sm },
-  labelRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  label: { color: colors.onSurface, fontFamily: fonts.text, fontSize: fontSize.sm, fontWeight: "700" },
-  input: { minHeight: 52, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceSecondary, color: colors.onSurface, paddingHorizontal: spacing.lg, fontFamily: fonts.text, fontSize: fontSize.base },
-  passwordWrap: { position: "relative" },
-  passwordInput: { paddingRight: 52 },
-  eyeButton: { position: "absolute", right: 8, top: 6, width: 40, height: 40, alignItems: "center", justifyContent: "center" },
-  forgotButton: { minHeight: 40, alignSelf: "flex-end", justifyContent: "center", marginTop: -8, paddingHorizontal: 2 },
-  forgotText: { color: colors.onSurface, fontFamily: fonts.text, fontSize: fontSize.sm, fontWeight: "800" },
-  primary: { minHeight: 52, borderRadius: radius.pill, backgroundColor: colors.onSurface, paddingHorizontal: spacing.xl, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: spacing.sm },
-  primaryText: { color: colors.onSurfaceInverse, fontFamily: fonts.text, fontSize: fontSize.base, fontWeight: "800" },
+  header: { paddingHorizontal: spacing.xl, paddingBottom: spacing.sm },
+  headerInner: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", width: "100%", maxWidth: CONTENT_MAX, alignSelf: "center" },
+  headerControls: { flexDirection: "row", gap: spacing.sm },
+  iconBtn: { width: 40, height: 40, borderRadius: radius.pill, alignItems: "center", justifyContent: "center" },
+  formWrap: { width: "100%", maxWidth: FORM_MAX },
+  brandRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.xl },
+  logoDot: { width: 34, height: 34, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  segment: { flexDirection: "row", padding: 4, borderRadius: radius.pill },
+  segmentBtn: { flex: 1, paddingVertical: 12, borderRadius: radius.pill, alignItems: "center", justifyContent: "center" },
+  fields: { marginTop: spacing.xl, gap: spacing.md },
+  fieldLabel: { marginBottom: 8 },
+  input: { height: 54, borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth * 2, paddingHorizontal: spacing.lg, fontSize: fontSize.lg, fontFamily: font.medium },
+  passwordWrap: { justifyContent: "center" },
+  passwordInput: { paddingRight: 48 },
+  eyeButton: { position: "absolute", right: spacing.lg, height: 54, justifyContent: "center" },
+  forgotButton: { alignSelf: "flex-end", paddingVertical: spacing.sm },
+  primary: { minHeight: 54, marginTop: spacing.lg, borderRadius: radius.pill, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, paddingHorizontal: spacing.xl },
   disabled: { opacity: 0.55 },
-  textButton: { minHeight: 44, alignSelf: "center", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, paddingHorizontal: spacing.md },
-  textButtonText: { color: colors.onSurface, fontFamily: fonts.text, fontSize: fontSize.sm, fontWeight: "700" },
-  dividerRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-  divider: { flex: 1, height: 1, backgroundColor: colors.border },
-  dividerText: { color: colors.onSurfaceSecondary, fontFamily: fonts.text, fontSize: fontSize.sm },
-  socialButton: { minHeight: 50, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceSecondary, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, paddingHorizontal: spacing.lg },
-  socialText: { color: colors.onSurface, fontFamily: fonts.text, fontSize: fontSize.base, fontWeight: "700" },
-  legalBlock: { alignItems: "center", gap: 4, paddingHorizontal: spacing.md },
-  legalLinks: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", justifyContent: "center", gap: 5 },
-  legalText: { color: colors.onSurfaceSecondary, fontFamily: fonts.text, fontSize: 12, lineHeight: 18, textAlign: "center" },
-  legalLink: { color: colors.onSurface, fontFamily: fonts.text, fontSize: 12, lineHeight: 18, fontWeight: "800", textDecorationLine: "underline" },
-  registerButton: { minHeight: 48, alignItems: "center", justifyContent: "center" },
-  registerText: { color: colors.onSurface, fontFamily: fonts.text, fontSize: fontSize.base, fontWeight: "800" },
-  notice: { borderRadius: radius.md, borderWidth: 1, padding: spacing.md, flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  noticeError: { borderColor: colors.error, backgroundColor: colors.surfaceSecondary },
-  noticeSuccess: { borderColor: colors.success, backgroundColor: colors.surfaceSecondary },
-  noticeText: { flex: 1, color: colors.onSurface, fontFamily: fonts.text, fontSize: fontSize.sm, lineHeight: 19 },
+  dividerRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, marginVertical: spacing.xl },
+  divider: { flex: 1, height: StyleSheet.hairlineWidth * 2 },
+  social: { minHeight: 54, flexDirection: "row", alignItems: "center", borderRadius: radius.pill, paddingVertical: 12, paddingHorizontal: spacing.lg, borderWidth: StyleSheet.hairlineWidth * 2 },
+  socialBadge: { width: 30, height: 30, borderRadius: 8, alignItems: "center", justifyContent: "center" },
+  switchRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", marginTop: spacing.xl },
+  legalBlock: { marginTop: spacing.lg, alignItems: "center", gap: 6 },
+  legalLinks: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", justifyContent: "center", gap: 6 },
+  backToLogin: { minHeight: 48, marginTop: spacing.xl, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm },
+  notice: { marginTop: spacing.md, borderRadius: radius.md, borderWidth: 1, padding: spacing.md, flexDirection: "row", alignItems: "center", gap: spacing.sm },
 });
