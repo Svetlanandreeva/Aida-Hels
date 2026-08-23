@@ -70,6 +70,7 @@ export default function SettingsScreen() {
   const [loadError, setLoadError] = useState(false);
   const [modules, setModules] = useState<ModuleConfig[]>([]);
   const [widgets, setWidgets] = useState<PuzzleWidget[]>([]);
+  const [expandedModules, setExpandedModules] = useState<Record<string, boolean>>({});
 
   const load = useCallback(async () => {
     if (!activeId) {
@@ -145,6 +146,13 @@ export default function SettingsScreen() {
     persistWidgets(sorted.map((w, i) => ({ ...w, order: i })));
   };
 
+  const toggleModuleExpanded = (code: string) => {
+    setExpandedModules((current) => ({
+      ...current,
+      [code]: current[code] === false,
+    }));
+  };
+
   const text = (ru: string, en: string) => (lang === "ru" ? ru : en);
 
   return (
@@ -194,19 +202,33 @@ export default function SettingsScreen() {
           modules.map((module) => {
             const meta = MODULE_LABELS[module.module_code];
             if (!meta) return null;
+            const expanded = expandedModules[module.module_code] !== false;
             return (
               <View key={module.module_code} style={styles.widgetCard} testID={`settings-module-${module.module_code}`}>
-                <View style={styles.widgetHeader}>
+                <View style={[styles.widgetHeader, !expanded && styles.widgetHeaderCollapsed]}>
                   <View style={styles.widgetIcon}><Ionicons name={meta.icon} size={19} color={colors.onSurface} /></View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.widgetTitle}>{lang === "ru" ? meta.ru : meta.en}</Text>
                     <Text style={styles.widgetOrder}>{text(`Источник: ${module.source}`, `Source: ${module.source}`)}</Text>
                   </View>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={expanded ? text("Свернуть модуль", "Collapse module") : text("Развернуть модуль", "Expand module")}
+                    onPress={() => toggleModuleExpanded(module.module_code)}
+                    style={styles.collapseButton}
+                    testID={`settings-module-collapse-${module.module_code}`}
+                  >
+                    <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={18} color={colors.onSurface} />
+                  </Pressable>
                 </View>
-                <SettingToggle label={text("Включить в приложение", "Enable in app")} value={module.enabled} onChange={(value) => persistModule(module.module_code, { enabled: value })} testID={`settings-module-enabled-${module.module_code}`} />
-                <SettingToggle label={text("Показывать на Главной", "Show on Home")} value={module.show_on_home} disabled={!module.enabled} onChange={(value) => persistModule(module.module_code, { show_on_home: value })} testID={`settings-module-home-${module.module_code}`} />
-                <SettingToggle label={text("Использовать данные в аналитике Аиды", "Use data in Aida analytics")} value={module.allow_ai_analytics} disabled={!module.enabled} onChange={(value) => persistModule(module.module_code, { allow_ai_analytics: value })} testID={`settings-module-ai-${module.module_code}`} />
-                <SettingToggle label={text("Уведомления", "Notifications")} value={module.notifications_enabled} disabled={!module.enabled} onChange={(value) => persistModule(module.module_code, { notifications_enabled: value })} testID={`settings-module-notifications-${module.module_code}`} last />
+                {expanded ? (
+                  <>
+                    <SettingToggle label={text("Включить в приложение", "Enable in app")} value={module.enabled} onChange={(value) => persistModule(module.module_code, { enabled: value })} testID={`settings-module-enabled-${module.module_code}`} />
+                    <SettingToggle label={text("Показывать на Главной", "Show on Home")} value={module.show_on_home} disabled={!module.enabled} onChange={(value) => persistModule(module.module_code, { show_on_home: value })} testID={`settings-module-home-${module.module_code}`} />
+                    <SettingToggle label={text("Использовать данные в аналитике Аиды", "Use data in Aida analytics")} value={module.allow_ai_analytics} disabled={!module.enabled} onChange={(value) => persistModule(module.module_code, { allow_ai_analytics: value })} testID={`settings-module-ai-${module.module_code}`} />
+                    <SettingToggle label={text("Уведомления", "Notifications")} value={module.notifications_enabled} disabled={!module.enabled} onChange={(value) => persistModule(module.module_code, { notifications_enabled: value })} testID={`settings-module-notifications-${module.module_code}`} last />
+                  </>
+                ) : null}
               </View>
             );
           })
@@ -231,11 +253,26 @@ export default function SettingsScreen() {
                   <Text style={styles.widgetOrder}>{text(`Позиция ${index + 1}`, `Position ${index + 1}`)}</Text>
                 </View>
                 <View style={styles.orderButtons}>
-                  <Pressable disabled={index === 0} onPress={() => moveWidget(w.id, -1)} style={[styles.orderButton, index === 0 && styles.disabled]} testID={`settings-move-up-${w.id}`}>
-                    <Ionicons name="chevron-up" size={18} color={colors.onSurface} />
+                  <Text style={styles.orderLabel}>{text("Порядок", "Order")}</Text>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={text("Поднять карточку выше", "Move card up")}
+                    disabled={index === 0}
+                    onPress={() => moveWidget(w.id, -1)}
+                    style={[styles.orderButton, index === 0 && styles.disabled]}
+                    testID={`settings-move-up-${w.id}`}
+                  >
+                    <Ionicons name="arrow-up-outline" size={18} color={colors.onSurface} />
                   </Pressable>
-                  <Pressable disabled={index === widgets.length - 1} onPress={() => moveWidget(w.id, 1)} style={[styles.orderButton, index === widgets.length - 1 && styles.disabled]} testID={`settings-move-down-${w.id}`}>
-                    <Ionicons name="chevron-down" size={18} color={colors.onSurface} />
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={text("Опустить карточку ниже", "Move card down")}
+                    disabled={index === widgets.length - 1}
+                    onPress={() => moveWidget(w.id, 1)}
+                    style={[styles.orderButton, index === widgets.length - 1 && styles.disabled]}
+                    testID={`settings-move-down-${w.id}`}
+                  >
+                    <Ionicons name="arrow-down-outline" size={18} color={colors.onSurface} />
                   </Pressable>
                 </View>
               </View>
@@ -299,10 +336,13 @@ const styles = StyleSheet.create({
   retryText: { fontSize: fontSize.sm, fontWeight: "700", color: colors.onSurface, fontFamily: fonts.text },
   widgetCard: { backgroundColor: colors.surfaceSecondary, borderRadius: radius.lg, padding: spacing.md, marginBottom: spacing.md, borderWidth: 1, borderColor: colors.border },
   widgetHeader: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingBottom: spacing.md },
+  widgetHeaderCollapsed: { paddingBottom: 0 },
   widgetIcon: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center" },
   widgetTitle: { fontSize: fontSize.base, fontWeight: "700", color: colors.onSurface, fontFamily: fonts.text },
   widgetOrder: { marginTop: 2, fontSize: fontSize.sm, color: colors.onSurfaceSecondary, fontFamily: fonts.text },
-  orderButtons: { flexDirection: "row", gap: 6 },
+  collapseButton: { width: 34, height: 34, borderRadius: 17, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center" },
+  orderButtons: { flexDirection: "row", alignItems: "center", gap: 6 },
+  orderLabel: { fontSize: fontSize.sm, color: colors.onSurfaceSecondary, fontFamily: fonts.text },
   orderButton: { width: 34, height: 34, borderRadius: 17, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center" },
   disabled: { opacity: 0.4 },
   toggleRow: { minHeight: 48, flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderTopWidth: 1, borderTopColor: colors.divider },
