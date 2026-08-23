@@ -24,13 +24,16 @@ def test_frontend_sends_device_local_meal_clock_and_has_profile_setting():
     assert 'router.push("/nutrition"' in profile
 
 
-def test_fatsecret_provider_cache_is_below_24_hours():
+def test_fatsecret_provider_data_uses_short_lived_ram_cache_only():
     assert nutrition_api._PROVIDER_CACHE_HOURS < 24
+    assert isinstance(nutrition_api._FOOD_CACHE, dict)
     source = (ROOT / "backend/nutrition_api.py").read_text(encoding="utf-8")
     assert '"external_food_id"' in source
     assert '"external_serving_id"' in source
-    assert '"provider_snapshot"' in source
-    assert 'key != "provider_snapshot"' in source
+    assert '_FOOD_CACHE[key] = snapshot' in source
+    assert '"label": label if source == "manual" else None' in source
+    assert 'hydrated["_provider_snapshot"]' in source
+    assert 'payload["provider_snapshot"]' not in source
 
 
 def test_unverified_medication_never_creates_food_interaction_flag():
