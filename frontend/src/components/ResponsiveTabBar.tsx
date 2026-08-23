@@ -12,6 +12,7 @@ const TAB_ICONS: Record<string, { active: keyof typeof Ionicons.glyphMap; inacti
   labs: { active: "flask", inactive: "flask-outline" },
   chat: { active: "sparkles", inactive: "sparkles-outline" },
   tasks: { active: "checkbox", inactive: "checkbox-outline" },
+  companion: { active: "paw", inactive: "paw-outline" },
   health: { active: "heart", inactive: "heart-outline" },
   profile: { active: "person", inactive: "person-outline" },
 };

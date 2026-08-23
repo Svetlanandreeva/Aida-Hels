@@ -1,5 +1,5 @@
 import { Stack, router, useSegments } from "expo-router";
-import { lazy, Suspense, useEffect } from "react";
+import { lazy, Suspense, useEffect, useRef } from "react";
 import { LogBox, Platform, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -8,6 +8,7 @@ import { StatusBar } from "expo-status-bar";
 import { AuthProvider, useAuth } from "@/src/auth";
 import { api } from "@/src/api";
 import { withTimeout } from "@/src/async";
+import { getPetGame } from "@/src/gameApi";
 import { useIconFonts } from "@/src/hooks/use-icon-fonts";
 import { I18nProvider } from "@/src/i18n";
 import { AppProvider, useApp } from "@/src/store";
@@ -102,6 +103,34 @@ function MedicationTimePromptGate() {
   return null;
 }
 
+function PetUnlockGate() {
+  const { activeId, activeProfile, loading, refreshTick } = useApp();
+  const segments = useSegments();
+  const redirectedProfile = useRef<string | null>(null);
+
+  useEffect(() => {
+    const route = String(segments[0] || "");
+    if (loading || !activeId || activeId === "preview-profile" || !activeProfile?.onboarding_completed) return;
+    if (route === "pet" || PUBLIC_ROUTES.has(route) || ONBOARDING_ROUTES.has(route)) return;
+    if (redirectedProfile.current === activeId) return;
+
+    let cancelled = false;
+    void getPetGame(activeId)
+      .then((game) => {
+        if (cancelled || !game.pet.claim_available || game.pet.claimed) return;
+        redirectedProfile.current = activeId;
+        router.push("/pet" as any);
+      })
+      .catch(() => {
+        // Gamification must never block the health app when it is offline.
+      });
+
+    return () => { cancelled = true; };
+  }, [activeId, activeProfile?.onboarding_completed, loading, refreshTick, segments]);
+
+  return null;
+}
+
 function ProfileGate({ children }: { children: React.ReactNode }) {
   const { activeProfile, loading } = useApp();
   const segments = useSegments();
@@ -148,6 +177,7 @@ function RoutedApp() {
         <Stack.Screen name="onboarding-medications" />
         <Stack.Screen name="medication-time-setup" />
         <Stack.Screen name="nutrition" />
+        <Stack.Screen name="pet" />
         <Stack.Screen name="report" options={{ presentation: "modal" }} />
       </Stack>
     </View>
@@ -159,6 +189,7 @@ function RoutedApp() {
   return (
     <AppProvider>
       <MedicationTimePromptGate />
+      <PetUnlockGate />
       <ProfileGate>
         <Suspense fallback={null}>
           <DeferredAuthenticatedSyncRuntime />

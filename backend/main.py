@@ -57,6 +57,7 @@ from cycle_api import build_cycle_router  # noqa: E402
 from documents import build_documents_router  # noqa: E402
 from email_signup import build_email_signup_router  # noqa: E402
 from family_api import build_family_router  # noqa: E402
+from game_api import build_game_router  # noqa: E402
 from healthkit_api import build_healthkit_router  # noqa: E402
 from home_api import build_home_router  # noqa: E402
 from icd10_api import build_icd10_router  # noqa: E402
@@ -148,6 +149,7 @@ app.include_router(build_icd10_router())
 app.include_router(build_medication_reference_router(_google_db))
 app.include_router(build_family_router(_google_db, auth_service))
 app.include_router(build_secure_legacy_router(_google_db, auth_service))
+app.include_router(build_game_router(_google_db, auth_service))
 app.include_router(build_puzzle_router(_google_db, auth_service))
 app.include_router(build_task_router(_google_db, auth_service))
 app.include_router(build_medication_router(_google_db, auth_service))

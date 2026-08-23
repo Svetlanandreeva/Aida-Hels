@@ -6,6 +6,7 @@ import { ResponsiveTabBar } from "@/src/components/ResponsiveTabBar";
 import { useResponsiveLayout } from "@/src/hooks/use-responsive-layout";
 import { useApp } from "@/src/store";
 import { getModuleConfig } from "@/src/moduleConfigApi";
+import { getPetGame } from "@/src/gameApi";
 
 const PRIMARY_TAB_MODULES: Record<string, string | null> = {
   index: null,
@@ -22,12 +23,14 @@ export default function TabsLayout() {
   const responsive = useResponsiveLayout();
   const { activeId, refreshTick } = useApp();
   const [enabledModules, setEnabledModules] = useState<Set<string> | null>(null);
+  const [petUnlocked, setPetUnlocked] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
       if (!activeId || activeId === "preview-profile") {
         setEnabledModules(null);
+        setPetUnlocked(false);
         return () => { cancelled = true; };
       }
 
@@ -40,11 +43,20 @@ export default function TabsLayout() {
           if (!cancelled) setEnabledModules(null);
         });
 
+      void getPetGame(activeId)
+        .then((game) => {
+          if (!cancelled) setPetUnlocked(Boolean(game.pet.claimed || game.pet.claim_available || Number(game.level) >= 2));
+        })
+        .catch(() => {
+          if (!cancelled) setPetUnlocked(false);
+        });
+
       return () => { cancelled = true; };
     }, [activeId, refreshTick]),
   );
 
   const routeVisible = (name: string) => {
+    if (name === "companion") return petUnlocked;
     if (!(name in PRIMARY_TAB_MODULES)) return false;
     const moduleCode = PRIMARY_TAB_MODULES[name];
     return moduleCode === null || enabledModules === null || enabledModules.has(moduleCode);
@@ -89,6 +101,7 @@ export default function TabsLayout() {
       <Tabs.Screen name="labs" options={{ title: lang === "ru" ? "Анализы" : "Labs" }} />
       <Tabs.Screen name="chat" options={{ title: lang === "ru" ? "Аида" : "Aida" }} />
       <Tabs.Screen name="tasks" options={{ title: lang === "ru" ? "Задачи" : "Tasks" }} />
+      <Tabs.Screen name="companion" options={{ title: lang === "ru" ? "Питомец" : "Pet" }} />
       <Tabs.Screen name="health" options={{ href: null }} />
       <Tabs.Screen name="profile" options={{ href: null }} />
     </Tabs>
