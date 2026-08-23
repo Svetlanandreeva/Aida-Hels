@@ -321,7 +321,7 @@ export default function MindScreen() {
                     <Pressable
                       key={n}
                       testID={`${m.key}-${n}`}
-                      onPress={() => setVals((p) => ({ ...p, [m.key]: n }))
+                      onPress={() => setVals((p) => ({ ...p, [m.key]: n }))}
                       style={[styles.scaleDot, active && { backgroundColor: scaleColor(n, invert), borderColor: scaleColor(n, invert) }]}
                     >
                       <Text style={[styles.scaleText, active && { color: colors.onSurfaceInverse }]}>{n}</Text>
