@@ -193,7 +193,7 @@ export default function Landing() {
 
           <View style={{ gap: spacing.md, marginTop: spacing.xl }}>
             <PillButton testID="hero-start-button" label={t.common.startFree} onPress={() => goAuth("register")} size="lg" icon="arrow-forward" full />
-            <PillButton testID="hero-demo-button" label={t.common.tryDemo} variant="secondary" onPress={() => router.push("/auth")} size="lg" full />
+            <PillButton testID="hero-demo-button" label={t.common.tryDemo} variant="secondary" onPress={() => router.push("/demo" as any)} size="lg" full />
           </View>
         </View>
 
@@ -621,4 +621,3 @@ const styles = StyleSheet.create({
   footer: { paddingHorizontal: spacing.xl, paddingTop: spacing["3xl"], marginTop: spacing.xl, borderTopWidth: StyleSheet.hairlineWidth * 2 },
   footerLink: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
 });
-
