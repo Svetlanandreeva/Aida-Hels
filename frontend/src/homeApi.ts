@@ -75,6 +75,67 @@ function localTime() {
   return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
 
+function minutesFromTime(value?: string | null) {
+  const match = String(value || "").match(/^(\d{2}):(\d{2})$/);
+  if (!match) return Number.POSITIVE_INFINITY;
+  return Number(match[1]) * 60 + Number(match[2]);
+}
+
+function decorateMedicationContext(value: HomePayload, language: string): HomePayload {
+  const items = value.medications.items || [];
+  const active = items.filter((medication) => medication.active);
+  if (!active.length) return value;
+
+  const missingTime = active.filter((medication) => !(medication.times || []).some((time) => Number.isFinite(minutesFromTime(time))));
+  if (missingTime.length) {
+    const target = missingTime[0];
+    const warning = language === "ru"
+      ? "⚠ Укажите точное время, чтобы видеть ближайший приём и получать напоминания"
+      : "⚠ Set an exact time to see the next dose and receive reminders";
+    const decorated = { ...target, schedule: warning };
+    return {
+      ...value,
+      medications: {
+        ...value.medications,
+        items: [decorated, ...items.filter((item) => item.id !== target.id)],
+      },
+    };
+  }
+
+  const now = new Date();
+  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+  const nextSlot = [...(value.medication_day.slots || [])]
+    .filter((slot) => slot.status === "pending")
+    .filter((slot) => minutesFromTime(slot.time) >= nowMinutes)
+    .sort((a, b) => minutesFromTime(a.time) - minutesFromTime(b.time))[0];
+
+  if (nextSlot) {
+    const target = items.find((medication) => medication.id === nextSlot.medication_id);
+    if (!target) return value;
+    const decorated = { ...target, schedule: nextSlot.time };
+    return {
+      ...value,
+      medications: {
+        ...value.medications,
+        items: [decorated, ...items.filter((item) => item.id !== target.id)],
+      },
+    };
+  }
+
+  const target = active[0];
+  const decorated = {
+    ...target,
+    schedule: language === "ru" ? "На сегодня приёмов больше нет" : "No more doses today",
+  };
+  return {
+    ...value,
+    medications: {
+      ...value.medications,
+      items: [decorated, ...items.filter((item) => item.id !== target.id)],
+    },
+  };
+}
+
 function cacheKey(profileId: string, date: string, language: string) {
   return `${profileId}:${date}:${language}`;
 }
@@ -122,7 +183,8 @@ export async function getHome(
       const text = await response.text().catch(() => "");
       throw new Error(`${response.status}: ${text}`);
     }
-    const value = await withTimeout(response.json(), 1500, "home_json") as HomePayload;
+    const raw = await withTimeout(response.json(), 1500, "home_json") as HomePayload;
+    const value = decorateMedicationContext(raw, language);
     homeCache.set(key, { value, expiresAt: Date.now() + HOME_CACHE_TTL_MS });
     return value;
   })();
