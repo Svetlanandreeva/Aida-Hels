@@ -44,12 +44,19 @@ def test_mental_medication_prompt_moved_off_lifestyle_step():
     assert 'router.push("/onboarding-medications"' in lifestyle
 
 
-def test_daily_medication_editor_captures_name_dose_day_parts_and_meals():
+def test_daily_medication_editor_uses_normalized_reference_catalog_and_structured_dose():
     frontend = read("frontend/app/onboarding-medications.tsx")
-    api_source = read("frontend/src/api.ts")
+    reference_client = read("frontend/src/medicationReferenceApi.ts")
     backend = read("backend/medication_api.py")
-    assert "COMMON_MEDICATIONS" in frontend
+    reference_backend = read("backend/medication_reference.py")
+
+    assert "COMMON_MEDICATIONS" not in frontend
+    assert "searchMedicationReferences" in frontend
     assert 'testID="medication-name-dropdown"' in frontend
+    assert 'testID="selected-medication-reference"' in frontend
+    assert "active_ingredient" in frontend
+    assert "reference_source: selectedReference?.reference_source" in frontend
+    assert "reference_id: selectedReference?.reference_id" in frontend
     assert 'testID="onboarding-medication-dose"' in frontend
     assert 'const DAY_PARTS = ["morning", "day", "evening"]' in frontend
     assert '["before", ru ? "До еды"' in frontend
@@ -57,12 +64,20 @@ def test_daily_medication_editor_captures_name_dose_day_parts_and_meals():
     assert 'dose_unit: doseUnit' in frontend
     assert 'day_parts: dayParts' in frontend
     assert 'meal_relation: mealRelation' in frontend
-    assert "dose_amount?: number | null" in api_source
-    assert "day_parts?: Array" in api_source
+
+    assert "/reference/medications/search" in reference_client
+    assert "active_substance_id" in reference_client
     assert "dose_amount: Optional[float]" in backend
     assert "day_parts: List[str]" in backend
+    assert "reference_source: Optional[str]" in backend
+    assert "reference_id: Optional[str]" in backend
+    assert "active_substance_id" in backend
+    assert "resolve_reference" in backend
     assert '_ALLOWED_DAY_PARTS = {"morning", "day", "evening"}' in backend
     assert '_ALLOWED_DOSE_UNITS = {"mg", "tablet"}' in backend
+    assert 'tn_like=query' in reference_backend
+    assert 'mnn_like=query' in reference_backend
+    assert 'auth=httpx.BasicAuth(self.username, self.password)' in reference_backend
 
 
 def test_medication_day_parts_do_not_invent_clock_times():
