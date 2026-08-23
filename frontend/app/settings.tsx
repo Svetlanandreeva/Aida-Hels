@@ -116,6 +116,27 @@ export default function SettingsScreen() {
     }
   };
 
+  const enableAllModules = async () => {
+    if (!activeId || modules.length === 0 || saving) return;
+    const previous = modules;
+    setModules((items) => items.map((item) => ({ ...item, enabled: true, source: "user" })));
+    setSaving(true);
+    try {
+      const response = await patchModuleConfig(
+        activeId,
+        modules.map((module) => ({ module_code: module.module_code, enabled: true })),
+      );
+      setModules([...(response.modules || [])].sort((a, b) => a.order - b.order));
+      await reload();
+      bumpRefresh();
+    } catch {
+      setModules(previous);
+      setLoadError(true);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const persistWidgets = async (next: PuzzleWidget[]) => {
     const normalized = [...next]
       .sort((a, b) => a.order - b.order)
@@ -154,6 +175,7 @@ export default function SettingsScreen() {
   };
 
   const text = (ru: string, en: string) => (lang === "ru" ? ru : en);
+  const allModulesEnabled = modules.length > 0 && modules.every((module) => module.enabled);
 
   return (
     <View style={styles.container}>
@@ -189,6 +211,24 @@ export default function SettingsScreen() {
           "Включение модуля, показ на Главной, AI-аналитика и уведомления настраиваются независимо. Отключение модуля не удаляет историю.",
           "Module access, Home visibility, AI analytics and notifications are independent. Disabling a module does not delete its history.",
         )}</Text>
+
+        {!loading && modules.length > 0 ? (
+          <View style={[styles.sectionCard, { marginBottom: spacing.md }]} testID="settings-track-all">
+            <Text style={styles.sectionTitle}>{text("Быстрая сборка", "Quick setup")}</Text>
+            <Text style={styles.emptyText}>{text(
+              "Можно включить все готовые модули одним выбором. Разрешения для Главной, аналитики Аиды и уведомлений останутся такими, как вы настроили.",
+              "Enable every ready module at once. Home, Aida analytics and notification permissions keep their current values.",
+            )}</Text>
+            <Pressable
+              onPress={() => void enableAllModules()}
+              disabled={saving || allModulesEnabled}
+              style={[styles.retryButton, (saving || allModulesEnabled) && styles.disabled]}
+              testID="settings-enable-all-modules"
+            >
+              <Text style={styles.retryText}>{allModulesEnabled ? text("Все готовые модули включены", "All ready modules are enabled") : text("Хочу отслеживать всё", "I want to track everything")}</Text>
+            </Pressable>
+          </View>
+        ) : null}
 
         {loading ? (
           <View style={styles.loader}><ActivityIndicator color={colors.onSurface} /></View>
