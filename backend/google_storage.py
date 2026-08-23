@@ -148,7 +148,7 @@ class SheetsHTTP:
                 self._base(suffix),
                 headers=self.headers(),
                 timeout=timeout,
-                **kwargs: Any,
+                **kwargs,
             )
             retryable = response.status_code == 429 or (
                 retry_server_errors and response.status_code in SHEETS_RETRYABLE_READ_STATUSES
