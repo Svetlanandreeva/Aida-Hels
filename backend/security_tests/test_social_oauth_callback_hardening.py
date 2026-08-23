@@ -85,6 +85,7 @@ def test_vk_authorization_url_matches_current_vkid_contract(monkeypatch):
         "code_challenge_method",
         "client_id",
         "response_type",
+        "scope",
         "state",
         "v",
         "sdk_type",
@@ -99,9 +100,9 @@ def test_vk_authorization_url_matches_current_vkid_contract(monkeypatch):
     assert params["sdk_type"] == ["vkid"]
     assert params["redirect_uri"] == ["https://aidaassistent.ru/api/auth/oauth/vk/callback"]
     assert params["response_type"] == ["code"]
+    assert params["scope"] == ["email"]
     assert params["v"] == ['"2.6.1"']
     assert params["prompt"] == [""]
-    assert "scope" not in params
     assert params["state"][0]
     assert params["code_challenge"][0]
 
