@@ -17,7 +17,13 @@ import { ScreenHeader } from "@/src/components/ScreenHeader";
 import { Card, Muted, PrimaryButton } from "@/src/components/ui";
 import { Sheet } from "@/src/components/Sheet";
 import { api } from "@/src/api";
-import { FatSecretFood, nutritionApi, NutritionEntry, NutritionSummary } from "@/src/nutritionApi";
+import {
+  NutritionEntry,
+  NutritionFoodCandidate,
+  NutritionStatus,
+  NutritionSummary,
+  nutritionApi,
+} from "@/src/nutritionApi";
 import { useApp } from "@/src/store";
 import { useI18n } from "@/src/i18n";
 import { colors, fontSize, fonts, radius, spacing } from "@/src/theme";
@@ -36,23 +42,21 @@ function numberOrUndefined(value: string) {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
 }
 
-function twoDigits(value: number) {
-  return String(value).padStart(2, "0");
-}
-
-function deviceLocalStamp(now = new Date()) {
+function localClockPayload() {
+  const now = new Date();
+  const pad = (value: number) => String(value).padStart(2, "0");
   return {
     eaten_at: now.toISOString(),
-    local_date: `${now.getFullYear()}-${twoDigits(now.getMonth() + 1)}-${twoDigits(now.getDate())}`,
-    local_time: `${twoDigits(now.getHours())}:${twoDigits(now.getMinutes())}`,
+    local_date: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`,
+    local_time: `${pad(now.getHours())}:${pad(now.getMinutes())}`,
     timezone_offset_min: -now.getTimezoneOffset(),
   };
 }
 
-function mealLabel(value: string, lang: string) {
-  const row = MEALS.find(([key]) => key === value);
-  if (!row) return value;
-  return lang === "ru" ? row[1] : row[2];
+function mealLabel(meal: string, lang: string) {
+  const item = MEALS.find(([key]) => key === meal);
+  if (item) return lang === "ru" ? item[1] : item[2];
+  return lang === "ru" ? "Приём пищи" : "Meal";
 }
 
 function nutrientText(entry: NutritionEntry, lang: string) {
@@ -60,24 +64,22 @@ function nutrientText(entry: NutritionEntry, lang: string) {
   const parts = [
     n.calories != null ? `${Math.round(n.calories)} ${lang === "ru" ? "ккал" : "kcal"}` : null,
     n.protein_g != null ? `${lang === "ru" ? "Б" : "P"} ${n.protein_g.toFixed(1)} г` : null,
+    n.fat_g != null ? `${lang === "ru" ? "Ж" : "F"} ${n.fat_g.toFixed(1)} г` : null,
+    n.carbs_g != null ? `${lang === "ru" ? "У" : "C"} ${n.carbs_g.toFixed(1)} г` : null,
     n.fiber_g != null ? `${lang === "ru" ? "клетч." : "fiber"} ${n.fiber_g.toFixed(1)} г` : null,
   ].filter(Boolean);
   return parts.join(" · ");
 }
 
-function entryTimeLabel(entry: NutritionEntry, lang: string) {
-  if (entry.local_date && entry.local_time) {
-    const [year, month, day] = entry.local_date.split("-");
-    return lang === "ru"
-      ? `${day}.${month}.${year} ${entry.local_time}`
-      : `${month}/${day}/${year} ${entry.local_time}`;
-  }
-  return new Date(entry.eaten_at).toLocaleString(lang === "ru" ? "ru-RU" : "en-US", {
-    day: "2-digit",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+function candidateNutrients(food: NutritionFoodCandidate, lang: string) {
+  const n = food.nutrients || {};
+  const parts = [
+    n.calories != null ? `${Math.round(n.calories)} ${lang === "ru" ? "ккал" : "kcal"}` : null,
+    n.protein_g != null ? `${lang === "ru" ? "Б" : "P"} ${n.protein_g.toFixed(1)}` : null,
+    n.fat_g != null ? `${lang === "ru" ? "Ж" : "F"} ${n.fat_g.toFixed(1)}` : null,
+    n.carbs_g != null ? `${lang === "ru" ? "У" : "C"} ${n.carbs_g.toFixed(1)}` : null,
+  ].filter(Boolean);
+  return parts.join(" · ");
 }
 
 export default function NutritionScreen() {
@@ -88,16 +90,16 @@ export default function NutritionScreen() {
 
   const [entries, setEntries] = useState<NutritionEntry[]>([]);
   const [summary, setSummary] = useState<NutritionSummary | null>(null);
-  const [providerConfigured, setProviderConfigured] = useState(false);
+  const [status, setStatus] = useState<NutritionStatus | null>(null);
   const [loading, setLoading] = useState(false);
   const [savingSetting, setSavingSetting] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [source, setSource] = useState<"fatsecret" | "manual">("fatsecret");
+  const [sourceMode, setSourceMode] = useState<"reference" | "manual">("reference");
   const [meal, setMeal] = useState("breakfast");
   const [query, setQuery] = useState("");
   const [searching, setSearching] = useState(false);
-  const [results, setResults] = useState<FatSecretFood[]>([]);
-  const [selected, setSelected] = useState<FatSecretFood | null>(null);
+  const [results, setResults] = useState<NutritionFoodCandidate[]>([]);
+  const [selected, setSelected] = useState<NutritionFoodCandidate | null>(null);
   const [label, setLabel] = useState("");
   const [quantity, setQuantity] = useState("1");
   const [calories, setCalories] = useState("");
@@ -114,8 +116,8 @@ export default function NutritionScreen() {
     setLoading(true);
     setError("");
     try {
-      const status = await nutritionApi.status(activeId);
-      setProviderConfigured(Boolean(status.fatsecret_configured));
+      const nextStatus = await nutritionApi.status(activeId);
+      setStatus(nextStatus);
       if (activeProfile?.module_settings?.nutrition === true) {
         const [items, nextSummary] = await Promise.all([
           nutritionApi.listEntries(activeId),
@@ -157,26 +159,21 @@ export default function NutritionScreen() {
   const todayStats = useMemo(() => {
     if (!latestDay) return [];
     return [
-      [lang === "ru" ? "Энергия" : "Energy", latestDay.calories != null ? `${Math.round(Number(latestDay.calories))} ${lang === "ru" ? "ккал" : "kcal"}` : "—"],
-      [lang === "ru" ? "Белок" : "Protein", latestDay.protein_g != null ? `${Number(latestDay.protein_g).toFixed(1)} г` : "—"],
-      [lang === "ru" ? "Клетчатка" : "Fiber", latestDay.fiber_g != null ? `${Number(latestDay.fiber_g).toFixed(1)} г` : "—"],
+      [lang === "ru" ? "Энергия" : "Energy", latestDay.calories ? `${Math.round(latestDay.calories)} ${lang === "ru" ? "ккал" : "kcal"}` : "—"],
+      [lang === "ru" ? "Белок" : "Protein", latestDay.protein_g ? `${Number(latestDay.protein_g).toFixed(1)} г` : "—"],
+      [lang === "ru" ? "Клетчатка" : "Fiber", latestDay.fiber_g ? `${Number(latestDay.fiber_g).toFixed(1)} г` : "—"],
     ];
   }, [latestDay, lang]);
 
   const openAdd = () => {
-    setSource(providerConfigured ? "fatsecret" : "manual");
+    setSourceMode("reference");
     setMeal("breakfast");
     setQuery("");
     setResults([]);
     setSelected(null);
     setLabel("");
     setQuantity("1");
-    setCalories("");
-    setProtein("");
-    setCarbs("");
-    setFat("");
-    setFiber("");
-    setSugar("");
+    setCalories(""); setProtein(""); setCarbs(""); setFat(""); setFiber(""); setSugar("");
     setError("");
     setSheetOpen(true);
   };
@@ -187,17 +184,18 @@ export default function NutritionScreen() {
     setError("");
     try {
       const response = await nutritionApi.searchFoods(activeId, query.trim());
-      setProviderConfigured(response.configured);
       setResults(response.items || []);
-      if (!response.configured) setSource("manual");
+      if (!response.items?.length) {
+        setError(lang === "ru" ? "В открытых базах ничего не найдено. Можно добавить продукт вручную." : "No match in open databases. You can add the food manually.");
+      }
     } catch {
-      setError(lang === "ru" ? "FatSecret сейчас недоступен. Можно добавить продукт вручную." : "FatSecret is unavailable. You can add food manually.");
+      setError(lang === "ru" ? "Поиск сейчас недоступен. Можно добавить продукт вручную." : "Search is unavailable. You can add the food manually.");
     } finally {
       setSearching(false);
     }
   };
 
-  const chooseFood = (food: FatSecretFood) => {
+  const chooseFood = (food: NutritionFoodCandidate) => {
     setSelected(food);
     setLabel(food.brand ? `${food.name} · ${food.brand}` : food.name);
     setResults([]);
@@ -205,29 +203,31 @@ export default function NutritionScreen() {
 
   const saveEntry = async () => {
     if (!activeId) return;
-    const finalLabel = label.trim();
-    if (!finalLabel || (source === "fatsecret" && !selected)) {
-      setError(lang === "ru" ? "Выберите или укажите продукт." : "Choose or enter a food.");
+    if (sourceMode === "reference" && !selected) {
+      setError(lang === "ru" ? "Сначала выберите продукт из результатов поиска." : "Choose a food from search results first.");
+      return;
+    }
+    if (sourceMode === "manual" && !label.trim()) {
+      setError(lang === "ru" ? "Укажите продукт или блюдо." : "Enter a food or meal.");
       return;
     }
     setSavingEntry(true);
     setError("");
     try {
-      const local = deviceLocalStamp();
       await nutritionApi.createEntry({
         profile_id: activeId,
-        label: finalLabel,
+        label: label.trim(),
         meal_type: meal,
-        ...local,
-        source,
+        ...localClockPayload(),
+        source: sourceMode === "reference" ? selected!.reference_source : "manual",
+        reference_id: sourceMode === "reference" ? selected!.reference_id : undefined,
         quantity: Math.max(0.01, numberOrUndefined(quantity) || 1),
-        external_food_id: source === "fatsecret" ? selected?.food_id : undefined,
-        calories: source === "manual" ? numberOrUndefined(calories) : undefined,
-        protein_g: source === "manual" ? numberOrUndefined(protein) : undefined,
-        carbs_g: source === "manual" ? numberOrUndefined(carbs) : undefined,
-        fat_g: source === "manual" ? numberOrUndefined(fat) : undefined,
-        fiber_g: source === "manual" ? numberOrUndefined(fiber) : undefined,
-        sugar_g: source === "manual" ? numberOrUndefined(sugar) : undefined,
+        calories: sourceMode === "manual" ? numberOrUndefined(calories) : undefined,
+        protein_g: sourceMode === "manual" ? numberOrUndefined(protein) : undefined,
+        carbs_g: sourceMode === "manual" ? numberOrUndefined(carbs) : undefined,
+        fat_g: sourceMode === "manual" ? numberOrUndefined(fat) : undefined,
+        fiber_g: sourceMode === "manual" ? numberOrUndefined(fiber) : undefined,
+        sugar_g: sourceMode === "manual" ? numberOrUndefined(sugar) : undefined,
       });
       setSheetOpen(false);
       await load();
@@ -282,7 +282,7 @@ export default function NutritionScreen() {
             <View style={styles.emptyBlock}>
               <Ionicons name="nutrition-outline" size={42} color={colors.onSurfaceSecondary} />
               <Text style={styles.emptyTitle}>{lang === "ru" ? "Подключите питание к профилю" : "Connect nutrition to this profile"}</Text>
-              <Muted style={styles.emptyText}>{lang === "ru" ? "После включения записи еды, нутриенты и подтверждённые пищевые взаимодействия с лекарствами смогут использоваться в общем анализе Aida." : "Once enabled, meals, nutrients and evidence-backed food/medicine interaction flags can be used in Aida's overall analysis."}</Muted>
+              <Muted style={styles.emptyText}>{lang === "ru" ? "После включения КБЖУ, интервалы между едой и подтверждённые взаимодействия с лекарствами смогут использоваться в общем анализе Aida." : "Once enabled, nutrients, meal timing and evidence-backed food/medicine interaction flags can be used in Aida's overall analysis."}</Muted>
               <PrimaryButton label={lang === "ru" ? "Включить дневник" : "Enable diary"} onPress={() => void toggleModule()} loading={savingSetting} style={{ marginTop: spacing.lg }} />
             </View>
           </Card>
@@ -291,12 +291,20 @@ export default function NutritionScreen() {
             <Card testID="nutrition-provider-card">
               <View style={styles.providerRow}>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.sectionTitle}>FatSecret</Text>
-                  <Muted>{providerConfigured
-                    ? (lang === "ru" ? "Подключён как справочник продуктов. Дневник хранится в Aida." : "Connected as the food reference provider. Your diary stays in Aida.")
-                    : (lang === "ru" ? "Ключи FatSecret ещё не настроены. Ручной дневник уже работает." : "FatSecret keys are not configured yet. Manual diary already works.")}</Muted>
+                  <Text style={styles.sectionTitle}>{lang === "ru" ? "Источники КБЖУ" : "Nutrition sources"}</Text>
+                  <Muted>{lang === "ru"
+                    ? `Open Food Facts доступен бесплатно${status?.usda_configured ? ", USDA подключён" : ", USDA можно подключить бесплатным API-ключом"}. Когда есть данные из двух открытых источников, Aida сверяет их между собой.`
+                    : `Open Food Facts is available for free${status?.usda_configured ? ", USDA is connected" : ", USDA can be connected with a free API key"}. When two open sources are available, Aida cross-checks them.`}
+                  </Muted>
+                  <Text style={styles.retentionText}>{lang === "ru"
+                    ? `Названия конкретных продуктов хранятся ${status?.detail_retention_hours || 20} часов, затем остаётся только приём пищи и его КБЖУ/клетчатка и другие нутриенты.`
+                    : `Individual food names are kept for ${status?.detail_retention_hours || 20} hours, then only the meal and its nutrition totals remain.`}
+                  </Text>
                 </View>
-                <View style={[styles.statusDot, providerConfigured && styles.statusDotOn]} />
+                <View style={styles.sourceStack}>
+                  <View style={styles.sourceBadge}><Text style={styles.sourceBadgeText}>OFF</Text></View>
+                  <View style={[styles.sourceBadge, !status?.usda_configured && styles.sourceBadgeMuted]}><Text style={styles.sourceBadgeText}>USDA</Text></View>
+                </View>
               </View>
             </Card>
 
@@ -314,7 +322,7 @@ export default function NutritionScreen() {
                     <Text style={styles.flagTitle}>{[flag.food, flag.medication].filter(Boolean).join(" ↔ ")}</Text>
                     <Text style={styles.flagText}>{flag.message}</Text>
                     {flag.action ? <Muted style={{ marginTop: 5 }}>{flag.action}</Muted> : null}
-                    {flag.evidence_url ? <Pressable onPress={() => void Linking.openURL(flag.evidence_url!)}><Text style={styles.sourceLink}>{lang === "ru" ? "Источник" : "Source"}</Text></Pressable> : null}
+                    {flag.evidence_url ? <Pressable onPress={() => void Linking.openURL(flag.evidence_url!)}><Text style={styles.sourceLink}>{lang === "ru" ? "Медицинский источник" : "Medical source"}</Text></Pressable> : null}
                   </View>
                 ))}
               </Card>
@@ -332,44 +340,51 @@ export default function NutritionScreen() {
               {loading ? <ActivityIndicator size="small" color={colors.onSurface} /> : <Pressable style={styles.addButton} onPress={openAdd}><Ionicons name="add" size={18} color={colors.onSurfaceInverse} /><Text style={styles.addButtonText}>{lang === "ru" ? "Добавить" : "Add"}</Text></Pressable>}
             </View>
 
-            {!entries.length && !loading ? (
-              <View style={styles.emptyBlock}><Ionicons name="restaurant-outline" size={38} color={colors.onSurfaceSecondary} /><Text style={styles.emptyTitle}>{lang === "ru" ? "Пока нет записей" : "No entries yet"}</Text><Muted style={styles.emptyText}>{lang === "ru" ? "Добавьте первый приём пищи. Для полезного анализа важнее регулярность дневника, чем идеальная точность каждой цифры." : "Add your first meal. Consistent logging is more useful than perfect precision in every number."}</Muted></View>
-            ) : entries.map((entry) => (
+            {entries.length ? entries.map((entry) => (
               <Card key={entry.id} testID={`nutrition-entry-${entry.id}`}>
                 <View style={styles.entryRow}>
-                  <View style={styles.mealIcon}><Ionicons name="restaurant" size={17} color={colors.onSurface} /></View>
+                  <View style={styles.mealIcon}><Ionicons name={entry.compacted ? "pie-chart-outline" : "restaurant-outline"} size={18} color={colors.onSurface} /></View>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.entryTitle}>{entry.label}</Text>
-                    <Text style={styles.entryMeta}>{entryTimeLabel(entry, lang)} · {mealLabel(entry.meal_type, lang)}</Text>
-                    {nutrientText(entry, lang) ? <Text style={styles.entryNutrients}>{nutrientText(entry, lang)}</Text> : <Muted style={{ marginTop: 4 }}>{lang === "ru" ? "Нутриенты пока недоступны" : "Nutrients unavailable"}</Muted>}
+                    <Text style={styles.entryTitle}>{entry.label || `${mealLabel(entry.meal_type, lang)} · ${lang === "ru" ? "итог" : "summary"}`}</Text>
+                    <Text style={styles.entryMeta}>{mealLabel(entry.meal_type, lang)} · {entry.local_date || String(entry.eaten_at).slice(0, 10)}{entry.local_time ? ` · ${entry.local_time}` : ""}</Text>
+                    {entry.compacted ? <Text style={styles.compactedText}>{lang === "ru" ? `Сводка после 20 ч · ${entry.detail_count || 1} поз.` : `20h summary · ${entry.detail_count || 1} items`}</Text> : null}
+                    {nutrientText(entry, lang) ? <Text style={styles.entryNutrients}>{nutrientText(entry, lang)}</Text> : <Muted style={{ marginTop: 4 }}>{lang === "ru" ? "КБЖУ не указаны" : "No nutrition values"}</Muted>}
+                    {!entry.compacted && entry.verification_status === "cross_checked" ? <Text style={styles.verifiedText}>{lang === "ru" ? "✓ Сверено по двум открытым источникам" : "✓ Cross-checked with two open sources"}</Text> : null}
+                    {!entry.compacted && entry.verification_status === "source_disagreement" ? <Text style={styles.warningText}>{lang === "ru" ? "Источники заметно расходятся, используем основной источник с пометкой." : "Sources differ noticeably; the primary source is kept with a warning."}</Text> : null}
                   </View>
                   <Pressable onPress={() => void removeEntry(entry.id)} hitSlop={10}><Ionicons name="trash-outline" size={18} color={colors.onSurfaceSecondary} /></Pressable>
                 </View>
               </Card>
-            ))}
+            )) : (
+              <Card><View style={styles.emptyList}><Muted>{lang === "ru" ? "Добавьте первый приём пищи." : "Add your first meal."}</Muted></View></Card>
+            )}
           </>
         )}
       </ScrollView>
 
       <Sheet visible={sheetOpen} onClose={() => setSheetOpen(false)} scroll testID="nutrition-add-sheet">
-        <Text style={styles.sheetTitle}>{lang === "ru" ? "Добавить еду" : "Add food"}</Text>
+        <Text style={styles.sheetTitle}>{lang === "ru" ? "Добавить питание" : "Add food"}</Text>
         <View style={styles.sourceTabs}>
-          <Pressable disabled={!providerConfigured} onPress={() => setSource("fatsecret")} style={[styles.sourceTab, source === "fatsecret" && styles.sourceTabActive, !providerConfigured && styles.sourceTabDisabled]}><Text style={[styles.sourceTabText, source === "fatsecret" && styles.sourceTabTextActive]}>FatSecret</Text></Pressable>
-          <Pressable onPress={() => setSource("manual")} style={[styles.sourceTab, source === "manual" && styles.sourceTabActive]}><Text style={[styles.sourceTabText, source === "manual" && styles.sourceTabTextActive]}>{lang === "ru" ? "Вручную" : "Manual"}</Text></Pressable>
+          <Pressable onPress={() => setSourceMode("reference")} style={[styles.sourceTab, sourceMode === "reference" && styles.sourceTabActive]}>
+            <Text style={[styles.sourceTabText, sourceMode === "reference" && styles.sourceTabTextActive]}>{lang === "ru" ? "Найти в базе" : "Search database"}</Text>
+          </Pressable>
+          <Pressable onPress={() => setSourceMode("manual")} style={[styles.sourceTab, sourceMode === "manual" && styles.sourceTabActive]}>
+            <Text style={[styles.sourceTabText, sourceMode === "manual" && styles.sourceTabTextActive]}>{lang === "ru" ? "Вручную" : "Manual"}</Text>
+          </Pressable>
         </View>
 
         <Text style={styles.fieldLabel}>{lang === "ru" ? "Приём пищи" : "Meal"}</Text>
         <View style={styles.mealChips}>{MEALS.map(([key, ru, en]) => <Pressable key={key} onPress={() => setMeal(key)} style={[styles.mealChip, meal === key && styles.mealChipActive]}><Text style={[styles.mealChipText, meal === key && styles.mealChipTextActive]}>{lang === "ru" ? ru : en}</Text></Pressable>)}</View>
 
-        {source === "fatsecret" ? (
+        {sourceMode === "reference" ? (
           <>
             <Text style={styles.fieldLabel}>{lang === "ru" ? "Найти продукт" : "Find food"}</Text>
             <View style={styles.searchRow}>
               <TextInput value={query} onChangeText={setQuery} onSubmitEditing={() => void search()} placeholder={lang === "ru" ? "Например: овсянка" : "For example: oatmeal"} placeholderTextColor={colors.onSurfaceSecondary} style={[styles.input, { flex: 1 }]} />
               <Pressable style={styles.searchButton} onPress={() => void search()}>{searching ? <ActivityIndicator size="small" color={colors.onSurfaceInverse} /> : <Ionicons name="search" size={19} color={colors.onSurfaceInverse} />}</Pressable>
             </View>
-            {results.map((food) => <Pressable key={food.food_id} style={styles.searchResult} onPress={() => chooseFood(food)}><View style={{ flex: 1 }}><Text style={styles.searchResultTitle}>{food.name}</Text>{food.brand ? <Muted>{food.brand}</Muted> : null}{food.description ? <Text style={styles.searchResultDescription}>{food.description}</Text> : null}</View><Ionicons name="add-circle-outline" size={21} color={colors.onSurface} /></Pressable>)}
-            {selected ? <View style={styles.selectedFood}><Ionicons name="checkmark-circle" size={20} color={colors.success} /><Text style={styles.selectedFoodText}>{label}</Text></View> : null}
+            {results.map((food) => <Pressable key={`${food.reference_source}-${food.reference_id}`} style={styles.searchResult} onPress={() => chooseFood(food)}><View style={{ flex: 1 }}><View style={styles.resultTitleRow}><Text style={styles.searchResultTitle}>{food.name}</Text><View style={styles.providerPill}><Text style={styles.providerPillText}>{food.reference_source === "usda" ? "USDA" : "OFF"}</Text></View></View>{food.brand ? <Muted>{food.brand}</Muted> : null}{candidateNutrients(food, lang) ? <Text style={styles.searchResultDescription}>{candidateNutrients(food, lang)} · {food.serving_description || "100 г"}</Text> : null}</View><Ionicons name="add-circle-outline" size={21} color={colors.onSurface} /></Pressable>)}
+            {selected ? <View style={styles.selectedFood}><Ionicons name="checkmark-circle" size={20} color={colors.success} /><View style={{ flex: 1 }}><Text style={styles.selectedFoodText}>{label}</Text><Muted>{selected.reference_source === "usda" ? "USDA FoodData Central" : "Open Food Facts"} · {selected.serving_description || "100 г"}</Muted></View></View> : null}
           </>
         ) : (
           <>
@@ -387,7 +402,7 @@ export default function NutritionScreen() {
           </>
         )}
 
-        <Text style={styles.fieldLabel}>{lang === "ru" ? "Количество порций" : "Servings"}</Text>
+        <Text style={styles.fieldLabel}>{sourceMode === "reference" ? (lang === "ru" ? "Количество порций по 100 г" : "Number of 100 g servings") : (lang === "ru" ? "Количество порций" : "Servings")}</Text>
         <TextInput value={quantity} onChangeText={setQuantity} keyboardType="decimal-pad" style={styles.input} placeholder="1" placeholderTextColor={colors.onSurfaceSecondary} />
         <PrimaryButton label={lang === "ru" ? "Сохранить" : "Save"} onPress={() => void saveEntry()} loading={savingEntry} style={{ marginTop: spacing.lg }} />
       </Sheet>
@@ -414,9 +429,12 @@ const styles = StyleSheet.create({
   emptyBlock: { alignItems: "center", paddingVertical: spacing.xl, paddingHorizontal: spacing.md },
   emptyTitle: { marginTop: spacing.sm, fontSize: fontSize.lg, fontWeight: "800", color: colors.onSurface, textAlign: "center", fontFamily: fonts.display },
   emptyText: { marginTop: spacing.xs, textAlign: "center", maxWidth: 420 },
-  providerRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-  statusDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.onSurfaceSecondary },
-  statusDotOn: { backgroundColor: colors.success },
+  providerRow: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md },
+  sourceStack: { gap: 6, alignItems: "flex-end" },
+  sourceBadge: { minWidth: 46, paddingHorizontal: 8, paddingVertical: 5, borderRadius: radius.pill, backgroundColor: colors.onSurface, alignItems: "center" },
+  sourceBadgeMuted: { opacity: 0.35 },
+  sourceBadgeText: { color: colors.onSurfaceInverse, fontSize: 10, fontWeight: "800", fontFamily: fonts.text },
+  retentionText: { marginTop: spacing.sm, fontSize: fontSize.sm, lineHeight: 19, color: colors.onSurface, fontFamily: fonts.text },
   sectionHead: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.md },
   sectionTitle: { fontSize: fontSize.lg, fontWeight: "800", color: colors.onSurface, fontFamily: fonts.display },
   statsRow: { flexDirection: "row", gap: spacing.sm },
@@ -436,12 +454,15 @@ const styles = StyleSheet.create({
   mealIcon: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: colors.surfaceSecondary },
   entryTitle: { fontSize: fontSize.base, fontWeight: "800", color: colors.onSurface, fontFamily: fonts.text },
   entryMeta: { marginTop: 3, fontSize: fontSize.sm, color: colors.onSurfaceSecondary, fontFamily: fonts.text },
+  compactedText: { marginTop: 4, fontSize: 11, color: colors.onSurfaceSecondary, fontFamily: fonts.text },
   entryNutrients: { marginTop: 5, fontSize: fontSize.sm, color: colors.onSurface, fontFamily: fonts.text },
+  verifiedText: { marginTop: 6, fontSize: 11, color: colors.success, fontWeight: "700", fontFamily: fonts.text },
+  warningText: { marginTop: 6, fontSize: 11, lineHeight: 16, color: colors.warning, fontFamily: fonts.text },
+  emptyList: { alignItems: "center", paddingVertical: spacing.xl },
   sheetTitle: { fontSize: fontSize.xl, fontWeight: "800", color: colors.onSurface, fontFamily: fonts.display, marginBottom: spacing.lg },
   sourceTabs: { flexDirection: "row", gap: spacing.sm, marginBottom: spacing.lg },
   sourceTab: { flex: 1, minHeight: 42, borderRadius: radius.pill, alignItems: "center", justifyContent: "center", backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.border },
   sourceTabActive: { backgroundColor: colors.onSurface, borderColor: colors.onSurface },
-  sourceTabDisabled: { opacity: 0.45 },
   sourceTabText: { fontSize: fontSize.sm, fontWeight: "800", color: colors.onSurface, fontFamily: fonts.text },
   sourceTabTextActive: { color: colors.onSurfaceInverse },
   fieldLabel: { marginTop: spacing.md, marginBottom: spacing.sm, fontSize: fontSize.base, fontWeight: "700", color: colors.onSurface, fontFamily: fonts.text },
@@ -454,7 +475,10 @@ const styles = StyleSheet.create({
   searchButton: { width: 50, height: 50, borderRadius: radius.md, alignItems: "center", justifyContent: "center", backgroundColor: colors.onSurface },
   input: { minHeight: 50, borderRadius: radius.md, backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.border, paddingHorizontal: spacing.md, fontSize: fontSize.base, color: colors.onSurface, fontFamily: fonts.text },
   searchResult: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.md, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.divider },
-  searchResultTitle: { fontSize: fontSize.base, fontWeight: "800", color: colors.onSurface, fontFamily: fonts.text },
+  resultTitleRow: { flexDirection: "row", alignItems: "center", gap: 7, flexWrap: "wrap" },
+  searchResultTitle: { flexShrink: 1, fontSize: fontSize.base, fontWeight: "800", color: colors.onSurface, fontFamily: fonts.text },
+  providerPill: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: radius.pill, backgroundColor: colors.surfaceSecondary },
+  providerPillText: { fontSize: 9, fontWeight: "800", color: colors.onSurfaceSecondary, fontFamily: fonts.text },
   searchResultDescription: { marginTop: 4, fontSize: 11, lineHeight: 16, color: colors.onSurfaceSecondary, fontFamily: fonts.text },
   selectedFood: { marginTop: spacing.md, flexDirection: "row", alignItems: "center", gap: 8, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surfaceSecondary },
   selectedFoodText: { flex: 1, fontSize: fontSize.base, fontWeight: "700", color: colors.onSurface, fontFamily: fonts.text },
