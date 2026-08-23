@@ -9,7 +9,9 @@ def read(path: str) -> str:
 
 def test_public_landing_is_not_blocked_by_auth_or_profile_bootstrap():
     layout = read("frontend/app/_layout.tsx")
-    assert 'const PUBLIC_ROUTES = new Set(["", "auth", "register", "reset-password", "terms", "privacy-policy"])' in layout
+    public_routes = layout.split("const PUBLIC_ROUTES = new Set([", 1)[1].split("]);", 1)[0]
+    for route in ("", "auth", "register", "reset-password", "terms", "privacy-policy", "demo"):
+        assert f'"{route}"' in public_routes
 
     # Anonymous public routes must render before the auth loading gate. Authenticated
     # users intentionally mount the app providers first so post-auth navigation does
