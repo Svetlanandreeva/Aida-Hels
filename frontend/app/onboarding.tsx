@@ -19,6 +19,8 @@ const GOALS = [
   ["chronic", "Хроническое состояние", "Chronic condition"],
   ["meds", "Лекарства", "Medications"],
   ["women", "Женское здоровье", "Women's health"],
+  ["weight", "Вес / образ жизни", "Weight / lifestyle"],
+  ["other", "Другое", "Other"],
 ];
 
 const WOMEN_BRANCH = [

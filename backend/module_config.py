@@ -38,18 +38,43 @@ MODULE_REGISTRY: List[Dict[str, Any]] = [
 
 _REGISTRY_BY_CODE = {item["module_code"]: item for item in MODULE_REGISTRY}
 
+# Onboarding goals intentionally describe only the user's requested starting
+# modules. Codes without a matching goal are explicitly disabled for a
+# goal-derived profile instead of falling through to legacy/preset defaults.
+# Nutrition remains explicit opt-in; a weight/lifestyle goal must not silently
+# opt the user into a detailed food diary.
 _GOAL_MAP = {
+    "nutrition": {"nutrition"},
     "labs": {"labs", "general", "chronic"},
     "symptoms": {"symptoms", "general", "chronic"},
     "pressure": {"pressure", "general", "chronic"},
     "sleep": {"sleep", "mental", "general"},
     "mental": {"mental", "sleep", "general"},
     "meds": {"meds", "chronic"},
+    "body": {"general", "weight", "chronic"},
     "chronic": {"chronic"},
     "women": {"women", "cycle", "pregnancy_planning", "pregnancy"},
+    "weight": {"weight"},
+    "documents": {"documents"},
+    "tasks": {"tasks"},
 }
 
 _CONFIG_FIELDS = ("enabled", "show_on_home", "allow_ai_analytics", "notifications_enabled", "order")
+
+
+def module_settings_for_goals(goals: Iterable[str] | None) -> Dict[str, bool]:
+    """Return an explicit enabled projection for every ready module.
+
+    This helper is used only when onboarding/goals are the source of a profile's
+    module selection. Returning every registry code is deliberate: a module the
+    user did not select must stay disabled rather than inheriting the broad
+    compatibility defaults used by older profiles.
+    """
+    selected = {str(goal) for goal in (goals or []) if goal}
+    return {
+        definition["module_code"]: bool(selected & _GOAL_MAP.get(definition["module_code"], set()))
+        for definition in MODULE_REGISTRY
+    }
 
 
 def _stored_config_map(value: Any) -> Dict[str, Dict[str, Any]]:
@@ -87,6 +112,8 @@ def effective_module_map(profile: Dict[str, Any] | None) -> Dict[str, Dict[str, 
     legacy = profile.get("module_settings") if isinstance(profile.get("module_settings"), dict) else {}
     legacy_source = str(profile.get("module_settings_source") or "")
     goals = {str(goal) for goal in (profile.get("goals") or []) if goal}
+    goal_derived = bool(goals) or legacy_source == "goals"
+    goal_projection = module_settings_for_goals(goals) if goal_derived else {}
     result: Dict[str, Dict[str, Any]] = {}
 
     for definition in MODULE_REGISTRY:
@@ -105,8 +132,8 @@ def effective_module_map(profile: Dict[str, Any] | None) -> Dict[str, Dict[str, 
                 source = "goals"
             else:
                 source = "migration"
-        elif code in _GOAL_MAP and goals:
-            config["enabled"] = bool(goals & _GOAL_MAP[code])
+        elif goal_derived:
+            config["enabled"] = bool(goal_projection.get(code, False))
             source = "goals"
 
         stored_item = stored.get(code)
