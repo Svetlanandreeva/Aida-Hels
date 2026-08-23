@@ -1,11 +1,18 @@
 name: Validate consolidated Aida2
 
-# GitHub-hosted minutes are currently unavailable for this private repository.
-# Keep this workflow available for an explicit manual run, but do not create
-# automatic red PR checks that never reach a runner. Production main is still
-# validated by deploy-ruvds.yml on the trusted self-hosted aida-prod runner.
+# Run the same application-quality gate on pull requests before production.
+# Production deploy remains isolated in deploy-ruvds.yml and is never executed
+# from a pull_request event.
 on:
   workflow_dispatch: {}
+  pull_request:
+    branches: [main]
+    paths:
+      - 'frontend/**'
+      - 'backend/**'
+      - 'ios/**'
+      - 'android/**'
+      - '.github/workflows/validate-consolidated-aida2.yml'
 
 permissions:
   contents: read
@@ -13,6 +20,7 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-24.04
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -36,13 +44,18 @@ jobs:
         working-directory: frontend
         run: yarn lint
 
-      - name: Type-check Expo frontend
+      - name: Type-check deploy frontend
         working-directory: frontend
-        run: npx tsc --noEmit
+        env:
+          NODE_OPTIONS: '--max-old-space-size=2048'
+        run: npx --no-install tsc -p tsconfig.deploy.json --pretty false
 
       - name: Build web frontend
         working-directory: frontend
-        run: npx expo export -p web
+        env:
+          EXPO_NO_TELEMETRY: '1'
+          NODE_OPTIONS: '--max-old-space-size=3072'
+        run: npx --no-install expo export -p web
 
       - name: Verify web build output
         run: |
