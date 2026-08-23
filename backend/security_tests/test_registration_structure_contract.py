@@ -24,9 +24,10 @@ def test_registration_screen_is_auth_first_and_profile_second():
         'router.replace("/onboarding"',
         'provider="yandex"',
         'provider="vk"',
-        'Быстрый вход',
-        'Регистрация по email',
-        'Личные данные подтвердим следующим шагом.',
+        'Создайте аккаунт — личные данные добавим следующим шагом.',
+        'KeyboardAwareScrollView',
+        'LangToggle',
+        'ThemeToggle',
     ]
     for token in required_tokens:
         assert token in register, f"registration auth-first token missing: {token}"
@@ -41,21 +42,29 @@ def test_email_registration_defers_personal_data_to_onboarding():
 
     assert 'router.replace("/onboarding"' in register
     assert 'Мой профиль' in register
-    assert 'Личные данные подтвердим следующим шагом.' in register
+    assert 'личные данные добавим следующим шагом.' in register
     assert "name" in onboarding.lower()
 
 
-def test_registration_keeps_compact_auth_card_hierarchy():
+def test_registration_uses_emergent_auth_hierarchy():
     register = (ROOT / "frontend" / "app" / "register.tsx").read_text(encoding="utf-8")
-    assert 'styles.authCard' in register
-    assert 'styles.socialRow' in register
-    assert 'styles.emailFields' in register
-    assert 'styles.brandIcon' in register
-    assert 'AIDA · 1/2' in register
+    assert 'styles.segment' in register
+    assert 'styles.formWrap' in register
+    assert 'styles.brandRow' in register
+    assert 'styles.logoDot' in register
+    assert 'colors.brandPrimary' in register
 
 
 def test_registration_no_longer_claims_phone_is_collected_on_step_one():
     register = (ROOT / "frontend" / "app" / "register.tsx").read_text(encoding="utf-8")
     assert "он сохранится в аккаунте" not in register
     assert "Phone sign-in and recovery are a separate backend step" not in register
-    assert "Выберите способ регистрации" in register
+    assert "Создайте аккаунт" in register
+
+
+def test_email_registration_navigates_only_after_session_creation():
+    register = (ROOT / "frontend" / "app" / "register.tsx").read_text(encoding="utf-8")
+    session = register.index('await withTimeout(register("Мой профиль", cleanEmail, password, null)')
+    navigation = register.index('router.replace("/onboarding" as any)', session)
+    assert session < navigation
+    assert "verification_required" not in register
