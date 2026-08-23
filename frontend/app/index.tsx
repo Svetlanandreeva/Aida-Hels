@@ -34,7 +34,7 @@ export default function LandingScreen() {
             {Platform.OS === "web" ? (
               <Image source={{ uri: "/aida-logo.svg" }} style={[styles.brandLogo, mobile && styles.brandLogoCompact]} resizeMode="contain" accessibilityLabel="Aida" />
             ) : (
-              <><View style={styles.logo}><Ionicons name="sparkles" size={18} color={colors.onSurfaceInverse} /></View><Text style={styles.brand}>AIDA</Text></>
+              <><View style={styles.logo}><Ionicons name="pulse" size={18} color={colors.onBrandPrimary} /></View><Text style={styles.brand}>Аида</Text></>
             )}
           </Pressable>
           <View style={[styles.headerActions, mobile && styles.headerActionsCompact]}>
@@ -57,7 +57,7 @@ export default function LandingScreen() {
             <View style={[styles.heroActions, mobile && styles.heroActionsMobile]}>
               <Pressable style={[styles.primary, mobile && styles.primaryMobile]} onPress={() => router.push("/register")}>
                 <Text style={styles.primaryText}>Начать бесплатно</Text>
-                <Ionicons name="arrow-forward" size={18} color={colors.onSurfaceInverse} />
+                <Ionicons name="arrow-forward" size={18} color={colors.onBrandPrimary} />
               </Pressable>
               {!mobile ? (
                 <Pressable style={styles.secondary} onPress={() => router.push("/auth")}>
@@ -125,7 +125,7 @@ export default function LandingScreen() {
           <Text style={[styles.ctaText, mobile && styles.ctaTextMobile]}>Создайте профиль и включите только те разделы, которые вам действительно нужны.</Text>
           <Pressable style={[styles.ctaButton, mobile && styles.ctaButtonMobile]} onPress={() => router.push("/register")}>
             <Text style={styles.primaryText}>Начать бесплатно</Text>
-            <Ionicons name="arrow-forward" size={18} color={colors.onSurfaceInverse} />
+            <Ionicons name="arrow-forward" size={18} color={colors.onBrandPrimary} />
           </Pressable>
         </View>
 
@@ -156,18 +156,18 @@ const styles = StyleSheet.create({
   header: { minHeight: 64, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md },
   headerCompact: { minHeight: 54, gap: 8 },
   brandRow: { flexDirection: "row", alignItems: "center", gap: 10, flexShrink: 1 },
-  brandLogo: { width: 116, height: 48 },
+  brandLogo: { width: 116, height: 48, borderRadius: 12, backgroundColor: colors.onSurface, paddingHorizontal: 8 },
   brandLogoCompact: { width: 92, height: 38 },
-  logo: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.onSurface, alignItems: "center", justifyContent: "center" },
+  logo: { width: 36, height: 36, borderRadius: 12, backgroundColor: colors.brandPrimary, alignItems: "center", justifyContent: "center" },
   brand: { fontFamily: fonts.text, fontSize: 13, fontWeight: "900", letterSpacing: 2.4, color: colors.onSurface },
   headerActions: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   headerActionsCompact: { gap: 2, flexShrink: 0 },
   loginButton: { minHeight: 42, paddingHorizontal: spacing.lg, borderRadius: radius.pill, alignItems: "center", justifyContent: "center" },
   loginButtonCompact: { minHeight: 40, paddingHorizontal: 10 },
   loginText: { color: colors.onSurface, fontFamily: fonts.text, fontWeight: "800", fontSize: fontSize.base },
-  primarySmall: { minHeight: 42, paddingHorizontal: spacing.lg, borderRadius: radius.pill, backgroundColor: colors.onSurface, alignItems: "center", justifyContent: "center" },
+  primarySmall: { minHeight: 42, paddingHorizontal: spacing.lg, borderRadius: radius.pill, backgroundColor: colors.brandPrimary, alignItems: "center", justifyContent: "center" },
   headerActionTextCompact: { fontSize: 14 },
-  primaryText: { color: colors.onSurfaceInverse, fontFamily: fonts.text, fontWeight: "800", fontSize: fontSize.base },
+  primaryText: { color: colors.onBrandPrimary, fontFamily: fonts.text, fontWeight: "800", fontSize: fontSize.base },
   hero: { paddingTop: 64, paddingBottom: 72, gap: 32 },
   heroMobile: { paddingTop: 34, paddingBottom: 44, gap: 24 },
   heroDesktop: { flexDirection: "row", alignItems: "center", gap: 56, paddingTop: 88, paddingBottom: 96 },
@@ -185,7 +185,7 @@ const styles = StyleSheet.create({
   heroBodyMobile: { marginTop: 16, fontSize: 16, lineHeight: 23 },
   heroActions: { marginTop: spacing.xl, flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   heroActionsMobile: { marginTop: 20 },
-  primary: { minHeight: 50, paddingHorizontal: 20, borderRadius: radius.pill, backgroundColor: colors.onSurface, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10 },
+  primary: { minHeight: 50, paddingHorizontal: 20, borderRadius: radius.pill, backgroundColor: colors.brandPrimary, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10 },
   primaryMobile: { width: "100%", minHeight: 52 },
   secondary: { minHeight: 50, paddingHorizontal: 20, borderRadius: radius.pill, backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.borderStrong, alignItems: "center", justifyContent: "center" },
   secondaryText: { color: colors.onSurface, fontFamily: fonts.text, fontWeight: "800", fontSize: fontSize.base },
@@ -248,13 +248,13 @@ const styles = StyleSheet.create({
   privacyTitleMobile: { fontSize: 24, lineHeight: 29, letterSpacing: -0.4 },
   privacyText: { marginTop: 8, color: colors.onSurface, opacity: 0.72, fontSize: fontSize.base, lineHeight: 22 },
   privacyTextMobile: { fontSize: 15, lineHeight: 21 },
-  cta: { marginTop: 72, marginBottom: 64, alignItems: "center", paddingVertical: 56, paddingHorizontal: spacing.xl, borderRadius: radius.xl, backgroundColor: colors.onSurface },
+  cta: { marginTop: 72, marginBottom: 64, alignItems: "center", paddingVertical: 56, paddingHorizontal: spacing.xl, borderRadius: radius.xl, backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.borderStrong },
   ctaMobile: { marginTop: 44, marginBottom: 40, paddingVertical: 36, paddingHorizontal: 20, borderRadius: 26 },
-  ctaTitle: { maxWidth: 760, textAlign: "center", color: colors.onSurfaceInverse, fontFamily: fonts.display, fontSize: 36, lineHeight: 42, fontWeight: "800", letterSpacing: -1 },
+  ctaTitle: { maxWidth: 760, textAlign: "center", color: colors.onSurface, fontFamily: fonts.display, fontSize: 36, lineHeight: 42, fontWeight: "800", letterSpacing: -1 },
   ctaTitleMobile: { fontSize: 28, lineHeight: 33, letterSpacing: -0.7 },
-  ctaText: { marginTop: 10, maxWidth: 620, textAlign: "center", color: "rgba(251,251,250,0.65)", fontSize: fontSize.base, lineHeight: 22 },
+  ctaText: { marginTop: 10, maxWidth: 620, textAlign: "center", color: colors.onSurfaceSecondary, fontSize: fontSize.base, lineHeight: 22 },
   ctaTextMobile: { fontSize: 15, lineHeight: 21 },
-  ctaButton: { marginTop: 24, minHeight: 50, paddingHorizontal: 20, borderRadius: radius.pill, backgroundColor: "rgba(255,255,255,0.12)", flexDirection: "row", alignItems: "center", gap: 10 },
+  ctaButton: { marginTop: 24, minHeight: 50, paddingHorizontal: 20, borderRadius: radius.pill, backgroundColor: colors.brandPrimary, flexDirection: "row", alignItems: "center", gap: 10 },
   ctaButtonMobile: { width: "100%", justifyContent: "center" },
   footer: { minHeight: 76, borderTopWidth: 1, borderColor: colors.borderStrong, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
   footerMobile: { minHeight: 64 },

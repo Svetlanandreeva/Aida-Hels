@@ -62,7 +62,7 @@ export const ResponsiveTabBar = ({ state, descriptors, navigation, insets }: any
         <View style={[styles.iconRail, { width: responsive.sidebarRailWidth }]}>
           <View style={styles.railBrandArea}>
             <View style={styles.brandMark}>
-              <Ionicons name="sparkles" size={17} color={colors.onSurfaceInverse} />
+              <Ionicons name="pulse" size={18} color={colors.onBrandPrimary} />
             </View>
             {!desktopExpanded ? (
               <Pressable
@@ -202,7 +202,7 @@ export const ResponsiveTabBar = ({ state, descriptors, navigation, insets }: any
               <Ionicons
                 name={focused ? meta.active : meta.inactive}
                 size={responsive.isTinyPhone ? 21 : 22}
-                color={focused ? colors.onSurface : colors.onSurfaceSecondary}
+                color={focused ? colors.brand : colors.onSurfaceSecondary}
               />
               {responsive.showMobileLabels ? (
                 <Text
@@ -257,7 +257,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 13,
-    backgroundColor: colors.onSurface,
+    backgroundColor: colors.brandPrimary,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -313,8 +313,8 @@ const styles = StyleSheet.create({
     borderColor: "transparent",
   },
   railItemActive: {
-    backgroundColor: colors.onSurface,
-    borderColor: colors.onSurface,
+    backgroundColor: colors.brandPrimary,
+    borderColor: colors.brandPrimary,
   },
   panelItem: {
     height: 44,
@@ -389,6 +389,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   mobileLabelCompact: { fontSize: 9.5, lineHeight: 12 },
-  mobileLabelActive: { color: colors.onSurface, fontWeight: "700" },
+  mobileLabelActive: { color: colors.brand, fontWeight: "700" },
   pressed: { opacity: 0.65 },
 });

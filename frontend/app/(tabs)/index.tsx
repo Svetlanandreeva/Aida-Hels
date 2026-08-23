@@ -464,7 +464,7 @@ export default function HomeScreen() {
             </View>
           </Card>
 
-          <View style={[styles.dualRow, responsive.width < 480 && styles.stackRow]}><Card style={[styles.dualCard, responsive.width < 480 && styles.fullWidthCard]} onPress={() => openLab()} testID="upload-records-card"><View style={styles.plusRow}><Ionicons name="cloud-upload-outline" size={22} color={colors.onSurface} /><View style={styles.plusBtn}><Ionicons name="add" size={18} color={colors.onSurface} /></View></View><Text style={styles.dualTitle}>{t("upload_lab")}</Text><Muted numberOfLines={1}>{sectionStates.labs === "error" ? (lang === "ru" ? "Не удалось загрузить анализы" : "Could not load labs") : labs.length > 0 ? `${labs.length} ${t("labs").toLowerCase()}` : (lang === "ru" ? "Анализов пока нет" : "No labs yet")}</Muted></Card><GradientCard gradient={gradients.pink} style={[styles.dualCard, responsive.width < 480 && styles.fullWidthCard]} onPress={() => router.push("/devices")} testID="connect-device-card"><View style={styles.plusRow}><Ionicons name="watch-outline" size={22} color={colors.onSurface} /><View style={styles.plusBtn}><Ionicons name="add" size={18} color={colors.onSurface} /></View></View><Text style={styles.dualTitle}>{lang === "ru" ? "Подключить устройство" : "Connect tracker"}</Text><Muted numberOfLines={1} style={{ color: "rgba(27,27,29,0.55)" }}>Apple Watch · Xiaomi</Muted></GradientCard></View>
+          <View style={[styles.dualRow, responsive.width < 480 && styles.stackRow]}><Card style={[styles.dualCard, responsive.width < 480 && styles.fullWidthCard]} onPress={() => openLab()} testID="upload-records-card"><View style={styles.plusRow}><Ionicons name="cloud-upload-outline" size={22} color={colors.onSurface} /><View style={styles.plusBtn}><Ionicons name="add" size={18} color={colors.onSurface} /></View></View><Text style={styles.dualTitle}>{t("upload_lab")}</Text><Muted numberOfLines={1}>{sectionStates.labs === "error" ? (lang === "ru" ? "Не удалось загрузить анализы" : "Could not load labs") : labs.length > 0 ? `${labs.length} ${t("labs").toLowerCase()}` : (lang === "ru" ? "Анализов пока нет" : "No labs yet")}</Muted></Card><GradientCard gradient={gradients.pink} style={[styles.dualCard, responsive.width < 480 && styles.fullWidthCard]} onPress={() => router.push("/devices")} testID="connect-device-card"><View style={styles.plusRow}><Ionicons name="watch-outline" size={22} color={colors.onSurface} /><View style={styles.plusBtn}><Ionicons name="add" size={18} color={colors.onSurface} /></View></View><Text style={styles.dualTitle}>{lang === "ru" ? "Подключить устройство" : "Connect tracker"}</Text><Muted numberOfLines={1} style={{ color: colors.onSurfaceSecondary }}>Apple Watch · Xiaomi</Muted></GradientCard></View>
           <View style={{ gap: spacing.md, marginTop: spacing.md }}>{rows}</View>
         </ScrollView>
       )}
@@ -551,10 +551,10 @@ const styles = StyleSheet.create({
   statTag: { alignSelf: "flex-start", paddingHorizontal: spacing.md, paddingVertical: 4, borderRadius: radius.pill, marginTop: 4 },
   statTagText: { fontSize: fontSize.sm, fontWeight: "700", color: colors.onAccent, fontFamily: fonts.text },
   hero: { marginBottom: spacing.md, paddingVertical: spacing.xl },
-  heroLabel: { fontSize: fontSize.base, fontWeight: "600", color: "rgba(27,27,29,0.6)", fontFamily: fonts.text },
+  heroLabel: { fontSize: fontSize.base, fontWeight: "600", color: colors.onSurfaceSecondary, fontFamily: fonts.text },
   heroNum: { fontSize: 64, fontWeight: "800", color: colors.onSurface, letterSpacing: -2, marginTop: 4, fontFamily: fonts.display },
-  heroSub: { fontSize: fontSize.base, color: "rgba(27,27,29,0.6)", marginTop: 2, fontFamily: fonts.text },
-  heroBar: { height: 6, backgroundColor: "rgba(27,27,29,0.15)", borderRadius: 3, marginTop: spacing.lg, overflow: "hidden" },
+  heroSub: { fontSize: fontSize.base, color: colors.onSurfaceSecondary, marginTop: 2, fontFamily: fonts.text },
+  heroBar: { height: 6, backgroundColor: colors.surfaceTertiary, borderRadius: 3, marginTop: spacing.lg, overflow: "hidden" },
   dualRow: { flexDirection: "row", gap: spacing.md },
   stackRow: { flexDirection: "column" },
   fullWidthCard: { flex: 0, width: "100%" },
@@ -614,7 +614,7 @@ const styles = StyleSheet.create({
   levelRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, marginTop: 4 },
   levelBadge: { backgroundColor: colors.onSurface, paddingHorizontal: spacing.md, paddingVertical: 3, borderRadius: radius.pill },
   levelBadgeText: { fontSize: fontSize.sm, fontWeight: "700", color: colors.onSurfaceInverse, fontFamily: fonts.text },
-  xpText: { fontSize: fontSize.sm, fontWeight: "700", color: "rgba(27,27,29,0.6)", fontFamily: fonts.text },
-  companionBar: { height: 8, backgroundColor: "rgba(27,27,29,0.15)", borderRadius: 4, overflow: "hidden" },
-  companionHint: { fontSize: fontSize.sm, color: "rgba(27,27,29,0.6)", marginTop: 6, fontFamily: fonts.text },
+  xpText: { fontSize: fontSize.sm, fontWeight: "700", color: colors.onSurfaceSecondary, fontFamily: fonts.text },
+  companionBar: { height: 8, backgroundColor: colors.surfaceTertiary, borderRadius: 4, overflow: "hidden" },
+  companionHint: { fontSize: fontSize.sm, color: colors.onSurfaceSecondary, marginTop: 6, fontFamily: fonts.text },
 });

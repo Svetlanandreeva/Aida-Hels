@@ -162,7 +162,7 @@ function RoutedApp() {
 
   const stack = (
     <View style={{ flex: 1, backgroundColor: colors.surface }}>
-      <StatusBar style="dark" />
+      <StatusBar style="light" />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.surface } }}>
         <Stack.Screen name="index" />
         <Stack.Screen name="(tabs)" />

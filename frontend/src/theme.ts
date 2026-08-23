@@ -1,55 +1,54 @@
 import { Platform } from "react-native";
 
-// Modern airy longevity aesthetic: light neutral canvas, frosted glass cards,
-// warm orange→coral→pink gradient heroes, neon lime accent, large clean type.
+// Emergent design system: a low-glare clinical canvas with warm editorial type,
+// translucent graphite surfaces and a restrained coral/blue data palette.
 export const colors = {
-  surface: "#EAEAE8",
-  onSurface: "#1B1B1D",
-  surfaceSecondary: "#FBFBFA",
-  onSurfaceSecondary: "#8A8A8E",
-  surfaceTertiary: "#E1E1DE",
-  onSurfaceTertiary: "#6E6E72",
-  surfaceInverse: "#1B1B1D",
-  onSurfaceInverse: "#FBFBFA",
+  surface: "#09090B",
+  onSurface: "#F7F4EF",
+  surfaceSecondary: "#151517",
+  onSurfaceSecondary: "#A5A2A0",
+  surfaceTertiary: "#202023",
+  onSurfaceTertiary: "#CBC7C2",
+  surfaceInverse: "#F7F4EF",
+  onSurfaceInverse: "#111113",
 
   // glass
-  glass: "rgba(255,255,255,0.55)",
-  glassBorder: "rgba(255,255,255,0.75)",
-  glassStrong: "rgba(255,255,255,0.72)",
+  glass: "rgba(24,24,27,0.76)",
+  glassBorder: "rgba(255,255,255,0.10)",
+  glassStrong: "rgba(31,31,35,0.92)",
 
-  brand: "#1B1B1D",
-  brandPrimary: "#1B1B1D",
-  onBrandPrimary: "#FBFBFA",
-  brandSecondary: "#CFF24A",
-  onBrandSecondary: "#1B1B1D",
-  brandTertiary: "#EFEFEC",
-  onBrandTertiary: "#1B1B1D",
+  brand: "#F0445B",
+  brandPrimary: "#F0445B",
+  onBrandPrimary: "#FFFFFF",
+  brandSecondary: "#3B82F6",
+  onBrandSecondary: "#FFFFFF",
+  brandTertiary: "#2A171B",
+  onBrandTertiary: "#FF9AAA",
 
-  // neon lime accent
-  accent: "#CFF24A",
-  onAccent: "#1B1B1D",
+  accent: "#F0445B",
+  onAccent: "#FFFFFF",
 
-  success: "#4BAF7E",
-  onSuccess: "#FBFBFA",
-  warning: "#F0913E",
-  onWarning: "#FBFBFA",
-  error: "#EF6B5E",
-  onError: "#FBFBFA",
-  info: "#7DA0C4",
-  onInfo: "#FBFBFA",
+  success: "#4FB286",
+  onSuccess: "#07130F",
+  warning: "#F2A65A",
+  onWarning: "#171006",
+  error: "#FF6577",
+  onError: "#19080B",
+  info: "#5B9BFF",
+  onInfo: "#07101E",
 
-  border: "rgba(27,27,29,0.06)",
-  borderStrong: "rgba(27,27,29,0.14)",
-  divider: "rgba(27,27,29,0.06)",
+  border: "rgba(255,255,255,0.08)",
+  borderStrong: "rgba(255,255,255,0.16)",
+  divider: "rgba(255,255,255,0.08)",
 };
 
 // Gradient palettes for hero cards
 export const gradients = {
-  warm: ["#F6D8B0", "#F79C7E", "#EE8BB3"] as const, // biological-age style
-  warmSoft: ["#FBE3CE", "#F7B79C", "#F0A7C4"] as const,
-  pink: ["#FBD6E4", "#F6A8C9", "#F18FB6"] as const,
-  lime: ["#E7F7A6", "#CFF24A", "#B9E22E"] as const,
-  cool: ["#DCE7F5", "#C4D4EE", "#D9CDEB"] as const,
+  warm: ["#351B1F", "#241417", "#171719"] as const,
+  warmSoft: ["#2B1B19", "#211719", "#171719"] as const,
+  pink: ["#341924", "#25151D", "#171719"] as const,
+  lime: ["#20221A", "#1C2118", "#151517"] as const,
+  cool: ["#172337", "#171E2A", "#151517"] as const,
 };
 
 export const spacing = {
@@ -81,7 +80,7 @@ export const fontSize = {
 };
 
 export const fonts = {
-  display: Platform.select({ ios: "System", android: "sans-serif", default: "System" }),
+  display: Platform.select({ ios: "Georgia", android: "serif", default: "Georgia" }),
   text: Platform.select({ ios: "System", android: "sans-serif", default: "System" }),
 };
 

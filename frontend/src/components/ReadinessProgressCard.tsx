@@ -144,7 +144,7 @@ export function ReadinessProgressCard({
       <GradientCard gradient={gradients.warm} style={styles.hero} testID="hero-readiness" onPress={openDetails}>
         <View style={styles.heroHead}>
           <Text style={styles.heroLabel}>{ageAvailable ? (ru ? "Возраст организма" : "Body age") : (ru ? "Готовность аналитики" : "Analytics readiness")}</Text>
-          <View style={styles.tapHint}><Text style={styles.tapHintText}>{ru ? "Подробнее" : "Details"}</Text><Ionicons name="chevron-forward" size={15} color="rgba(27,27,29,0.55)" /></View>
+          <View style={styles.tapHint}><Text style={styles.tapHintText}>{ru ? "Подробнее" : "Details"}</Text><Ionicons name="chevron-forward" size={15} color={colors.onSurfaceSecondary} /></View>
         </View>
         {ageAvailable ? (
           <>
@@ -227,12 +227,12 @@ export function ReadinessProgressCard({
 const styles = StyleSheet.create({
   hero: { marginBottom: spacing.md, paddingVertical: spacing.xl },
   heroHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md },
-  heroLabel: { fontSize: fontSize.base, fontWeight: "600", color: "rgba(27,27,29,0.6)", fontFamily: fonts.text },
+  heroLabel: { fontSize: fontSize.base, fontWeight: "600", color: colors.onSurfaceSecondary, fontFamily: fonts.text },
   tapHint: { flexDirection: "row", alignItems: "center", gap: 2 },
-  tapHintText: { fontSize: fontSize.sm, fontWeight: "600", color: "rgba(27,27,29,0.55)", fontFamily: fonts.text },
+  tapHintText: { fontSize: fontSize.sm, fontWeight: "600", color: colors.onSurfaceSecondary, fontFamily: fonts.text },
   heroNum: { fontSize: 64, fontWeight: "800", color: colors.onSurface, letterSpacing: -2, marginTop: 4, fontFamily: fonts.display },
-  heroSub: { fontSize: fontSize.base, color: "rgba(27,27,29,0.6)", marginTop: 2, fontFamily: fonts.text },
-  heroBar: { height: 6, backgroundColor: "rgba(27,27,29,0.15)", borderRadius: 3, marginTop: spacing.lg, overflow: "hidden" },
+  heroSub: { fontSize: fontSize.base, color: colors.onSurfaceSecondary, marginTop: 2, fontFamily: fonts.text },
+  heroBar: { height: 6, backgroundColor: colors.surfaceTertiary, borderRadius: 3, marginTop: spacing.lg, overflow: "hidden" },
   sheetTitle: { fontSize: fontSize.xl, fontWeight: "700", color: colors.onSurface, fontFamily: fonts.display },
   sheetLead: { marginTop: spacing.xs, marginBottom: spacing.lg, lineHeight: 20 },
   loadingRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.md },
