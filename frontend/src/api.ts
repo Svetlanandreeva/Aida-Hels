@@ -7,9 +7,11 @@ const BASE = (process.env.EXPO_PUBLIC_BACKEND_URL || "") + "/api";
 const PROFILE_CACHE_KEY = "aida.profileCache.v1";
 
 let API_TOKEN = "";
+let PROFILE_CACHE_ACCOUNT_ID = "";
 
 export function setApiToken(token?: string | null) { API_TOKEN = token || ""; }
 export function getApiToken() { return API_TOKEN; }
+export function setProfileCacheAccountId(accountId?: string | null) { PROFILE_CACHE_ACCOUNT_ID = accountId || ""; }
 
 export async function apiFetch(path: string, options?: RequestInit) {
   const headers = new Headers(options?.headers || {});
@@ -58,14 +60,16 @@ async function req(path: string, options?: RequestInit) {
 
 async function cacheUpdatedProfile(profile: Profile) {
   try {
-    const raw = await storage.getItem<string>(PROFILE_CACHE_KEY, "");
+    if (!PROFILE_CACHE_ACCOUNT_ID) return;
+    const cacheKey = `${PROFILE_CACHE_KEY}.${PROFILE_CACHE_ACCOUNT_ID}`;
+    const raw = await storage.getItem<string>(cacheKey, "");
     const parsed = raw ? JSON.parse(raw) as Profile[] : [];
     const current = Array.isArray(parsed) ? parsed : [];
     const found = current.some((item) => item.id === profile.id);
     const next = found
       ? current.map((item) => item.id === profile.id ? { ...item, ...profile } : item)
       : [profile, ...current];
-    await storage.setItem(PROFILE_CACHE_KEY, JSON.stringify(next));
+    await storage.setItem(cacheKey, JSON.stringify(next));
   } catch {
     // Cache is a navigation/resilience optimization only. The successful API
     // response remains authoritative even if local storage is unavailable.
