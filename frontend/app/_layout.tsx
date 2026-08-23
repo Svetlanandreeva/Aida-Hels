@@ -29,7 +29,7 @@ if (Platform.OS !== "web") {
     .catch(() => undefined);
 }
 
-const PUBLIC_ROUTES = new Set(["", "auth", "register", "reset-password", "terms", "privacy-policy"]);
+const PUBLIC_ROUTES = new Set(["", "auth", "register", "reset-password", "terms", "privacy-policy", "demo"]);
 const ONBOARDING_ROUTES = new Set(["onboarding", "onboarding-medical", "onboarding-lifestyle", "onboarding-medications"]);
 const MEDICATION_TIME_PROMPT_PREFIX = "aida.medicationTimePrompt.v1.";
 
@@ -172,6 +172,7 @@ function RoutedApp() {
         <Stack.Screen name="reset-password" />
         <Stack.Screen name="terms" />
         <Stack.Screen name="privacy-policy" />
+        <Stack.Screen name="demo" />
         <Stack.Screen name="onboarding" />
         <Stack.Screen name="onboarding-medical" />
         <Stack.Screen name="onboarding-lifestyle" />
