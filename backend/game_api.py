@@ -106,26 +106,40 @@ async def award_daily_journal_coins(db, profile_id: str, local_day: str) -> bool
     return bool(result.get("upserted"))
 
 
-async def reconcile_journal_rewards(db, profile: Dict[str, Any]) -> None:
-    """Backfill one journal reward per local day from saved check-ins."""
+async def reconcile_journal_rewards(db, profile: Dict[str, Any], claimed_at: Any) -> None:
+    """Credit one eligible journal day from the day the pet was claimed onward."""
     profile_id = str(profile.get("id") or "")
-    if not profile_id:
+    start = _parse_timestamp(claimed_at)
+    if not profile_id or not start:
         return
-    rows = await db.checkins.find({"profile_id": profile_id}, {"_id": 0}).to_list(5000)
+
     zone = _profile_zone(profile)
-    local_days = set()
-    for row in rows:
+    start_day = start.astimezone(zone).date().isoformat()
+    checkins = await db.checkins.find({"profile_id": profile_id}, {"_id": 0}).to_list(5000)
+    ledger = await _coin_ledger(db, profile_id)
+    rewarded_days = {
+        str(row.get("local_day"))
+        for row in ledger
+        if row.get("kind") == "daily_journal" and row.get("local_day")
+    }
+    eligible_days = set()
+    for row in checkins:
         timestamp = _parse_timestamp(row.get("date") or row.get("created_at"))
-        if timestamp:
-            local_days.add(timestamp.astimezone(zone).date().isoformat())
-    for local_day in sorted(local_days):
+        if not timestamp:
+            continue
+        local_day = timestamp.astimezone(zone).date().isoformat()
+        if local_day >= start_day:
+            eligible_days.add(local_day)
+
+    for local_day in sorted(eligible_days - rewarded_days):
         await award_daily_journal_coins(db, profile_id, local_day)
 
 
 async def _game_state(db, profile_id: str) -> Dict[str, Any]:
     profile = await db.profiles.find_one({"id": profile_id}, {"_id": 0}) or {"id": profile_id}
-    await reconcile_journal_rewards(db, profile)
     game = await db.pet_games.find_one({"profile_id": profile_id}, {"_id": 0}) or {}
+    if game.get("claimed_at"):
+        await reconcile_journal_rewards(db, profile, game.get("claimed_at"))
     legacy = await legacy_server.gamification(profile_id)
     level = int(legacy.get("level") or 1)
     rarity = game.get("rarity")
