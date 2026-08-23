@@ -22,6 +22,25 @@ import { colors, fontSize, fonts, radius, spacing } from "@/src/theme";
 
 type Mode = "login" | "forgot";
 
+function socialCallbackError(code: string, provider: string | null, ru: boolean) {
+  const label = provider === "vk" ? "VK ID" : provider === "yandex" ? "Яндекс ID" : (ru ? "внешний аккаунт" : "social account");
+  if (code === "account_exists") {
+    return ru
+      ? "Аккаунт Aida с этой почтой уже существует. Войдите по email и паролю."
+      : "An Aida account with this email already exists. Sign in with email and password.";
+  }
+  if (code === "provider_rejected") {
+    return ru ? `${label} не завершил авторизацию. Попробуйте ещё раз.` : `${label} did not complete authorization. Try again.`;
+  }
+  if (code === "provider_exchange_failed") {
+    return ru ? `Не удалось подтвердить вход через ${label}. Попробуйте ещё раз.` : `Could not verify the ${label} sign-in. Try again.`;
+  }
+  if (code === "temporary_unavailable") {
+    return ru ? "Вход через внешний аккаунт временно недоступен. Попробуйте ещё раз." : "Social sign-in is temporarily unavailable. Try again.";
+  }
+  return ru ? "Не удалось завершить вход через внешний аккаунт." : "Could not finish social sign-in.";
+}
+
 export default function AuthScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -42,6 +61,8 @@ export default function AuthScreen() {
     if (Platform.OS !== "web" || typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     const ticket = params.get("oauth_ticket");
+    const oauthError = params.get("oauth_error");
+    const oauthProvider = params.get("oauth_provider");
     if (params.get("verified") === "1") {
       setMessage(ru ? "Email подтверждён. Теперь можно войти." : "Email verified. You can sign in now.");
       window.history.replaceState({}, "", window.location.pathname);
@@ -49,11 +70,18 @@ export default function AuthScreen() {
       setError(ru ? "Ссылка подтверждения недействительна или истекла." : "The verification link is invalid or expired.");
       window.history.replaceState({}, "", window.location.pathname);
     }
+    if (oauthError) {
+      setError(socialCallbackError(oauthError, oauthProvider, ru));
+      window.history.replaceState({}, "", window.location.pathname);
+      return;
+    }
     if (!ticket) return;
 
     let active = true;
     setBusy(true);
-    withTimeout(completeSocialLogin(ticket), 8000, "social_callback")
+    // OAuth completion can legitimately include bounded Google Sheets retry/backoff.
+    // Give it enough time to finish instead of abandoning a one-time ticket at 8s.
+    withTimeout(completeSocialLogin(ticket), 20000, "social_callback")
       .then(() => {
         if (!active) return;
         window.history.replaceState({}, "", window.location.pathname);
@@ -84,7 +112,7 @@ export default function AuthScreen() {
         router.replace("/");
       } else {
         await withTimeout(forgotPassword(value), 8000, "password_recovery");
-        setMessage(ru ? "Если аккаунт существует, ссылка для восстановления отправлена на привязанный email." : "If the account exists, a recovery link was sent to its linked email.");
+        setMessage(ru ? "Если аккаунт существует, ссылка для восстановления отправлена на привязанный email." : "If the account exists, a recovery link was sent to the email connected to the account.");
       }
     } catch (e: any) {
       const raw = String(e?.message || "").toLowerCase();
