@@ -1,5 +1,9 @@
-"""Personalized Home/Puzzle configuration."""
+"""Personalized Home/Puzzle card configuration.
 
+Puzzle stores presentation state for concrete Home cards. Domain-module
+permissions live in ``module_config`` and are applied as an additional gate when
+a card represents a medical module.
+"""
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -9,6 +13,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from access_control import require_profile_access
+from module_config import module_home_allowed
 
 
 def _now():
@@ -20,6 +25,8 @@ class WidgetConfig(BaseModel):
     enabled: bool = True
     show_on_home: bool = True
     order: int = 0
+    # Legacy fields remain accepted so previously persisted rows deserialize.
+    # They are no longer authoritative for medical-module AI/notifications.
     allow_ai_analytics: bool = True
     notifications: bool = False
 
@@ -39,6 +46,12 @@ DEFAULT_WIDGETS = [
     WidgetConfig(id="quick_note", order=6, enabled=False, show_on_home=False, allow_ai_analytics=False),
 ]
 
+HOME_WIDGET_MODULES = {
+    "next_medication": "meds",
+    "recent_symptom": "symptoms",
+    "latest_lab": "labs",
+}
+
 
 def _merge_defaults(stored):
     by_id = {w.get("id"): w for w in (stored or []) if w.get("id")}
@@ -55,6 +68,25 @@ def _merge_defaults(stored):
     return sorted(result, key=lambda w: w["order"])
 
 
+def apply_module_home_visibility(widgets: List[Dict[str, Any]], profile: Dict[str, Any] | None) -> List[Dict[str, Any]]:
+    """Apply ModuleConfig as a non-destructive visibility gate.
+
+    The persisted widget preference is preserved. An off module or
+    ``show_on_home=false`` only makes the effective Home card hidden; re-enabling
+    the module restores the user's prior widget preference.
+    """
+    result: List[Dict[str, Any]] = []
+    for raw in widgets or []:
+        item = dict(raw)
+        module_code = HOME_WIDGET_MODULES.get(str(item.get("id") or ""))
+        item["module_code"] = module_code
+        item["effective_show_on_home"] = bool(item.get("enabled") is not False and item.get("show_on_home") is not False)
+        if module_code:
+            item["effective_show_on_home"] = item["effective_show_on_home"] and module_home_allowed(profile, module_code)
+        result.append(item)
+    return result
+
+
 def widgets_for_goals(goals: List[str] | None) -> List[Dict[str, Any]]:
     """Build the first Home layout from onboarding goals.
 
@@ -69,7 +101,6 @@ def widgets_for_goals(goals: List[str] | None) -> List[Dict[str, Any]]:
     widgets = _merge_defaults(None)
     by_id = {item["id"]: item for item in widgets}
 
-    # Product anchors remain available without forcing unrelated health cards.
     by_id["companion"].update(enabled=True, show_on_home=True)
     by_id["quests"].update(enabled=True, show_on_home=True)
     by_id["readiness"].update(enabled=True, show_on_home=True)
@@ -93,19 +124,19 @@ def build_puzzle_router(db, auth) -> APIRouter:
     @router.get("/{profile_id}")
     async def get_puzzle(profile_id: str, account: Dict[str, Any] = Depends(auth.require_account)):
         await require_profile_access(auth, account, profile_id)
+        profile = await db.profiles.find_one({"id": profile_id}, {"_id": 0}) or {}
         doc = await db.puzzle.find_one({"profile_id": profile_id}, {"_id": 0})
         if doc:
             widgets = _merge_defaults(doc.get("widgets"))
             source = doc.get("source") or "legacy"
             updated_at = doc.get("updated_at")
         else:
-            profile = await db.profiles.find_one({"id": profile_id}, {"_id": 0}) or {}
             widgets = widgets_for_goals(profile.get("goals") or [])
             source = "goals_fallback" if profile.get("goals") else "default"
             updated_at = None
         return {
             "profile_id": profile_id,
-            "widgets": widgets,
+            "widgets": apply_module_home_visibility(widgets, profile),
             "source": source,
             "updated_at": updated_at,
         }
