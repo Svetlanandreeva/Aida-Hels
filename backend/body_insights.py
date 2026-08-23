@@ -17,7 +17,7 @@ from access_control import require_profile_access
 SYSTEMS: List[Dict[str, Any]] = [
     {"id": "cardiovascular", "label_ru": "Сердечно-сосудистая", "label_en": "Cardiovascular", "keywords": ["давлен", "pressure", "pulse", "пульс", "heart", "серд", "hrv", "cholesterol", "холест"]},
     {"id": "respiratory", "label_ru": "Дыхательная", "label_en": "Respiratory", "keywords": ["spo2", "respirat", "дых", "каш", "cough", "oxygen", "кислород"]},
-    {"id": "metabolic", "label_ru": "Обмен веществ", "label_en": "Metabolic", "keywords": ["weight", "вес", "glucose", "глюк", "insulin", "инсулин", "hba1c", "lipid", "триглиц", "bmi"]},
+    {"id": "metabolic", "label_ru": "Обмен веществ", "label_en": "Metabolic", "keywords": ["weight", "вес", "height", "рост", "glucose", "глюк", "insulin", "инсулин", "hba1c", "lipid", "триглиц", "bmi", "имт"]},
     {"id": "sleep_recovery", "label_ru": "Сон и восстановление", "label_en": "Sleep & recovery", "keywords": ["sleep", "сон", "energy", "энерг"]},
     {"id": "mental", "label_ru": "Психика и самочувствие", "label_en": "Mental wellbeing", "keywords": ["mood", "настро", "stress", "стресс", "anxiety", "тревог", "energy", "энерг"]},
     {"id": "digestive", "label_ru": "Пищеварительная", "label_en": "Digestive", "keywords": ["желуд", "киш", "живот", "stomach", "bowel", "digest", "печен", "liver", "alt", "ast", "билирубин"]},
@@ -40,6 +40,14 @@ def _safe_date(value: Any) -> str | None:
     if isinstance(value, datetime):
         return value.isoformat()
     return str(value)
+
+
+def _positive_float(value: Any) -> float | None:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if number > 0 else None
 
 
 def _evidence(kind: str, record: Dict[str, Any], title: str, value: Any = None, unit: Any = None) -> Dict[str, Any]:
@@ -65,9 +73,21 @@ async def _collect(db, profile_id: str) -> Dict[str, List[Dict[str, Any]]]:
 
     out: Dict[str, List[Dict[str, Any]]] = {system["id"]: [] for system in SYSTEMS}
 
-    # Profile-level weight is a real user-supplied datum, not a generated score.
-    if profile.get("weight_kg") is not None:
-        out["metabolic"].append(_evidence("profile_measurement", profile, "Weight", profile.get("weight_kg"), "kg"))
+    # Profile-level anthropometrics are real user-supplied data. BMI is derived
+    # deterministically from those two values and is therefore labelled as a
+    # calculated metric rather than as a separately observed measurement.
+    height_cm = _positive_float(profile.get("height_cm"))
+    weight_kg = _positive_float(profile.get("weight_kg"))
+    if weight_kg is not None:
+        out["metabolic"].append(_evidence("profile_measurement", profile, "Weight", weight_kg, "kg"))
+    if height_cm is not None:
+        out["metabolic"].append(_evidence("profile_measurement", profile, "Height", height_cm, "cm"))
+    if height_cm is not None and weight_kg is not None and height_cm >= 30:
+        bmi = round(weight_kg / ((height_cm / 100.0) ** 2), 1)
+        derived_profile = dict(profile)
+        derived_profile["source"] = "calculated"
+        derived_profile["verification_status"] = "calculated"
+        out["metabolic"].append(_evidence("derived_metric", derived_profile, "BMI", bmi, "kg/m²"))
 
     for record in vitals:
         text = _text(record.get("kind"), record.get("metric"), record.get("type"), record.get("note"))

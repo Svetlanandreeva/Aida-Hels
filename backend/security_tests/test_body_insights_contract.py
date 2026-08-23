@@ -13,11 +13,37 @@ def test_body_insights_requires_profile_access_and_never_scores_system_health():
     assert '"system_score"' not in source
 
 
+def test_profile_height_and_weight_produce_a_derived_bmi_evidence_record():
+    source = (ROOT / "body_insights.py").read_text(encoding="utf-8")
+    assert 'profile.get("height_cm")' in source
+    assert 'profile.get("weight_kg")' in source
+    assert 'weight_kg / ((height_cm / 100.0) ** 2)' in source
+    assert '_evidence("derived_metric", derived_profile, "BMI", bmi, "kg/m²")' in source
+    assert 'derived_profile["source"] = "calculated"' in source
+    assert 'derived_profile["verification_status"] = "calculated"' in source
+
+
 def test_biological_age_fails_closed_until_validated_model_exists():
     source = (ROOT / "body_insights.py").read_text(encoding="utf-8")
     assert '"state": "insufficient_data"' in source
     assert '"age": None' in source
     assert '"reason": "validated_model_not_enabled"' in source
+
+
+def test_body_ui_reuses_onboarding_anthropometrics_and_prompts_only_when_missing():
+    app_root = ROOT.parent / "frontend" / "app"
+    body = (app_root / "body.tsx").read_text(encoding="utf-8")
+    onboarding = (app_root / "onboarding.tsx").read_text(encoding="utf-8")
+
+    assert "activeProfile" in body
+    assert "activeProfile?.height_cm" in body
+    assert "activeProfile?.weight_kg" in body
+    assert 'testID="body-height-input"' in body
+    assert 'testID="body-weight-input"' in body
+    assert 'api.updateProfile(activeId, { height_cm: enteredHeight, weight_kg: enteredWeight })' in body
+    assert "calculateBmi(heightCm, weightKg)" in body
+    assert "height_cm: numericOrNull(height)" in onboarding
+    assert "weight_kg: numericOrNull(weight)" in onboarding
 
 
 def test_body_ui_links_to_evidence_details():
