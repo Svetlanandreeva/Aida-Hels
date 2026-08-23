@@ -1,8 +1,10 @@
 import { Platform } from "react-native";
 
 import { withTimeout } from "@/src/async";
+import { storage } from "@/src/utils/storage";
 
 const BASE = (process.env.EXPO_PUBLIC_BACKEND_URL || "") + "/api";
+const PROFILE_CACHE_KEY = "aida.profileCache.v1";
 
 let API_TOKEN = "";
 
@@ -54,6 +56,22 @@ async function req(path: string, options?: RequestInit) {
   return res.json();
 }
 
+async function cacheUpdatedProfile(profile: Profile) {
+  try {
+    const raw = await storage.getItem<string>(PROFILE_CACHE_KEY, "");
+    const parsed = raw ? JSON.parse(raw) as Profile[] : [];
+    const current = Array.isArray(parsed) ? parsed : [];
+    const found = current.some((item) => item.id === profile.id);
+    const next = found
+      ? current.map((item) => item.id === profile.id ? { ...item, ...profile } : item)
+      : [profile, ...current];
+    await storage.setItem(PROFILE_CACHE_KEY, JSON.stringify(next));
+  } catch {
+    // Cache is a navigation/resilience optimization only. The successful API
+    // response remains authoritative even if local storage is unavailable.
+  }
+}
+
 async function appendUploadFile(form: FormData, file: UploadFile, label: string) {
   if (Platform.OS === "web") {
     const fileResponse = await withTimeout(fetch(file.uri), 5000, `${label}_file_read`);
@@ -98,7 +116,11 @@ function sortMedicationsForNow(items: Medication[]) {
 export const api = {
   listProfiles: (): Promise<Profile[]> => req("/profiles"),
   createProfile: (data: Partial<Profile>): Promise<Profile> => req("/profiles", { method: "POST", body: JSON.stringify(data) }),
-  updateProfile: (id: string, data: Partial<Profile>): Promise<Profile> => req(`/profiles/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  updateProfile: async (id: string, data: Partial<Profile>): Promise<Profile> => {
+    const updated = await req(`/profiles/${id}`, { method: "PUT", body: JSON.stringify(data) }) as Profile;
+    await cacheUpdatedProfile(updated);
+    return updated;
+  },
   deleteProfile: (id: string) => req(`/profiles/${id}`, { method: "DELETE" }),
   searchIcd10: async (q: string, group: "all" | "mental" = "all"): Promise<Icd10Item[]> => {
     const result = await req(`/reference/icd10/search?q=${encodeURIComponent(q)}&group=${encodeURIComponent(group)}&limit=12`);
