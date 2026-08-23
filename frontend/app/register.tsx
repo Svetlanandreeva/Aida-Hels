@@ -19,7 +19,7 @@ export default function RegisterScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { colors, theme, lang, t } = useApp();
-  const { register, resendVerification, startSocialLogin } = useAuth();
+  const { register, startSocialLogin } = useAuth();
   const ru = lang === "ru";
   const a = t.auth;
 
@@ -32,8 +32,6 @@ export default function RegisterScreen() {
   const [socialBusy, setSocialBusy] = useState<SocialProvider | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
-  const [verificationEmail, setVerificationEmail] = useState<string | null>(null);
-  const [resendMessage, setResendMessage] = useState<string | null>(null);
 
   const cleanEmail = email.trim().toLowerCase();
   const passwordReady = password.length >= 8;
@@ -56,27 +54,8 @@ export default function RegisterScreen() {
     if (!validate()) return;
     setBusy(true);
     try {
-      const result = await withTimeout(register("Мой профиль", cleanEmail, password, null), 8000, "register");
-      if (result.verification_required) {
-        setVerificationEmail(result.email);
-        return;
-      }
+      await withTimeout(register("Мой профиль", cleanEmail, password, null), 8000, "register");
       router.replace("/onboarding" as any);
-    } catch (cause: any) {
-      setError(friendlyError(String(cause?.message || ""), ru));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const resend = async () => {
-    if (!verificationEmail) return;
-    setBusy(true);
-    setError(null);
-    setResendMessage(null);
-    try {
-      await withTimeout(resendVerification(verificationEmail), 8000, "resend_verification");
-      setResendMessage(ru ? "Новое письмо отправлено." : "A new email has been sent.");
     } catch (cause: any) {
       setError(friendlyError(String(cause?.message || ""), ru));
     } finally {
@@ -98,34 +77,6 @@ export default function RegisterScreen() {
       setSocialBusy(null);
     }
   };
-
-  if (verificationEmail) {
-    return (
-      <View style={{ flex: 1, backgroundColor: colors.surface }}>
-        <StatusBar style={theme === "dark" ? "light" : "dark"} />
-        <Header top={insets.top} onBack={() => setVerificationEmail(null)} />
-        <KeyboardAwareScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-          <Animated.View entering={FadeIn.duration(250)} style={styles.formWrap}>
-            <Brand />
-            <View style={[styles.successIcon, { backgroundColor: colors.brandSecondary }]}><Ionicons name="mail-outline" size={30} color={colors.brand} /></View>
-            <Txt variant="h1" style={{ marginTop: spacing.xl }}>{ru ? "Подтвердите email" : "Verify your email"}</Txt>
-            <Txt variant="body" color={colors.muted} style={{ marginTop: spacing.sm }}>
-              {ru ? `Мы отправили письмо на ${verificationEmail}. Перейдите по ссылке в письме, а затем войдите.` : `We sent an email to ${verificationEmail}. Follow the link, then sign in.`}
-            </Txt>
-            {error ? <Notice kind="error" text={error} /> : null}
-            {resendMessage ? <Notice kind="success" text={resendMessage} /> : null}
-            <Pressable testID="register-go-login" onPress={() => router.replace("/auth")} style={[styles.primary, { backgroundColor: colors.brandPrimary }]} accessibilityRole="button">
-              <Txt variant="body" weight="bold" color={colors.onBrandPrimary}>{ru ? "Перейти ко входу" : "Go to sign in"}</Txt>
-              <Ionicons name="arrow-forward" size={18} color={colors.onBrandPrimary} />
-            </Pressable>
-            <Pressable testID="register-resend" onPress={resend} disabled={busy} style={[styles.secondary, { borderColor: colors.border }, busy && styles.disabled]} accessibilityRole="button">
-              {busy ? <ActivityIndicator color={colors.onSurface} /> : <Txt variant="body" weight="bold">{ru ? "Отправить письмо повторно" : "Resend email"}</Txt>}
-            </Pressable>
-          </Animated.View>
-        </KeyboardAwareScrollView>
-      </View>
-    );
-  }
 
   const emailLabel = ru ? "Электронная почта" : "Email";
   const confirmLabel = ru ? "Повтор пароля" : "Repeat password";
@@ -258,7 +209,6 @@ const styles = StyleSheet.create({
   checkbox: { width: 22, height: 22, borderRadius: 7, borderWidth: 1, alignItems: "center", justifyContent: "center" },
   legalLinks: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", justifyContent: "center", gap: 6 },
   primary: { minHeight: 54, marginTop: spacing.lg, borderRadius: radius.pill, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, paddingHorizontal: spacing.xl },
-  secondary: { minHeight: 54, marginTop: spacing.md, borderRadius: radius.pill, borderWidth: StyleSheet.hairlineWidth * 2, alignItems: "center", justifyContent: "center", paddingHorizontal: spacing.xl },
   disabled: { opacity: 0.55 },
   dividerRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, marginVertical: spacing.xl },
   divider: { flex: 1, height: StyleSheet.hairlineWidth * 2 },
@@ -266,5 +216,4 @@ const styles = StyleSheet.create({
   providerMark: { width: 30, height: 30, borderRadius: 8, alignItems: "center", justifyContent: "center" },
   switchRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", marginTop: spacing.xl },
   notice: { marginTop: spacing.md, borderRadius: radius.md, borderWidth: 1, padding: spacing.md, flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  successIcon: { width: 64, height: 64, borderRadius: 20, alignItems: "center", justifyContent: "center", marginTop: spacing.xl },
 });
