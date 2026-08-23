@@ -1,0 +1,65 @@
+name: Validate social OAuth hotfix
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - '.github/workflows/validate-social-oauth-hotfix.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.19.5
+
+      - name: Prepare Yarn
+        run: |
+          corepack enable
+          corepack prepare yarn@1.22.22 --activate
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: yarn install --frozen-lockfile --non-interactive
+
+      - name: Lint frontend
+        working-directory: frontend
+        run: yarn lint
+
+      - name: Type-check deploy frontend
+        working-directory: frontend
+        run: npx --no-install tsc -p tsconfig.deploy.json --pretty false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: python -m pip install -q -r requirements.txt
+
+      - name: Compile backend
+        run: python -m compileall -q backend
+
+      - name: Run backend security suite
+        working-directory: backend
+        env:
+          PYTHONPATH: .
+        run: pytest -q security_tests
+
+      - name: Import production backend
+        working-directory: backend
+        env:
+          PYTHONPATH: .
+        run: python -c "import main; assert main.app is not None"
