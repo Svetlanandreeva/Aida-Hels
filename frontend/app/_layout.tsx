@@ -16,6 +16,7 @@ import { KeyboardRoot } from "@/src/components/KeyboardRoot";
 import { StartupPreview } from "@/src/components/StartupPreview";
 import { storage } from "@/src/utils/storage";
 import { colors } from "@/src/theme";
+import { AppProvider as EmergentDesignProvider } from "@/src/emergent/AppContext";
 
 LogBox.ignoreAllLogs(true);
 
@@ -214,11 +215,13 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.surface }}>
       <KeyboardRoot>
         <SafeAreaProvider>
-          <I18nProvider>
-            <AuthProvider>
-              <RoutedApp />
-            </AuthProvider>
-          </I18nProvider>
+          <EmergentDesignProvider>
+            <I18nProvider>
+              <AuthProvider>
+                <RoutedApp />
+              </AuthProvider>
+            </I18nProvider>
+          </EmergentDesignProvider>
         </SafeAreaProvider>
       </KeyboardRoot>
     </GestureHandlerRootView>

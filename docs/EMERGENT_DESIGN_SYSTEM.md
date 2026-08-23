@@ -2,6 +2,12 @@
 
 This document is the implementation contract for the product interface captured from the Emergent preview on 2026-08-23. The preview defines presentation only; production APIs and persisted user data remain authoritative.
 
+## Source provenance
+
+The product UI is imported from the actual Expo source map of `aida-health-data.preview.emergentagent.com`, not reconstructed from screenshots. The preserved source lives under `frontend/src/emergent/`: `tokens.ts`, `translations.ts`, `ui.tsx`, `health.tsx`, `AddSheet.tsx`, the complete landing and the primary health screens.
+
+The preview's local demo state is intentionally excluded. `health-context.tsx` is the compatibility boundary: it maps the unchanged Emergent view model to the existing authenticated Aida APIs and never seeds ordinary profiles. Route-only adaptations connect original controls to the current Expo Router paths, OCR lab flow, legal pages, notifications, history, cycle, biological age and the real Aida chat.
+
 ## Visual tokens
 
 | Role | Value |
