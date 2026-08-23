@@ -18,6 +18,9 @@ export type NutritionEntry = {
   label: string;
   meal_type: "breakfast" | "lunch" | "dinner" | "snack" | "other" | string;
   eaten_at: string;
+  local_date?: string | null;
+  local_time?: string | null;
+  timezone_offset_min?: number | null;
   source: "manual" | "fatsecret" | string;
   quantity?: number;
   external_food_id?: string | null;
