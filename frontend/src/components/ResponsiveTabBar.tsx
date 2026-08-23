@@ -5,11 +5,14 @@ import { colors, fonts } from "@/src/theme";
 import { useResponsiveLayout } from "@/src/hooks/use-responsive-layout";
 
 const TAB_ICONS: Record<string, { active: keyof typeof Ionicons.glyphMap; inactive: keyof typeof Ionicons.glyphMap }> = {
-  index: { active: "grid", inactive: "grid-outline" },
-  health: { active: "heart", inactive: "heart-outline" },
+  index: { active: "home", inactive: "home-outline" },
+  mind: { active: "happy", inactive: "happy-outline" },
+  pressure: { active: "pulse", inactive: "pulse-outline" },
   body: { active: "body", inactive: "body-outline" },
+  labs: { active: "flask", inactive: "flask-outline" },
   chat: { active: "sparkles", inactive: "sparkles-outline" },
   tasks: { active: "checkbox", inactive: "checkbox-outline" },
+  health: { active: "heart", inactive: "heart-outline" },
   profile: { active: "person", inactive: "person-outline" },
 };
 
