@@ -71,18 +71,22 @@ def _merge_defaults(stored):
 def apply_module_home_visibility(widgets: List[Dict[str, Any]], profile: Dict[str, Any] | None) -> List[Dict[str, Any]]:
     """Apply ModuleConfig as a non-destructive visibility gate.
 
-    The persisted widget preference is preserved. An off module or
-    ``show_on_home=false`` only makes the effective Home card hidden; re-enabling
-    the module restores the user's prior widget preference.
+    ``configured_show_on_home`` retains the card-level preference. The ordinary
+    ``show_on_home`` field returned to existing Home clients is the effective
+    value after the medical-module permission has also been applied.
     """
     result: List[Dict[str, Any]] = []
     for raw in widgets or []:
         item = dict(raw)
         module_code = HOME_WIDGET_MODULES.get(str(item.get("id") or ""))
-        item["module_code"] = module_code
-        item["effective_show_on_home"] = bool(item.get("enabled") is not False and item.get("show_on_home") is not False)
+        configured = item.get("show_on_home") is not False
+        effective = bool(item.get("enabled") is not False and configured)
         if module_code:
-            item["effective_show_on_home"] = item["effective_show_on_home"] and module_home_allowed(profile, module_code)
+            effective = effective and module_home_allowed(profile, module_code)
+        item["module_code"] = module_code
+        item["configured_show_on_home"] = configured
+        item["effective_show_on_home"] = effective
+        item["show_on_home"] = effective
         result.append(item)
     return result
 
