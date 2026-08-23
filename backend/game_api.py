@@ -45,14 +45,29 @@ def _pet_for_profile(profile_id: str) -> tuple[str, str]:
     return rarity, pool[pet_roll % len(pool)]
 
 
-def profile_local_day(profile: Dict[str, Any] | None, now: datetime | None = None) -> str:
-    now = now or _now()
+def _profile_zone(profile: Dict[str, Any] | None):
     tz_name = str((profile or {}).get("timezone") or "UTC")
     try:
-        zone = ZoneInfo(tz_name)
+        return ZoneInfo(tz_name)
     except Exception:
-        zone = timezone.utc
-    return now.astimezone(zone).date().isoformat()
+        return timezone.utc
+
+
+def profile_local_day(profile: Dict[str, Any] | None, now: datetime | None = None) -> str:
+    return (now or _now()).astimezone(_profile_zone(profile)).date().isoformat()
+
+
+def _parse_timestamp(value: Any) -> datetime | None:
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
 
 
 async def _coin_ledger(db, profile_id: str):
@@ -65,11 +80,7 @@ async def coin_balance(db, profile_id: str) -> int:
 
 
 async def award_daily_journal_coins(db, profile_id: str, local_day: str) -> bool:
-    """Award at most one +10 journal transaction for a profile/local day.
-
-    The deterministic ledger id makes repeated writes idempotent even if a user
-    creates or edits multiple check-ins during the same calendar day.
-    """
+    """Award at most one +10 journal transaction for a profile/local day."""
     tx_id = f"journal:{profile_id}:{local_day}"
     existing = await db.game_coin_ledger.find_one({"id": tx_id}, {"_id": 0})
     if existing:
@@ -85,7 +96,30 @@ async def award_daily_journal_coins(db, profile_id: str, local_day: str) -> bool
     return True
 
 
+async def reconcile_journal_rewards(db, profile: Dict[str, Any]) -> None:
+    """Backfill one journal reward per local day from saved check-ins.
+
+    This keeps rewards correct even when the pet screen was offline on the day
+    the journal was filled. Multiple check-ins or edits on one day collapse to
+    the same deterministic ledger transaction.
+    """
+    profile_id = str(profile.get("id") or "")
+    if not profile_id:
+        return
+    rows = await db.checkins.find({"profile_id": profile_id}, {"_id": 0}).to_list(5000)
+    zone = _profile_zone(profile)
+    local_days = set()
+    for row in rows:
+        timestamp = _parse_timestamp(row.get("date") or row.get("created_at"))
+        if timestamp:
+            local_days.add(timestamp.astimezone(zone).date().isoformat())
+    for local_day in sorted(local_days):
+        await award_daily_journal_coins(db, profile_id, local_day)
+
+
 async def _game_state(db, profile_id: str) -> Dict[str, Any]:
+    profile = await db.profiles.find_one({"id": profile_id}, {"_id": 0}) or {"id": profile_id}
+    await reconcile_journal_rewards(db, profile)
     game = await db.pet_games.find_one({"profile_id": profile_id}, {"_id": 0}) or {}
     legacy = await legacy_server.gamification(profile_id)
     level = int(legacy.get("level") or 1)
