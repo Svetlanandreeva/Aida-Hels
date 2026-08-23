@@ -110,7 +110,29 @@ async def build_ai_context(db, profile_id: str, *, as_json: bool = True) -> str 
             "goals": profile.get("goals") or [],
             "women_health": (profile.get("women_health") or {}) if _module_enabled(modules, "women") else {},
         },
-        "active_medications": [_compact("medication", row, ("name", "dose", "schedule", "times", "meal_relation", "start_date")) for row in medications],
+        "active_medications": [
+            _compact(
+                "medication",
+                row,
+                (
+                    "name",
+                    "trade_name",
+                    "active_ingredient",
+                    "active_substance_id",
+                    "reference_source",
+                    "reference_id",
+                    "normalization_status",
+                    "dosage_form",
+                    "strength",
+                    "dose",
+                    "schedule",
+                    "times",
+                    "meal_relation",
+                    "start_date",
+                ),
+            )
+            for row in medications
+        ],
         "recent_symptoms": [_compact("symptom", row, ("name", "severity", "note", "date")) for row in symptoms],
         "recent_labs": [{**_compact("lab", row, ("title", "date", "lab_name", "source")), "biomarkers": (row.get("biomarkers") or [])[:30]} for row in labs],
         "recent_measurements": [
@@ -125,6 +147,7 @@ async def build_ai_context(db, profile_id: str, *, as_json: bool = True) -> str 
             "wearable_values_are_source_reported_not_diagnoses": True,
             "freshness_and_quality_must_be_considered": True,
             "respect_module_settings": True,
+            "medication_interactions_require_verified_active_substances": True,
         },
     }
     return json.dumps(context, ensure_ascii=False, default=str) if as_json else context
