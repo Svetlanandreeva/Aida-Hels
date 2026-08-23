@@ -15,7 +15,8 @@ from fastapi import APIRouter, Depends
 
 from access_control import require_profile_access
 from medication_api import _TIME_RE, _effective_times, _minutes, _normalize_med
-from puzzle_api import widgets_for_goals
+from module_config import effective_module_map, module_enabled, module_home_allowed
+from puzzle_api import apply_module_home_visibility, widgets_for_goals
 
 HOME_SECTION_TIMEOUT_SECONDS = 3.5
 
@@ -55,44 +56,21 @@ def _lab_status_state(labs) -> Dict[str, Any]:
 
 
 def _profile_is_personalized(profile: Dict[str, Any]) -> bool:
-    return bool(profile.get("goals") or profile.get("module_settings"))
+    return bool(profile.get("goals") or profile.get("module_settings") or profile.get("module_config"))
 
 
 def _module_enabled(profile: Dict[str, Any], key: str) -> bool:
-    """Resolve a Home module from explicit settings first, then onboarding goals.
-
-    Profiles created before personalization remain backward compatible: with no
-    goals/settings every Home section stays enabled.
-    """
-    if not _profile_is_personalized(profile):
-        return True
-
-    settings = profile.get("module_settings") or {}
-    if key in settings:
-        return settings.get(key) is not False
-
-    goals = {str(goal) for goal in (profile.get("goals") or []) if goal}
-    goal_map = {
-        "labs": {"labs", "general", "chronic"},
-        "symptoms": {"symptoms", "general", "chronic"},
-        "meds": {"meds", "chronic"},
-        "pressure": {"pressure", "general", "chronic"},
-        "mental": {"mental", "sleep", "general"},
-        "sleep": {"sleep", "mental", "general"},
-        "women": {"women", "cycle", "pregnancy_planning", "pregnancy"},
-    }
-    accepted = goal_map.get(key)
-    return True if accepted is None else bool(goals & accepted)
+    return module_enabled(profile, key)
 
 
 def _attention_allowed(profile: Dict[str, Any], item: Dict[str, Any]) -> bool:
     kind = str(item.get("type") or "")
     if kind == "lab":
-        return _module_enabled(profile, "labs")
+        return module_home_allowed(profile, "labs")
     if kind == "bp":
-        return _module_enabled(profile, "pressure")
+        return module_home_allowed(profile, "pressure")
     if kind == "symptom":
-        return _module_enabled(profile, "symptoms")
+        return module_home_allowed(profile, "symptoms")
     return True
 
 
@@ -198,16 +176,25 @@ def build_home_router(db, auth, legacy) -> APIRouter:
             return await legacy.list_labs(profile_id)
 
         async def tasks():
+            if not _module_enabled(profile, "tasks"):
+                return []
             return await db.tasks.find({"profile_id": profile_id}, {"_id": 0}).sort("created_at", -1).to_list(400)
 
         async def puzzle():
             row = await db.puzzle.find_one({"profile_id": profile_id}, {"_id": 0})
             if row:
-                return row
+                widgets = row.get("widgets") or []
+                source = row.get("source") or "legacy"
+                updated_at = row.get("updated_at")
+            else:
+                widgets = widgets_for_goals(profile.get("goals") or [])
+                source = "goals_fallback" if profile.get("goals") else "default"
+                updated_at = None
             return {
                 "profile_id": profile_id,
-                "widgets": widgets_for_goals(profile.get("goals") or []),
-                "source": "goals_fallback" if profile.get("goals") else "default",
+                "widgets": apply_module_home_visibility(widgets, profile),
+                "source": source,
+                "updated_at": updated_at,
             }
 
         async def overview():
@@ -230,9 +217,6 @@ def build_home_router(db, auth, legacy) -> APIRouter:
                 return {"state": "not_applicable", "cycle_day": None, "last_period_start": None}
             return await _cycle_summary(db, profile_id, local_date)
 
-        # Every source gets its own deadline. asyncio.gather still returns all
-        # completed sections, while a hung legacy/integration call becomes a
-        # local TimeoutError instead of freezing the entire dashboard.
         results = await asyncio.gather(
             _bounded(legacy.readiness(profile_id)),
             _bounded(legacy.gamification(profile_id)),
@@ -254,7 +238,7 @@ def build_home_router(db, auth, legacy) -> APIRouter:
         labs_section = safe_list(labs_value)
         lab_items = [] if isinstance(labs_value, BaseException) else list(labs_value or [])
 
-        modules = profile.get("module_settings") or {}
+        modules = effective_module_map(profile)
         return {
             "profile_id": profile_id,
             "generated_at": datetime.now(timezone.utc).isoformat(),
