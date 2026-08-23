@@ -4,32 +4,35 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api, Medication } from "@/src/api";
+import { searchMedicationReferences, MedicationReferenceItem } from "@/src/medicationReferenceApi";
 import { useApp } from "@/src/store";
 import { useI18n } from "@/src/i18n";
 import { colors, fontSize, fonts, radius, spacing } from "@/src/theme";
 
-const COMMON_MEDICATIONS = [
-  ["Левотироксин", "Levothyroxine"], ["Метформин", "Metformin"], ["Амлодипин", "Amlodipine"],
-  ["Лозартан", "Losartan"], ["Эналаприл", "Enalapril"], ["Лизиноприл", "Lisinopril"],
-  ["Бисопролол", "Bisoprolol"], ["Метопролол", "Metoprolol"], ["Аторвастатин", "Atorvastatin"],
-  ["Розувастатин", "Rosuvastatin"], ["Омепразол", "Omeprazole"], ["Пантопразол", "Pantoprazole"],
-  ["Сертралин", "Sertraline"], ["Эсциталопрам", "Escitalopram"], ["Флуоксетин", "Fluoxetine"],
-  ["Венлафаксин", "Venlafaxine"], ["Дулоксетин", "Duloxetine"], ["Ламотриджин", "Lamotrigine"],
-  ["Кветиапин", "Quetiapine"], ["Вальпроевая кислота", "Valproic acid"], ["Карбамазепин", "Carbamazepine"],
-  ["Парацетамол", "Paracetamol"], ["Ибупрофен", "Ibuprofen"], ["Мелатонин", "Melatonin"],
-  ["Железо", "Iron"], ["Фолиевая кислота", "Folic acid"], ["Витамин D", "Vitamin D"],
-  ["Магний", "Magnesium"], ["Инсулин", "Insulin"], ["Семаглутид", "Semaglutide"],
-] as const;
-
 const DAY_PARTS = ["morning", "day", "evening"] as const;
 type DayPart = typeof DAY_PARTS[number];
 type DailyAnswer = "yes" | "no" | null;
+type NormalizedMedication = Medication & {
+  trade_name?: string | null;
+  active_ingredient?: string | null;
+  active_substance_id?: string | number | null;
+  reference_source?: string | null;
+  reference_id?: string | null;
+  normalization_status?: string | null;
+  reference_verification_status?: string | null;
+  reference_confidence?: number | null;
+  reference_sources?: string[];
+};
 
 function localDateString(date = new Date()) {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, "0");
   const d = String(date.getDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
+}
+
+function normalizedText(value: string | null | undefined) {
+  return String(value || "").trim().toLocaleLowerCase().replace(/ё/g, "е");
 }
 
 export default function OnboardingMedicationsScreen() {
@@ -40,11 +43,16 @@ export default function OnboardingMedicationsScreen() {
   const insets = useSafeAreaInsets();
 
   const [dailyAnswer, setDailyAnswer] = useState<DailyAnswer>(null);
-  const [medications, setMedications] = useState<Medication[]>([]);
+  const [medications, setMedications] = useState<NormalizedMedication[]>([]);
   const [loadingMeds, setLoadingMeds] = useState(true);
   const [nameQuery, setNameQuery] = useState("");
   const [selectedName, setSelectedName] = useState("");
+  const [selectedReference, setSelectedReference] = useState<MedicationReferenceItem | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [referenceItems, setReferenceItems] = useState<MedicationReferenceItem[]>([]);
+  const [referenceSearching, setReferenceSearching] = useState(false);
+  const [referenceAvailable, setReferenceAvailable] = useState<boolean | null>(null);
+  const [referenceError, setReferenceError] = useState(false);
   const [doseAmount, setDoseAmount] = useState("");
   const [doseUnit, setDoseUnit] = useState<"mg" | "tablet">("mg");
   const [dayParts, setDayParts] = useState<DayPart[]>([]);
@@ -61,7 +69,7 @@ export default function OnboardingMedicationsScreen() {
     }
     void api.listMeds(activeId).then((items) => {
       if (cancelled) return;
-      const active = items.filter((item) => item.active);
+      const active = items.filter((item) => item.active) as NormalizedMedication[];
       setMedications(active);
       if (active.length) setDailyAnswer((current) => current ?? "yes");
     }).catch(() => undefined).finally(() => {
@@ -70,32 +78,88 @@ export default function OnboardingMedicationsScreen() {
     return () => { cancelled = true; };
   }, [activeId]);
 
-  const suggestions = useMemo(() => {
-    const localized = COMMON_MEDICATIONS.map(([r, e]) => ru ? r : e);
-    const existing = medications.map((item) => item.name).filter(Boolean);
-    const unique = Array.from(new Set([...existing, ...localized]));
-    const query = nameQuery.trim().toLocaleLowerCase();
-    const filtered = query ? unique.filter((name) => name.toLocaleLowerCase().includes(query)) : [];
-    return filtered.slice(0, 8);
-  }, [medications, nameQuery, ru]);
+  useEffect(() => {
+    const query = nameQuery.trim();
+    if (!pickerOpen || selectedReference || query.length < 3) {
+      setReferenceItems([]);
+      setReferenceSearching(false);
+      setReferenceError(false);
+      if (query.length < 3) setReferenceAvailable(null);
+      return;
+    }
 
-  const hasExactSuggestion = useMemo(() => {
-    const query = nameQuery.trim().toLocaleLowerCase();
-    return !!query && suggestions.some((name) => name.toLocaleLowerCase() === query);
-  }, [nameQuery, suggestions]);
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      setReferenceSearching(true);
+      setReferenceError(false);
+      void searchMedicationReferences(query, 12).then((result) => {
+        if (cancelled) return;
+        setReferenceItems(result.items.filter((item) => !!item.reference_id && !!item.trade_name));
+        setReferenceAvailable(result.provider_available);
+      }).catch(() => {
+        if (cancelled) return;
+        setReferenceItems([]);
+        setReferenceError(true);
+        setReferenceAvailable(false);
+      }).finally(() => {
+        if (!cancelled) setReferenceSearching(false);
+      });
+    }, 350);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [nameQuery, pickerOpen, selectedReference]);
+
+  const hasExactReference = useMemo(() => {
+    const query = normalizedText(nameQuery);
+    return !!query && referenceItems.some((item) => normalizedText(item.trade_name) === query);
+  }, [nameQuery, referenceItems]);
 
   const resetForm = () => {
     setNameQuery("");
     setSelectedName("");
+    setSelectedReference(null);
     setPickerOpen(false);
+    setReferenceItems([]);
+    setReferenceSearching(false);
+    setReferenceAvailable(null);
+    setReferenceError(false);
     setDoseAmount("");
     setDoseUnit("mg");
     setDayParts([]);
     setMealRelation("any");
   };
 
+  const selectReference = (item: MedicationReferenceItem) => {
+    const name = String(item.trade_name || "").trim();
+    if (!name || !item.reference_id) return;
+    setSelectedReference(item);
+    setSelectedName(name);
+    setNameQuery(name);
+    setPickerOpen(false);
+    setError(null);
+  };
+
+  const selectManualName = () => {
+    const custom = nameQuery.trim();
+    if (!custom) return;
+    setSelectedReference(null);
+    setSelectedName(custom);
+    setNameQuery(custom);
+    setPickerOpen(false);
+    setError(null);
+  };
+
   const toggleDayPart = (value: DayPart) => {
     setDayParts((current) => current.includes(value) ? current.filter((item) => item !== value) : [...current, value]);
+  };
+
+  const referenceStatusLabel = (item: MedicationReferenceItem) => {
+    if (item.verification_status === "verified") return ru ? "подтверждено справочником" : "reference verified";
+    if (item.verification_status === "probable") return ru ? "вероятное соответствие" : "probable match";
+    return ru ? "требует проверки" : "needs verification";
   };
 
   const addMedication = async () => {
@@ -103,7 +167,7 @@ export default function OnboardingMedicationsScreen() {
     const name = selectedName.trim();
     const amount = Number(doseAmount.replace(",", "."));
     if (!name) {
-      setError(ru ? "Выберите препарат из списка или подтвердите введённое название" : "Choose a medication from the list or confirm the typed name");
+      setError(ru ? "Выберите препарат из справочника или подтвердите введённое название" : "Choose a medication from the catalogue or confirm the typed name");
       return;
     }
     if (!doseAmount.trim() || !Number.isFinite(amount) || amount <= 0) {
@@ -134,12 +198,16 @@ export default function OnboardingMedicationsScreen() {
         active: true,
         start_date: localDateString(),
         source: "aida",
-      });
+        reference_source: selectedReference?.reference_source || "manual",
+        reference_id: selectedReference?.reference_id || null,
+      }) as NormalizedMedication;
       setMedications((current) => [created, ...current.filter((item) => item.id !== created.id)]);
       setDailyAnswer("yes");
       resetForm();
     } catch {
-      setError(ru ? "Не удалось добавить препарат" : "Could not add medication");
+      setError(selectedReference
+        ? (ru ? "Не удалось подтвердить препарат по справочнику. Попробуйте выбрать его ещё раз." : "Could not verify the medication in the catalogue. Please select it again.")
+        : (ru ? "Не удалось добавить препарат" : "Could not add medication"));
     } finally {
       setSavingMed(false);
     }
@@ -232,34 +300,96 @@ export default function OnboardingMedicationsScreen() {
       {dailyAnswer === "yes" ? (
         <View style={s.section}>
           <Text style={s.sectionTitle}>{ru ? "Добавить препарат" : "Add medication"}</Text>
-          <Text style={s.label}>{ru ? "Препарат" : "Medication"}</Text>
+          <Text style={s.label}>{ru ? "Препарат или действующее вещество" : "Medication or active ingredient"}</Text>
           <View style={s.searchWrap}>
             <Ionicons name="search-outline" size={18} color={colors.onSurfaceSecondary} />
             <TextInput
               value={nameQuery}
-              onChangeText={(value) => { setNameQuery(value); setSelectedName(""); setPickerOpen(true); setError(null); }}
+              onChangeText={(value) => {
+                setNameQuery(value);
+                setSelectedName("");
+                setSelectedReference(null);
+                setPickerOpen(true);
+                setError(null);
+              }}
               onFocus={() => setPickerOpen(true)}
-              placeholder={ru ? "Начните вводить название" : "Start typing a medication name"}
+              placeholder={ru ? "Напр. Атаракс или гидроксизин" : "e.g. Atarax or hydroxyzine"}
               placeholderTextColor={colors.onSurfaceSecondary}
               style={s.searchInput}
               testID="onboarding-medication-name"
+              autoCapitalize="none"
+              autoCorrect={false}
             />
+            {referenceSearching ? <ActivityIndicator size="small" color={colors.onSurfaceSecondary} /> : null}
             {selectedName ? <Ionicons name="checkmark-circle" size={20} color={colors.success} /> : null}
           </View>
+          <Text style={s.searchHelp}>{ru ? "Сначала ищем в каталоге Aida. Если препарата ещё нет, Aida проверяет бесплатные справочники в интернете и запоминает найденное соответствие." : "Aida searches its catalogue first. On a miss, it checks free public references online and remembers the normalized match."}</Text>
 
-          {pickerOpen ? (
+          {pickerOpen && nameQuery.trim().length > 0 ? (
             <View style={s.dropdown} testID="medication-name-dropdown">
-              {suggestions.map((name) => (
-                <Pressable key={name} style={({ pressed }) => [s.dropdownItem, pressed && s.pressed]} onPress={() => { setNameQuery(name); setSelectedName(name); setPickerOpen(false); }}>
-                  <Text style={s.dropdownText}>{name}</Text>
+              {nameQuery.trim().length < 3 ? (
+                <View style={s.lookupState}><Text style={s.lookupStateText}>{ru ? "Введите минимум 3 символа для поиска по справочнику" : "Type at least 3 characters to search the catalogue"}</Text></View>
+              ) : null}
+
+              {referenceItems.map((item, index) => (
+                <Pressable
+                  key={`${item.reference_id || item.trade_name}-${index}`}
+                  style={({ pressed }) => [s.dropdownItem, pressed && s.pressed]}
+                  onPress={() => selectReference(item)}
+                  testID={`medication-reference-${index}`}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.dropdownTitle}>{item.trade_name}</Text>
+                    <Text style={s.dropdownMeta}>
+                      {[
+                        item.active_ingredient ? `${ru ? "Действующее вещество" : "Active ingredient"}: ${item.active_ingredient}` : null,
+                        referenceStatusLabel(item),
+                        (item.source_names || []).length ? (item.source_names || []).join(" + ") : null,
+                        item.strength,
+                        item.dosage_form,
+                      ].filter(Boolean).join(" · ")}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={17} color={colors.onSurfaceSecondary} />
                 </Pressable>
               ))}
-              {nameQuery.trim() && !hasExactSuggestion ? (
-                <Pressable style={({ pressed }) => [s.dropdownItem, s.customNameItem, pressed && s.pressed]} onPress={() => { const custom = nameQuery.trim(); setSelectedName(custom); setNameQuery(custom); setPickerOpen(false); }}>
+
+              {!referenceSearching && nameQuery.trim().length >= 3 && (referenceAvailable === false || referenceError) ? (
+                <View style={s.lookupState} testID="medication-reference-unavailable">
+                  <Ionicons name="cloud-offline-outline" size={17} color={colors.warning} />
+                  <Text style={s.lookupStateText}>{ru ? "Сейчас не удалось проверить интернет-источники. Ранее сохранённый каталог продолжает работать; при необходимости название можно добавить вручную." : "Online references could not be checked right now. Previously cached catalogue entries still work; you can also add the name manually."}</Text>
+                </View>
+              ) : null}
+
+              {!referenceSearching && nameQuery.trim().length >= 3 && referenceAvailable === true && referenceItems.length === 0 ? (
+                <View style={s.lookupState}><Text style={s.lookupStateText}>{ru ? "Точного соответствия пока не найдено. Можно добавить название вручную — оно останется непроверенным." : "No normalized match was found yet. You can add the name manually and it will remain unverified."}</Text></View>
+              ) : null}
+
+              {nameQuery.trim() && !hasExactReference ? (
+                <Pressable style={({ pressed }) => [s.dropdownItem, s.customNameItem, pressed && s.pressed]} onPress={selectManualName} testID="medication-manual-name">
                   <Ionicons name="add-circle-outline" size={18} color={colors.onSurface} />
-                  <Text style={s.dropdownText}>{ru ? `Использовать «${nameQuery.trim()}»` : `Use “${nameQuery.trim()}”`}</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.dropdownTitle}>{ru ? `Добавить «${nameQuery.trim()}» вручную` : `Add “${nameQuery.trim()}” manually`}</Text>
+                    <Text style={s.dropdownMeta}>{ru ? "Без подтверждённого действующего вещества" : "Without a verified active ingredient"}</Text>
+                  </View>
                 </Pressable>
               ) : null}
+            </View>
+          ) : null}
+
+          {selectedReference ? (
+            <View style={selectedReference.verification_status === "probable" ? s.probableNote : s.referenceNote} testID="selected-medication-reference">
+              <Ionicons name={selectedReference.verification_status === "probable" ? "information-circle-outline" : "checkmark-circle"} size={18} color={selectedReference.verification_status === "probable" ? colors.warning : colors.success} />
+              <View style={{ flex: 1 }}>
+                <Text style={s.referenceTitle}>{selectedReference.trade_name}</Text>
+                <Text style={s.referenceText}>{ru ? "Действующее вещество" : "Active ingredient"}: {selectedReference.active_ingredient || (ru ? "не указано" : "not specified")}</Text>
+                <Text style={s.referenceText}>{referenceStatusLabel(selectedReference)}{(selectedReference.source_names || []).length ? ` · ${(selectedReference.source_names || []).join(" + ")}` : ""}</Text>
+              </View>
+            </View>
+          ) : selectedName ? (
+            <View style={s.manualNote} testID="selected-medication-manual">
+              <Ionicons name="alert-circle-outline" size={18} color={colors.warning} />
+              <Text style={s.referenceText}>{ru ? "Название добавляется вручную. ИИ не должен считать действующее вещество подтверждённым, пока препарат не будет нормализован." : "This name is being added manually. AI must not treat its active ingredient as verified until the medication is normalized."}</Text>
             </View>
           ) : null}
 
@@ -310,6 +440,7 @@ export default function OnboardingMedicationsScreen() {
               <View style={s.medIcon}><Ionicons name="medkit-outline" size={18} color={colors.onSurface} /></View>
               <View style={{ flex: 1 }}>
                 <Text style={s.medName}>{med.name}</Text>
+                {med.active_ingredient ? <Text style={s.medIngredient}>{ru ? "Действующее вещество" : "Active ingredient"}: {med.active_ingredient}</Text> : null}
                 <Text style={s.medMeta}>{[med.dose, (med.day_parts || []).map(dayPartLabel).join(" · ")].filter(Boolean).join(" · ")}</Text>
               </View>
               <Pressable onPress={() => void removeMedication(med.id)} accessibilityRole="button" accessibilityLabel={ru ? `Удалить ${med.name}` : `Remove ${med.name}`} style={s.removeButton}>
@@ -337,5 +468,5 @@ function AnswerChoice({ label, active, onPress }: { label: string; active: boole
 function Choice({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) { return <Pressable style={({ pressed }) => [s.chip, active && s.chipActive, pressed && s.pressed]} onPress={onPress} accessibilityRole="button" accessibilityState={{ selected: active }}><Text style={[s.chipText, active && s.chipTextActive]}>{label}</Text></Pressable>; }
 
 const s = StyleSheet.create({
-  page:{flex:1,backgroundColor:colors.surface},content:{width:"100%",maxWidth:720,alignSelf:"center",paddingHorizontal:spacing.xl},progressRow:{gap:8},eyebrow:{fontSize:12,fontWeight:"800",letterSpacing:1.5,color:colors.onSurfaceSecondary},progress:{height:4,borderRadius:2,backgroundColor:colors.surfaceSecondary,overflow:"hidden"},progressFill:{height:4,backgroundColor:colors.onSurface},title:{marginTop:spacing.lg,fontSize:34,lineHeight:40,fontWeight:"800",fontFamily:fonts.display,color:colors.onSurface},subtitle:{marginTop:spacing.sm,fontSize:fontSize.base,lineHeight:22,color:colors.onSurfaceSecondary,fontFamily:fonts.text},section:{marginTop:spacing.xl,backgroundColor:colors.surfaceSecondary,borderRadius:radius.lg,borderWidth:1,borderColor:colors.border,padding:spacing.lg},sectionTitle:{fontSize:fontSize.lg,fontWeight:"800",color:colors.onSurface,marginBottom:spacing.md,fontFamily:fonts.display},question:{fontSize:fontSize.lg,lineHeight:24,fontWeight:"800",color:colors.onSurface,fontFamily:fonts.display},answerRow:{flexDirection:"row",gap:spacing.sm,marginTop:spacing.lg},answerChoice:{flex:1,minHeight:50,borderRadius:radius.pill,borderWidth:1,borderColor:colors.borderStrong,backgroundColor:colors.surface,flexDirection:"row",alignItems:"center",justifyContent:"center",gap:8},answerChoiceActive:{backgroundColor:colors.onSurface,borderColor:colors.onSurface},answerText:{fontWeight:"800",color:colors.onSurface,fontFamily:fonts.text},answerTextActive:{color:colors.onSurfaceInverse},label:{fontSize:fontSize.sm,fontWeight:"700",color:colors.onSurfaceSecondary,marginBottom:7,fontFamily:fonts.text},searchWrap:{minHeight:52,borderRadius:radius.md,borderWidth:1,borderColor:colors.border,backgroundColor:colors.surface,flexDirection:"row",alignItems:"center",gap:8,paddingHorizontal:spacing.md},searchInput:{flex:1,minHeight:50,color:colors.onSurface,fontSize:fontSize.base,fontFamily:fonts.text},dropdown:{marginTop:6,borderRadius:radius.md,borderWidth:1,borderColor:colors.borderStrong,backgroundColor:colors.surface,overflow:"hidden"},dropdownItem:{minHeight:46,paddingHorizontal:spacing.md,flexDirection:"row",alignItems:"center",gap:8,borderBottomWidth:1,borderBottomColor:colors.divider},customNameItem:{backgroundColor:colors.surfaceTertiary},dropdownText:{fontSize:fontSize.base,color:colors.onSurface,fontFamily:fonts.text,flex:1},doseRow:{flexDirection:"row",gap:spacing.sm,alignItems:"center",marginBottom:spacing.lg,flexWrap:"wrap"},input:{minHeight:50,borderRadius:radius.md,borderWidth:1,borderColor:colors.border,backgroundColor:colors.surface,paddingHorizontal:spacing.md,color:colors.onSurface,fontSize:fontSize.base},doseInput:{width:130},unitRow:{flexDirection:"row",gap:8,flex:1,flexWrap:"wrap"},chips:{flexDirection:"row",gap:8,flexWrap:"wrap"},chip:{minHeight:44,paddingHorizontal:14,paddingVertical:9,borderRadius:radius.pill,borderWidth:1,borderColor:colors.borderStrong,backgroundColor:colors.surface,alignItems:"center",justifyContent:"center"},chipActive:{backgroundColor:colors.onSurface,borderColor:colors.onSurface},chipText:{fontWeight:"700",color:colors.onSurface,fontFamily:fonts.text},chipTextActive:{color:colors.onSurfaceInverse},addButton:{minHeight:52,borderRadius:radius.pill,backgroundColor:colors.onSurface,flexDirection:"row",alignItems:"center",justifyContent:"center",gap:8,marginTop:spacing.xl},addButtonText:{color:colors.onSurfaceInverse,fontWeight:"800",fontFamily:fonts.text},medRow:{minHeight:64,flexDirection:"row",alignItems:"center",gap:spacing.md,borderBottomWidth:1,borderBottomColor:colors.divider,paddingVertical:spacing.sm},medIcon:{width:40,height:40,borderRadius:20,backgroundColor:colors.surface,alignItems:"center",justifyContent:"center"},medName:{fontWeight:"800",fontSize:fontSize.base,color:colors.onSurface,fontFamily:fonts.text},medMeta:{fontSize:fontSize.sm,color:colors.onSurfaceSecondary,marginTop:3,fontFamily:fonts.text},removeButton:{width:40,height:40,alignItems:"center",justifyContent:"center"},emptyText:{color:colors.onSurfaceSecondary,fontFamily:fonts.text},actions:{flexDirection:"row",gap:spacing.md,marginTop:spacing.xl,flexWrap:"wrap"},primary:{flex:1,minWidth:180,minHeight:54,borderRadius:radius.pill,backgroundColor:colors.onSurface,alignItems:"center",justifyContent:"center",paddingHorizontal:spacing.md},primaryText:{color:colors.onSurfaceInverse,fontWeight:"800",fontFamily:fonts.text,textAlign:"center"},secondary:{minWidth:110,minHeight:54,borderRadius:radius.pill,borderWidth:1,borderColor:colors.borderStrong,alignItems:"center",justifyContent:"center",paddingHorizontal:spacing.md},secondaryText:{fontWeight:"800",color:colors.onSurface,fontFamily:fonts.text},skip:{minHeight:50,alignItems:"center",justifyContent:"center"},skipText:{color:colors.onSurfaceSecondary,fontWeight:"700",fontFamily:fonts.text},error:{color:colors.error,marginTop:spacing.lg,fontFamily:fonts.text},pressed:{opacity:.78}
+  page:{flex:1,backgroundColor:colors.surface},content:{width:"100%",maxWidth:720,alignSelf:"center",paddingHorizontal:spacing.xl},progressRow:{gap:8},eyebrow:{fontSize:12,fontWeight:"800",letterSpacing:1.5,color:colors.onSurfaceSecondary},progress:{height:4,borderRadius:2,backgroundColor:colors.surfaceSecondary,overflow:"hidden"},progressFill:{height:4,backgroundColor:colors.onSurface},title:{marginTop:spacing.lg,fontSize:34,lineHeight:40,fontWeight:"800",fontFamily:fonts.display,color:colors.onSurface},subtitle:{marginTop:spacing.sm,fontSize:fontSize.base,lineHeight:22,color:colors.onSurfaceSecondary,fontFamily:fonts.text},section:{marginTop:spacing.xl,backgroundColor:colors.surfaceSecondary,borderRadius:radius.lg,borderWidth:1,borderColor:colors.border,padding:spacing.lg},sectionTitle:{fontSize:fontSize.lg,fontWeight:"800",color:colors.onSurface,marginBottom:spacing.md,fontFamily:fonts.display},question:{fontSize:fontSize.lg,lineHeight:24,fontWeight:"800",color:colors.onSurface,fontFamily:fonts.display},answerRow:{flexDirection:"row",gap:spacing.sm,marginTop:spacing.lg},answerChoice:{flex:1,minHeight:50,borderRadius:radius.pill,borderWidth:1,borderColor:colors.borderStrong,backgroundColor:colors.surface,flexDirection:"row",alignItems:"center",justifyContent:"center",gap:8},answerChoiceActive:{backgroundColor:colors.onSurface,borderColor:colors.onSurface},answerText:{fontWeight:"800",color:colors.onSurface,fontFamily:fonts.text},answerTextActive:{color:colors.onSurfaceInverse},label:{fontSize:fontSize.sm,fontWeight:"700",color:colors.onSurfaceSecondary,marginBottom:7,fontFamily:fonts.text},searchWrap:{minHeight:52,borderRadius:radius.md,borderWidth:1,borderColor:colors.border,backgroundColor:colors.surface,flexDirection:"row",alignItems:"center",gap:8,paddingHorizontal:spacing.md},searchInput:{flex:1,minHeight:50,color:colors.onSurface,fontSize:fontSize.base,fontFamily:fonts.text},searchHelp:{fontSize:12,lineHeight:17,color:colors.onSurfaceSecondary,fontFamily:fonts.text,marginTop:6},dropdown:{marginTop:6,borderRadius:radius.md,borderWidth:1,borderColor:colors.borderStrong,backgroundColor:colors.surface,overflow:"hidden"},dropdownItem:{minHeight:54,paddingHorizontal:spacing.md,paddingVertical:9,flexDirection:"row",alignItems:"center",gap:8,borderBottomWidth:1,borderBottomColor:colors.divider},customNameItem:{backgroundColor:colors.surfaceTertiary},dropdownTitle:{fontSize:fontSize.base,fontWeight:"800",color:colors.onSurface,fontFamily:fonts.text},dropdownMeta:{fontSize:12,lineHeight:17,color:colors.onSurfaceSecondary,fontFamily:fonts.text,marginTop:2},lookupState:{minHeight:48,paddingHorizontal:spacing.md,paddingVertical:10,flexDirection:"row",alignItems:"center",gap:8,borderBottomWidth:1,borderBottomColor:colors.divider},lookupStateText:{fontSize:fontSize.sm,lineHeight:18,color:colors.onSurfaceSecondary,fontFamily:fonts.text,flex:1},referenceNote:{marginTop:spacing.sm,minHeight:56,borderRadius:radius.md,borderWidth:1,borderColor:colors.border,backgroundColor:colors.surface,flexDirection:"row",gap:10,alignItems:"center",padding:spacing.md},probableNote:{marginTop:spacing.sm,minHeight:56,borderRadius:radius.md,borderWidth:1,borderColor:colors.warning,backgroundColor:colors.surface,flexDirection:"row",gap:10,alignItems:"center",padding:spacing.md},manualNote:{marginTop:spacing.sm,minHeight:52,borderRadius:radius.md,backgroundColor:colors.surfaceTertiary,flexDirection:"row",gap:10,alignItems:"center",padding:spacing.md},referenceTitle:{fontWeight:"800",color:colors.onSurface,fontFamily:fonts.text},referenceText:{fontSize:fontSize.sm,lineHeight:18,color:colors.onSurfaceSecondary,fontFamily:fonts.text},doseRow:{flexDirection:"row",gap:spacing.sm,alignItems:"center",marginBottom:spacing.lg,flexWrap:"wrap"},input:{minHeight:50,borderRadius:radius.md,borderWidth:1,borderColor:colors.border,backgroundColor:colors.surface,paddingHorizontal:spacing.md,color:colors.onSurface,fontSize:fontSize.base},doseInput:{width:130},unitRow:{flexDirection:"row",gap:8,flex:1,flexWrap:"wrap"},chips:{flexDirection:"row",gap:8,flexWrap:"wrap"},chip:{minHeight:44,paddingHorizontal:14,paddingVertical:9,borderRadius:radius.pill,borderWidth:1,borderColor:colors.borderStrong,backgroundColor:colors.surface,alignItems:"center",justifyContent:"center"},chipActive:{backgroundColor:colors.onSurface,borderColor:colors.onSurface},chipText:{fontWeight:"700",color:colors.onSurface,fontFamily:fonts.text},chipTextActive:{color:colors.onSurfaceInverse},addButton:{minHeight:52,borderRadius:radius.pill,backgroundColor:colors.onSurface,flexDirection:"row",alignItems:"center",justifyContent:"center",gap:8,marginTop:spacing.xl},addButtonText:{color:colors.onSurfaceInverse,fontWeight:"800",fontFamily:fonts.text},medRow:{minHeight:64,flexDirection:"row",alignItems:"center",gap:spacing.md,borderBottomWidth:1,borderBottomColor:colors.divider,paddingVertical:spacing.sm},medIcon:{width:40,height:40,borderRadius:20,backgroundColor:colors.surface,alignItems:"center",justifyContent:"center"},medName:{fontWeight:"800",fontSize:fontSize.base,color:colors.onSurface,fontFamily:fonts.text},medIngredient:{fontSize:fontSize.sm,color:colors.onSurface,fontFamily:fonts.text,marginTop:2},medMeta:{fontSize:fontSize.sm,color:colors.onSurfaceSecondary,marginTop:3,fontFamily:fonts.text},removeButton:{width:40,height:40,alignItems:"center",justifyContent:"center"},emptyText:{color:colors.onSurfaceSecondary,fontFamily:fonts.text},actions:{flexDirection:"row",gap:spacing.md,marginTop:spacing.xl,flexWrap:"wrap"},primary:{flex:1,minWidth:180,minHeight:54,borderRadius:radius.pill,backgroundColor:colors.onSurface,alignItems:"center",justifyContent:"center",paddingHorizontal:spacing.md},primaryText:{color:colors.onSurfaceInverse,fontWeight:"800",fontFamily:fonts.text,textAlign:"center"},secondary:{minWidth:110,minHeight:54,borderRadius:radius.pill,borderWidth:1,borderColor:colors.borderStrong,alignItems:"center",justifyContent:"center",paddingHorizontal:spacing.md},secondaryText:{fontWeight:"800",color:colors.onSurface,fontFamily:fonts.text},skip:{minHeight:50,alignItems:"center",justifyContent:"center"},skipText:{color:colors.onSurfaceSecondary,fontWeight:"700",fontFamily:fonts.text},error:{color:colors.error,marginTop:spacing.lg,fontFamily:fonts.text},pressed:{opacity:.78}
 });
