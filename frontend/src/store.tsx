@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
 import { storage } from "@/src/utils/storage";
-import { api, Profile } from "@/src/api";
+import { api, Profile, setProfileCacheAccountId } from "@/src/api";
 import { withTimeout } from "@/src/async";
 import { useAuth } from "@/src/auth";
 
@@ -37,7 +37,7 @@ const AppContext = createContext<Ctx>({
 });
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { preview } = useAuth();
+  const { preview, account } = useAuth();
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -47,18 +47,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const load = useCallback(async () => {
     setError(null);
     if (preview) {
+      setProfileCacheAccountId(null);
       setProfiles([PREVIEW_PROFILE]);
       setActiveId(PREVIEW_PROFILE.id);
       setLoading(false);
       return;
     }
 
+    if (!account?.id) {
+      setProfileCacheAccountId(null);
+      setProfiles([]);
+      setActiveId(null);
+      setLoading(false);
+      return;
+    }
+
+    setProfileCacheAccountId(account.id);
+    const profileCacheKey = `${PROFILE_CACHE_KEY}.${account.id}`;
+    const activeKey = `${ACTIVE_KEY}.${account.id}`;
+
     let cachedProfiles: Profile[] = [];
     let storedActiveId = "";
     try {
       const [cachedRaw, stored] = await Promise.all([
-        storage.getItem<string>(PROFILE_CACHE_KEY, ""),
-        storage.getItem<string>(ACTIVE_KEY, ""),
+        storage.getItem<string>(profileCacheKey, ""),
+        storage.getItem<string>(activeKey, ""),
       ]);
       storedActiveId = stored || "";
       if (cachedRaw) {
@@ -88,7 +101,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const valid = list.find((p) => p.id === storedActiveId);
       const nextId = valid ? valid.id : list[0]?.id ?? null;
       setActiveId(nextId);
-      void storage.setItem(PROFILE_CACHE_KEY, JSON.stringify(list));
+      void storage.setItem(profileCacheKey, JSON.stringify(list));
     } catch (e: any) {
       // Keep usable cached state when refresh is slow/offline instead of replacing
       // the whole app with a spinner. Only surface an error when no cache exists.
@@ -96,15 +109,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } finally {
       setLoading(false);
     }
-  }, [preview]);
+  }, [account?.id, preview]);
 
   useEffect(() => { load(); }, [load]);
 
   const setActive = useCallback((id: string) => {
     setActiveId(id);
-    if (!preview) storage.setItem(ACTIVE_KEY, id);
+    if (!preview && account?.id) storage.setItem(`${ACTIVE_KEY}.${account.id}`, id);
     setRefreshTick((t) => t + 1);
-  }, [preview]);
+  }, [account?.id, preview]);
 
   const bumpRefresh = useCallback(() => setRefreshTick((t) => t + 1), []);
   const activeProfile = profiles.find((p) => p.id === activeId) ?? null;
