@@ -1,4 +1,6 @@
 import asyncio
+import base64
+import json
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
@@ -68,23 +70,44 @@ def test_vk_authorization_url_matches_current_vkid_contract(monkeypatch):
     monkeypatch.delenv("VK_CLIENT_SECRET", raising=False)
     monkeypatch.setenv("VK_REDIRECT_URI", "https://aidaassistent.ru/api/auth/oauth/vk/callback")
     monkeypatch.setenv("OAUTH_ALLOWED_RETURN_URIS", "https://aidaassistent.ru/auth")
+    monkeypatch.setenv("VK_ID_SDK_VERSION", "2.6.1")
 
     service = SocialAuthService(db=_StartDb(), auth_service=None)
     result = asyncio.run(service.start("vk", "https://aidaassistent.ru/auth"))
     parsed = urlparse(result["authorization_url"])
-    params = parse_qs(parsed.query)
+    params = parse_qs(parsed.query, keep_blank_values=True)
 
     assert parsed.scheme == "https"
     assert parsed.netloc == "id.vk.ru"
     assert parsed.path == "/authorize"
+    assert set(params) == {
+        "code_challenge",
+        "code_challenge_method",
+        "client_id",
+        "response_type",
+        "state",
+        "v",
+        "sdk_type",
+        "app_id",
+        "redirect_uri",
+        "prompt",
+        "stats_info",
+    }
     assert params["client_id"] == ["54732218"]
     assert params["app_id"] == ["54732218"]
     assert params["code_challenge_method"] == ["s256"]
     assert params["sdk_type"] == ["vkid"]
     assert params["redirect_uri"] == ["https://aidaassistent.ru/api/auth/oauth/vk/callback"]
-    assert params["scope"] == ["email"]
+    assert params["response_type"] == ["code"]
+    assert params["v"] == ['"2.6.1"']
+    assert params["prompt"] == [""]
+    assert "scope" not in params
     assert params["state"][0]
     assert params["code_challenge"][0]
+
+    stats = json.loads(base64.b64decode(params["stats_info"][0]).decode("utf-8"))
+    assert stats["flow_source"] == "auth"
+    assert stats["session_id"]
 
 
 def test_vk_token_exchange_matches_current_vkid_contract(monkeypatch):
@@ -157,7 +180,7 @@ def test_callback_storage_and_partial_social_account_are_hardened():
     assert "Social OAuth account persistence failed" in source
     assert "Social OAuth completion persistence failed" in source
     assert 'if existing and str(existing.get("password_hash") or "")' in source
-    assert "Recover a partially-created social account" in source
+    assert 'profile = await self.db.profiles.find_one({"account_id": account_id, "kind": "me"}' in source
     assert 'request.query_params.get("payload")' in source
     assert '"oauth_error": _callback_error_code(exc)' in source
 
