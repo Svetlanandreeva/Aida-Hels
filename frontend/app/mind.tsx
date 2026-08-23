@@ -45,7 +45,7 @@ const MENTAL_GROUPS: Record<string, { ru: string; en: string }> = {
 
 const MENTAL_MEDICATION_MARKERS = [
   "hydroxyzine", "гидроксизин", "atarax", "атаракс",
-  "escitalopram", "эсциталопрам", "cipralекс", "ципралекс",
+  "escitalopram", "эсциталопрам", "cipralex", "ципралекс",
   "sertraline", "сертралин", "zoloft", "золофт",
   "fluoxetine", "флуоксетин", "prozac", "прозак",
   "paroxetine", "пароксетин", "paxil", "паксил",
