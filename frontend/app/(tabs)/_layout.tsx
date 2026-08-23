@@ -56,7 +56,7 @@ export default function TabsLayout() {
   );
 
   const routeVisible = (name: string) => {
-    if (name === "pet") return petUnlocked;
+    if (name === "companion") return petUnlocked;
     if (!(name in PRIMARY_TAB_MODULES)) return false;
     const moduleCode = PRIMARY_TAB_MODULES[name];
     return moduleCode === null || enabledModules === null || enabledModules.has(moduleCode);
@@ -101,7 +101,7 @@ export default function TabsLayout() {
       <Tabs.Screen name="labs" options={{ title: lang === "ru" ? "Анализы" : "Labs" }} />
       <Tabs.Screen name="chat" options={{ title: lang === "ru" ? "Аида" : "Aida" }} />
       <Tabs.Screen name="tasks" options={{ title: lang === "ru" ? "Задачи" : "Tasks" }} />
-      <Tabs.Screen name="pet" options={{ title: lang === "ru" ? "Питомец" : "Pet" }} />
+      <Tabs.Screen name="companion" options={{ title: lang === "ru" ? "Питомец" : "Pet" }} />
       <Tabs.Screen name="health" options={{ href: null }} />
       <Tabs.Screen name="profile" options={{ href: null }} />
     </Tabs>
