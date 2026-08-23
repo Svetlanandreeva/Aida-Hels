@@ -11,6 +11,7 @@ import json
 from datetime import date, datetime, timezone
 from typing import Any, Dict, Iterable
 
+from module_config import module_ai_allowed
 from nutrition_api import build_nutrition_context
 
 
@@ -76,11 +77,6 @@ def _compact(kind: str, row: Dict[str, Any], keys: Iterable[str]) -> Dict[str, A
     return item
 
 
-def _module_enabled(settings: Dict[str, Any], key: str) -> bool:
-    """Missing settings keep backward compatibility; explicit false is fail-closed."""
-    return settings.get(key) is not False
-
-
 async def build_ai_context(db, profile_id: str, *, as_json: bool = True) -> str | Dict[str, Any]:
     profile = await db.profiles.find_one({"id": profile_id}, {"_id": 0})
     if not profile:
@@ -90,15 +86,12 @@ async def build_ai_context(db, profile_id: str, *, as_json: bool = True) -> str 
     if privacy.get("include_in_ai_context") is False:
         return "" if as_json else {}
 
-    modules = profile.get("module_settings") or {}
-    medications = await db.medications.find({"profile_id": profile_id, "active": True}, {"_id": 0}).to_list(100) if _module_enabled(modules, "meds") else []
-    symptoms = await db.symptoms.find({"profile_id": profile_id}, {"_id": 0}).sort("date", -1).to_list(20) if _module_enabled(modules, "symptoms") else []
-    labs = await db.labs.find({"profile_id": profile_id}, {"_id": 0}).sort("date", -1).to_list(12) if _module_enabled(modules, "labs") else []
-    vitals = await db.vitals.find({"profile_id": profile_id}, {"_id": 0}).sort("observed_at", -1).to_list(80) if _module_enabled(modules, "pressure") else []
-    checkins = await db.checkins.find({"profile_id": profile_id}, {"_id": 0}).sort("date", -1).to_list(14) if _module_enabled(modules, "mental") else []
-    # Nutrition is new and therefore opt-in. Unlike legacy modules, a missing
-    # setting must not silently expose a user's food diary to AI context.
-    nutrition = await build_nutrition_context(db, profile_id) if modules.get("nutrition") is True else {
+    medications = await db.medications.find({"profile_id": profile_id, "active": True}, {"_id": 0}).to_list(100) if module_ai_allowed(profile, "meds") else []
+    symptoms = await db.symptoms.find({"profile_id": profile_id}, {"_id": 0}).sort("date", -1).to_list(20) if module_ai_allowed(profile, "symptoms") else []
+    labs = await db.labs.find({"profile_id": profile_id}, {"_id": 0}).sort("date", -1).to_list(12) if module_ai_allowed(profile, "labs") else []
+    vitals = await db.vitals.find({"profile_id": profile_id}, {"_id": 0}).sort("observed_at", -1).to_list(80) if module_ai_allowed(profile, "pressure") else []
+    checkins = await db.checkins.find({"profile_id": profile_id}, {"_id": 0}).sort("date", -1).to_list(14) if module_ai_allowed(profile, "mental") else []
+    nutrition = await build_nutrition_context(db, profile_id) if module_ai_allowed(profile, "nutrition") else {
         "enabled": False,
         "entries": [],
         "daily": [],
@@ -118,11 +111,11 @@ async def build_ai_context(db, profile_id: str, *, as_json: bool = True) -> str 
             "height_cm": profile.get("height_cm"),
             "weight_kg": profile.get("weight_kg"),
             "allergies": profile.get("allergies") or [],
-            "chronic_conditions": (profile.get("chronic_conditions") or []) if _module_enabled(modules, "chronic") else [],
-            "mental_conditions": (profile.get("mental_conditions") or []) if _module_enabled(modules, "mental") else [],
-            "diagnoses": (profile.get("diagnoses") or []) if _module_enabled(modules, "chronic") else [],
+            "chronic_conditions": (profile.get("chronic_conditions") or []) if module_ai_allowed(profile, "chronic") else [],
+            "mental_conditions": (profile.get("mental_conditions") or []) if module_ai_allowed(profile, "mental") else [],
+            "diagnoses": (profile.get("diagnoses") or []) if module_ai_allowed(profile, "chronic") else [],
             "goals": profile.get("goals") or [],
-            "women_health": (profile.get("women_health") or {}) if _module_enabled(modules, "women") else {},
+            "women_health": (profile.get("women_health") or {}) if module_ai_allowed(profile, "women") else {},
         },
         "active_medications": [
             _compact(
@@ -167,6 +160,9 @@ async def build_ai_context(db, profile_id: str, *, as_json: bool = True) -> str 
             "wearable_values_are_source_reported_not_diagnoses": True,
             "freshness_and_quality_must_be_considered": True,
             "respect_module_settings": True,
+            "respect_module_ai_analytics_permissions": True,
+            "show_on_home_does_not_grant_ai_permission": True,
+            "notification_permission_does_not_grant_ai_permission": True,
             "medication_interactions_require_normalized_active_substances": True,
             "probable_medication_normalization_requires_uncertainty_warning": True,
             "manual_unverified_medication_names_are_not_active_substance_evidence": True,

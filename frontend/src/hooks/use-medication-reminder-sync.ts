@@ -3,6 +3,7 @@ import { Platform } from "react-native";
 
 import { api } from "@/src/api";
 import { getCircadianDay } from "@/src/circadianApi";
+import { findModule, getModuleConfig } from "@/src/moduleConfigApi";
 import { useApp } from "@/src/store";
 import { updateMedicationSchedule } from "@/src/medicationScheduleApi";
 
@@ -48,13 +49,18 @@ export function useMedicationReminderSync() {
         const preference = activeProfile.privacy?.notification_preferences?.medications === true;
         const showDetails = activeProfile.privacy?.show_notification_details === true;
         const permission = await getNotificationPermissionState();
-        const canSchedule = preference && permission === "granted";
+        const canUseDeviceNotifications = preference && permission === "granted";
         const today = localDate();
-        const [medications, rhythm] = await Promise.all([
+        const [medications, rhythm, moduleResponse] = await Promise.all([
           api.listMeds(activeId).catch(() => []),
           getCircadianDay(activeId, today).catch(() => null),
+          getModuleConfig(activeId).catch(() => null),
         ]);
         if (cancelled) return;
+
+        const medsModule = findModule(moduleResponse, "meds");
+        const moduleNotificationsAllowed = !!medsModule?.enabled && !!medsModule?.notifications_enabled;
+        const canSchedule = canUseDeviceNotifications && moduleNotificationsAllowed;
 
         for (const medication of medications as any[]) {
           if (cancelled) return;
@@ -65,14 +71,11 @@ export function useMedicationReminderSync() {
           const times = Array.isArray(medication.times) ? medication.times : [];
           if (canSchedule && medication.active !== false && times.length) {
             if (medication.first_dose_anchor === "wake") {
-              // The wake-linked dose is scheduled only for today after a confirmed wake.
-              // It must not become a DAILY reminder, otherwise one late wake would shift future days too.
               const first = shiftedFirstTime(medication, rhythm?.wake?.local_time);
               if (first && rhythm?.wake?.local_time) {
                 const id = await scheduleMedicationDoseAt({ medicationId: medication.id, name: medication.name, dose: medication.dose, date: today, time: first, showDetails });
                 if (id) nextIds.push(id);
               }
-              // Later doses remain ordinary clock-time daily reminders.
               if (times.length > 1) {
                 nextIds.push(...await scheduleMedicationReminders({ medicationId: medication.id, name: medication.name, dose: medication.dose, times: times.slice(1), showDetails }));
               }
