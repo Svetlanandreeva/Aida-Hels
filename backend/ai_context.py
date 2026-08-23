@@ -172,6 +172,8 @@ async def build_ai_context(db, profile_id: str, *, as_json: bool = True) -> str 
             "manual_unverified_medication_names_are_not_active_substance_evidence": True,
             "nutrition_module_is_explicit_opt_in": True,
             "nutrition_patterns_are_associations_not_causation": True,
+            "nutrition_long_term_history_is_meal_level_not_product_level": True,
+            "open_nutrition_source_disagreement_requires_uncertainty_warning": True,
             "food_medication_advice_requires_evidence_url": True,
             "never_recommend_stopping_or_changing_medication_dose_from_nutrition_data": True,
             "warfarin_vitamin_k_advice_prefers_consistency_not_blanket_avoidance": True,
