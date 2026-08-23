@@ -45,7 +45,7 @@ const MENTAL_GROUPS: Record<string, { ru: string; en: string }> = {
 
 const MENTAL_MEDICATION_MARKERS = [
   "hydroxyzine", "гидроксизин", "atarax", "атаракс",
-  "escitalopram", "эсциталопрам", "cipralex", "ципралекс",
+  "escitalopram", "эсциталопрам", "cipralекс", "ципралекс",
   "sertraline", "сертралин", "zoloft", "золофт",
   "fluoxetine", "флуоксетин", "prozac", "прозак",
   "paroxetine", "пароксетин", "paxil", "паксил",
@@ -321,7 +321,7 @@ export default function MindScreen() {
                     <Pressable
                       key={n}
                       testID={`${m.key}-${n}`}
-                      onPress={() => setVals((p) => ({ ...p, [m.key]: n }))
+                      onPress={() => setVals((p) => ({ ...p, [m.key]: n }))}
                       style={[styles.scaleDot, active && { backgroundColor: scaleColor(n, invert), borderColor: scaleColor(n, invert) }]}
                     >
                       <Text style={[styles.scaleText, active && { color: colors.onSurfaceInverse }]}>{n}</Text>
