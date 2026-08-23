@@ -34,4 +34,6 @@ def test_frontend_switches_subject_by_profile_id_and_surfaces_role():
     assert "setActive(p.id)" in family
     assert "p.access_role" in family
     assert 'const ACTIVE_KEY = "aida.activeProfileId"' in store
+    assert '`${ACTIVE_KEY}.${account.id}`' in store
+    assert '`${PROFILE_CACHE_KEY}.${account.id}`' in store
     assert "profiles.find((p) => p.id === activeId)" in store
