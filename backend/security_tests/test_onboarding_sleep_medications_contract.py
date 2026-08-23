@@ -44,11 +44,12 @@ def test_mental_medication_prompt_moved_off_lifestyle_step():
     assert 'router.push("/onboarding-medications"' in lifestyle
 
 
-def test_daily_medication_editor_uses_normalized_reference_catalog_and_structured_dose():
+def test_daily_medication_editor_uses_free_cached_reference_catalog_and_structured_dose():
     frontend = read("frontend/app/onboarding-medications.tsx")
     reference_client = read("frontend/src/medicationReferenceApi.ts")
     backend = read("backend/medication_api.py")
     reference_backend = read("backend/medication_reference.py")
+    env_example = read("backend/.env.example")
 
     assert "COMMON_MEDICATIONS" not in frontend
     assert "searchMedicationReferences" in frontend
@@ -66,18 +67,26 @@ def test_daily_medication_editor_uses_normalized_reference_catalog_and_structure
     assert 'meal_relation: mealRelation' in frontend
 
     assert "/reference/medications/search" in reference_client
+    assert 'provider: "aida_catalog"' in reference_client
     assert "active_substance_id" in reference_client
     assert "dose_amount: Optional[float]" in backend
     assert "day_parts: List[str]" in backend
     assert "reference_source: Optional[str]" in backend
     assert "reference_id: Optional[str]" in backend
+    assert 'reference_source == "aida_catalog"' in backend
+    assert "reference_verification_status" in backend
     assert "active_substance_id" in backend
     assert "resolve_reference" in backend
     assert '_ALLOWED_DAY_PARTS = {"morning", "day", "evening"}' in backend
     assert '_ALLOWED_DOSE_UNITS = {"mg", "tablet"}' in backend
-    assert 'tn_like=query' in reference_backend
-    assert 'mnn_like=query' in reference_backend
-    assert 'auth=httpx.BasicAuth(self.username, self.password)' in reference_backend
+
+    assert "db.medication_catalog" in reference_backend
+    assert "_cache_matches" in reference_backend
+    assert "_lookup_rxnorm" in reference_backend
+    assert "_lookup_pubchem" in reference_backend
+    assert "_lookup_wikidata" in reference_backend
+    assert "RLS_AURORA_USERNAME" not in env_example
+    assert "RLS_AURORA_PASSWORD" not in env_example
 
 
 def test_medication_day_parts_do_not_invent_clock_times():
