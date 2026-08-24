@@ -47,7 +47,13 @@ const ACTION_ROUTES: Record<string, string | undefined> = {
   measurement: "/measurements",
 };
 
-const todayStr = () => new Date().toISOString().slice(0, 10);
+const todayStr = () => {
+  const value = new Date();
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
 const isIsoDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value);
 const isTime = (value: string) => /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
 
@@ -131,9 +137,17 @@ export default function TasksScreen() {
 
   const del = async (id: string) => {
     const current = tasks.find((task) => task.id === id);
+    if (!current) return;
+    const previousTasks = tasks;
     setTasks((prev) => prev.filter((x) => x.id !== id));
-    await cancelTaskReminder(current?.notification_id);
-    await api.deleteTask(id).catch(() => {});
+    try {
+      await api.deleteTask(id);
+      await cancelTaskReminder(current.notification_id);
+      bumpRefresh();
+    } catch (_) {
+      setTasks(previousTasks);
+      toast(lang === "ru" ? "Не удалось удалить задачу. Изменение отменено." : "Couldn't delete the task. The change was reverted.");
+    }
   };
 
   const openAction = (task: Task) => {
