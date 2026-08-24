@@ -34,8 +34,10 @@ const ONBOARDING_ROUTES = new Set(["onboarding", "onboarding-medical", "onboardi
 const MEDICATION_TIME_PROMPT_PREFIX = "aida.medicationTimePrompt.v1.";
 
 const DeferredLogProvider = lazy(async () => {
-  await import("@/src/lab-runtime-compat");
-  const module = await import("@/src/components/LogProvider");
+  const [, module] = await Promise.all([
+    import("@/src/lab-runtime-compat"),
+    import("@/src/components/LogProvider"),
+  ]);
   return { default: module.LogProvider };
 });
 
