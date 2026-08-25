@@ -13,18 +13,19 @@ def test_landing_signup_ctas_open_dedicated_registration_screen():
 def test_registration_screen_is_auth_first_and_profile_second():
     register = (ROOT / "frontend" / "app" / "register.tsx").read_text(encoding="utf-8")
     required_tokens = [
-        '"email"',
-        '"password"',
-        '"confirm"',
-        '"consent"',
+        'type RegisterStep = "email" | "password"',
+        'useState<RegisterStep>("email")',
+        'testID="register-social-options"',
+        'provider="yandex"',
+        'provider="vk"',
+        'testID="register-email-step"',
+        'testID="register-password-step"',
+        'testID="register-email-continue"',
         'password !== confirm',
         'router.push("/terms"',
         'router.push("/privacy-policy"',
         'register("Мой профиль", cleanEmail, password, null)',
         'router.replace("/onboarding"',
-        'provider="yandex"',
-        'provider="vk"',
-        'Создайте аккаунт — личные данные добавим следующим шагом.',
         'KeyboardAwareScrollView',
         'LangToggle',
         'ThemeToggle',
@@ -42,7 +43,7 @@ def test_email_registration_defers_personal_data_to_onboarding():
 
     assert 'router.replace("/onboarding"' in register
     assert 'Мой профиль' in register
-    assert 'личные данные добавим следующим шагом.' in register
+    assert 'личные данные' not in register
     assert "name" in onboarding.lower()
 
 
@@ -50,8 +51,7 @@ def test_registration_uses_emergent_auth_hierarchy():
     register = (ROOT / "frontend" / "app" / "register.tsx").read_text(encoding="utf-8")
     assert 'styles.segment' in register
     assert 'styles.formWrap' in register
-    assert 'styles.brandRow' in register
-    assert 'styles.logoDot' in register
+    assert 'styles.socialGroup' in register
     assert 'colors.brandPrimary' in register
 
 
@@ -59,7 +59,7 @@ def test_registration_no_longer_claims_phone_is_collected_on_step_one():
     register = (ROOT / "frontend" / "app" / "register.tsx").read_text(encoding="utf-8")
     assert "он сохранится в аккаунте" not in register
     assert "Phone sign-in and recovery are a separate backend step" not in register
-    assert "Создайте аккаунт" in register
+    assert "Выберите быстрый вход или зарегистрируйтесь по email." in register
 
 
 def test_email_registration_navigates_only_after_session_creation():
