@@ -8,6 +8,7 @@ reviews the preview and explicitly commits it.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import os
@@ -22,6 +23,7 @@ from pydantic import BaseModel, Field
 
 from access_control import require_profile_access, require_record_access
 from google_drive_storage import build_drive_storage_from_env
+from lab_normalization import canonical_lab_result, finalize_result_id
 from llm_provider import FileContentWithMimeType, LlmChat, UserMessage
 from server import Biomarker, EMERGENT_LLM_KEY, GEMINI_MODEL, LabTest
 
@@ -60,6 +62,7 @@ class LabBiomarkerEdit(BaseModel):
     unit: Optional[str] = None
     reference: Optional[str] = None
     status: str = "unknown"
+    ocr_confidence: Optional[float] = None
 
 
 class LabImportEdit(BaseModel):
@@ -79,16 +82,33 @@ def _clean_biomarkers(items: List[Dict[str, Any]] | List[LabBiomarkerEdit]) -> l
         if not name or not value:
             continue
         status = str(item.get("status") or "unknown").strip().lower()
-        if status not in {"normal", "high", "low", "unknown"}:
+        if status not in {"normal", "high", "low", "critical", "unknown"}:
             status = "unknown"
+        confidence = item.get("ocr_confidence")
+        try:
+            confidence = min(1.0, max(0.0, float(confidence))) if confidence is not None else None
+        except (TypeError, ValueError):
+            confidence = None
         cleaned.append({
             "name": name,
             "value": value,
             "unit": str(item.get("unit") or "").strip() or None,
             "reference": str(item.get("reference") or "").strip() or None,
             "status": status,
+            "ocr_confidence": confidence,
         })
     return cleaned
+
+
+def _legacy_biomarker(item: Dict[str, Any]) -> Biomarker:
+    """Keep the current frontend contract while canonical rows live separately."""
+    return Biomarker(
+        name=item["name"],
+        value=item["value"],
+        unit=item.get("unit"),
+        reference=item.get("reference"),
+        status=item.get("status") or "unknown",
+    )
 
 
 def _preview(candidate: Dict[str, Any]) -> Dict[str, Any]:
@@ -107,6 +127,7 @@ def _preview(candidate: Dict[str, Any]) -> Dict[str, Any]:
             "drive_file_id": candidate.get("drive_file_id"),
             "drive_url": candidate.get("drive_url"),
             "name": candidate.get("source_file_name"),
+            "source_hash": candidate.get("source_hash"),
         },
     }
 
@@ -136,6 +157,17 @@ def build_lab_router(db, auth) -> APIRouter:
         if len(content) > 20 * 1024 * 1024:
             raise HTTPException(413, "File is too large")
 
+        source_hash = hashlib.sha256(content).hexdigest()
+        duplicate = await db.labs.find_one({"profile_id": profile_id, "source_hash": source_hash})
+        if duplicate:
+            raise HTTPException(
+                409,
+                detail={
+                    "message": "This laboratory document has already been confirmed for this profile",
+                    "lab_id": duplicate.get("id"),
+                },
+            )
+
         original_name = file.filename or "medical-document"
         mime = file.content_type or "application/octet-stream"
         stored_name = f"{profile_id[:8]}-{uuid.uuid4().hex[:10]}-{original_name}"
@@ -155,6 +187,7 @@ def build_lab_router(db, auth) -> APIRouter:
         file_record = {
             "id": file_record_id,
             "profile_id": profile_id,
+            "subject_profile_id": profile_id,
             "name": original_name,
             "mime_type": mime,
             "size_bytes": len(content),
@@ -163,6 +196,7 @@ def build_lab_router(db, auth) -> APIRouter:
             "purpose": "lab_upload",
             "status": "uploaded",
             "source": "upload",
+            "source_hash": source_hash,
             "created_at": _now(),
         }
         await db.files.insert_one(file_record)
@@ -177,8 +211,9 @@ def build_lab_router(db, auth) -> APIRouter:
             schema_hint = (
                 'Верни строго JSON: {"title":"...","date":"YYYY-MM-DD",'
                 '"lab_name":null,"biomarkers":[{"name":"...","value":"...",'
-                '"unit":"...","reference":"...","status":"normal|high|low|unknown"}],'
-                '"ai_summary":"..."}. '
+                '"unit":"...","reference":"...","status":"normal|high|low|critical|unknown",'
+                '"ocr_confidence":0.0}],"ai_summary":"..."}. '
+                "ocr_confidence — уверенность чтения конкретной строки от 0 до 1. "
                 "Не придумывай отсутствующие значения. Если показатель не читается — не добавляй его. "
                 f'Язык summary: {"русский" if language.startswith("ru") else "английский"}.'
             )
@@ -233,6 +268,7 @@ def build_lab_router(db, auth) -> APIRouter:
         candidate = {
             "id": import_id,
             "profile_id": profile_id,
+            "subject_profile_id": profile_id,
             "proposed_by": "import",
             "entity_type": "lab_import",
             "status": "pending",
@@ -245,6 +281,7 @@ def build_lab_router(db, auth) -> APIRouter:
             },
             "source_file_id": file_record_id,
             "source_file_name": original_name,
+            "source_hash": source_hash,
             "drive_file_id": drive_meta.get("id"),
             "drive_url": drive_meta.get("webViewLink"),
             "created_at": _now(),
@@ -327,7 +364,17 @@ def build_lab_router(db, auth) -> APIRouter:
         if not claim.get("matched_count"):
             raise HTTPException(409, "Lab import is already being committed or reviewed")
 
-        biomarkers = [Biomarker(**item) for item in biomarkers_raw]
+        source_hash = candidate.get("source_hash")
+        if source_hash:
+            duplicate = await db.labs.find_one({"profile_id": candidate["profile_id"], "source_hash": source_hash})
+            if duplicate:
+                await db.candidates.update_one(
+                    {"id": import_id, "status": "committing"},
+                    {"$set": {"status": "pending", "updated_at": _now()}},
+                )
+                raise HTTPException(409, "This laboratory document has already been committed")
+
+        biomarkers = [_legacy_biomarker(item) for item in biomarkers_raw]
         lab = LabTest(
             profile_id=candidate["profile_id"],
             title=str(payload.get("title") or "Лабораторный анализ"),
@@ -339,16 +386,37 @@ def build_lab_router(db, auth) -> APIRouter:
         )
         lab_doc = lab.model_dump()
         lab_doc.update({
+            "report_id": lab.id,
+            "subject_profile_id": candidate["profile_id"],
             "source_file_id": candidate.get("source_file_id"),
+            "source_hash": source_hash,
             "drive_file_id": candidate.get("drive_file_id"),
+            "ocr_status": "recognized",
             "verification_status": "user_confirmed",
             "confirmed_by_account_id": str(account["id"]),
             "confirmed_at": claim_time,
             "updated_at": claim_time,
         })
+        canonical_results = [
+            finalize_result_id(canonical_lab_result(
+                report_id=lab.id,
+                profile_id=candidate["profile_id"],
+                biomarker=item,
+                observed_at=str(payload.get("date") or "unknown"),
+                source_file_id=candidate.get("source_file_id"),
+                confirmed_by_account_id=str(account["id"]),
+                source_hash=source_hash,
+            ))
+            for item in biomarkers_raw
+        ]
+
         try:
             await db.labs.insert_one(lab_doc)
+            for result_doc in canonical_results:
+                await db.lab_results.insert_one(result_doc)
         except Exception:
+            await db.lab_results.delete_many({"report_id": lab.id})
+            await db.labs.delete_one({"id": lab.id})
             await db.candidates.update_one(
                 {"id": import_id, "status": "committing"},
                 {"$set": {"status": "pending", "updated_at": _now()}},
@@ -363,15 +431,31 @@ def build_lab_router(db, auth) -> APIRouter:
                 "reviewed_at": reviewed_at,
                 "reviewer_account_id": str(account["id"]),
                 "approved_entity_id": lab.id,
+                "canonical_result_count": len(canonical_results),
                 "updated_at": reviewed_at,
             }},
         )
         if candidate.get("source_file_id"):
             await db.files.update_one(
                 {"id": candidate["source_file_id"]},
-                {"$set": {"status": "recognized", "lab_id": lab.id, "updated_at": reviewed_at}},
+                {"$set": {"status": "recognized", "lab_id": lab.id, "report_id": lab.id, "updated_at": reviewed_at}},
             )
+        lab_doc["canonical_result_count"] = len(canonical_results)
         return lab_doc
+
+    @router.get("/labs/{lab_id}/results")
+    async def get_canonical_lab_results(
+        lab_id: str,
+        account: Dict[str, Any] = Depends(auth.require_account),
+    ):
+        lab = await require_record_access(db, auth, account, "labs", lab_id)
+        results = await db.lab_results.find({"report_id": lab_id}, {"_id": 0}).to_list(500)
+        return {
+            "report_id": lab_id,
+            "profile_id": lab.get("profile_id"),
+            "results": results,
+            "count": len(results),
+        }
 
     @router.post("/lab-imports/{import_id}/cancel")
     async def cancel_lab_import(
