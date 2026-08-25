@@ -7,18 +7,18 @@ def read(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
 
 
-def test_onboarding_draft_profile_writes_are_debounced_and_serialized():
+def test_onboarding_draft_profile_writes_happen_only_when_advancing_questions():
     source = read("frontend/app/onboarding.tsx")
 
-    assert "DRAFT_SAVE_DEBOUNCE_MS = 900" in source
-    assert "draftTimerRef" in source
-    assert "draftRequestRef" in source
-    assert "const scheduleDraft" in source
-    assert "scheduleDraft({ goals: next })" in source
-    assert "scheduleDraft({ sex: value || null, goals: nextGoals })" in source
-    assert "saveDraft({ goals: next })" not in source
-    assert "saveDraft({ sex: value || null, goals: nextGoals })" not in source
-    assert "if (draftRequestRef.current) await draftRequestRef.current;" in source
+    assert "const persistDraft = async" in source
+    assert "await persistDraft();" in source
+    assert "const next = async" in source
+    assert "onChangeText={setName}" in source
+    assert "onChangeText={setHeight}" in source
+    assert "onChangeText={setWeight}" in source
+    assert "DRAFT_SAVE_DEBOUNCE_MS" not in source
+    assert "draftTimerRef" not in source
+    assert "scheduleDraft" not in source
 
 
 def test_incomplete_onboarding_goal_edits_do_not_fan_out_to_puzzle_storage():
