@@ -42,8 +42,8 @@ def test_body_ui_reuses_onboarding_anthropometrics_and_prompts_only_when_missing
     assert 'testID="body-weight-input"' in body
     assert 'api.updateProfile(activeId, { height_cm: enteredHeight, weight_kg: enteredWeight })' in body
     assert "calculateBmi(heightCm, weightKg)" in body
-    assert "height_cm: numericOrNull(height)" in onboarding
-    assert "weight_kg: numericOrNull(weight)" in onboarding
+    assert "height_cm:numeric(height)" in onboarding or "height_cm: numeric(height)" in onboarding
+    assert "weight_kg:numeric(weight)" in onboarding or "weight_kg: numeric(weight)" in onboarding
 
 
 def test_body_ui_links_to_evidence_details():
