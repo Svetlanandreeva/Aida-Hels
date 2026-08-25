@@ -77,11 +77,11 @@ export function HealthProvider({ children }: { children: React.ReactNode }) {
   const { activeId, activeProfile, refreshTick, bumpRefresh } = useStore();
   const { lang } = useI18n();
   const [state, setState] = useState<HealthState>(emptyState);
-  const [loading, setLoading] = useState(true);
+  const [loading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
-    if (!activeId) { setState(emptyState); setLoading(false); return; }
+    if (!activeId) { setState(emptyState); return; }
     setError(null);
     try {
       const today = todayStr();
@@ -104,10 +104,10 @@ export function HealthProvider({ children }: { children: React.ReactNode }) {
       });
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Failed to load health data");
-    } finally { setLoading(false); }
+    }
   }, [activeId, activeProfile, lang]);
 
-  useEffect(() => { setLoading(true); void reload(); }, [reload, refreshTick]);
+  useEffect(() => { void reload(); }, [reload, refreshTick]);
   const run = useCallback((operation: () => Promise<unknown>) => { void operation().then(() => { bumpRefresh(); return reload(); }).catch((cause) => setError(cause instanceof Error ? cause.message : "Could not save")); }, [bumpRefresh, reload]);
 
   const value = useMemo<Ctx>(() => ({
