@@ -68,6 +68,20 @@ def abnormal_flag(status: Any) -> str:
     return "unknown"
 
 
+def derive_abnormal_flag(*, status: Any, numeric: Optional[float], reference_low: Optional[float], reference_high: Optional[float]) -> str:
+    explicit = abnormal_flag(status)
+    if explicit == "critical":
+        return explicit
+    if numeric is not None:
+        if reference_low is not None and numeric < reference_low:
+            return "low"
+        if reference_high is not None and numeric > reference_high:
+            return "high"
+        if reference_low is not None or reference_high is not None:
+            return "normal"
+    return explicit
+
+
 def canonical_lab_result(
     *,
     report_id: str,
@@ -85,10 +99,16 @@ def canonical_lab_result(
     reference_low, reference_high = parse_reference(reference)
     numeric = exact_numeric(raw_value)
     normalized_unit = normalize_unit(raw_unit)
+    flag = derive_abnormal_flag(
+        status=biomarker.get("status"),
+        numeric=numeric,
+        reference_low=reference_low,
+        reference_high=reference_high,
+    )
     now = _now()
     return {
         "id": str(uuid.uuid4()),
-        "result_id": None,  # populated below for compatibility with the formal data model
+        "result_id": None,
         "report_id": report_id,
         "profile_id": profile_id,
         "subject_profile_id": profile_id,
@@ -101,7 +121,8 @@ def canonical_lab_result(
         "reference_low": reference_low,
         "reference_high": reference_high,
         "reference_text": reference,
-        "abnormal_flag": abnormal_flag(biomarker.get("status")),
+        "abnormal_flag": flag,
+        "status_source": "reference_range" if flag != abnormal_flag(biomarker.get("status")) else "source",
         "ocr_confidence": biomarker.get("ocr_confidence"),
         "verification_status": "user_confirmed",
         "observed_at": observed_at,
