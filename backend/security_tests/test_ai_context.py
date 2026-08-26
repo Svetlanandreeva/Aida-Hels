@@ -48,6 +48,41 @@ class DB:
             {"id": "s1", "profile_id": "p1", "name": "headache", "date": "2026-08-16"},
             {"id": "s2", "profile_id": "p2", "name": "fever", "date": "2026-08-16"},
         ])
+        self.lab_results = Collection([
+            {
+                "id": "lr1",
+                "result_id": "lr1",
+                "report_id": "lab1",
+                "profile_id": "p1",
+                "analyte_original": "Glucose",
+                "analyte_code": "glucose",
+                "value_original": "5.2",
+                "value_normalized": 5.2,
+                "unit_original": "mmol/L",
+                "unit_normalized": "mmol/L",
+                "reference_low": 3.9,
+                "reference_high": 5.5,
+                "abnormal_flag": "normal",
+                "verification_status": "user_confirmed",
+                "source_type": "upload",
+                "observed_at": "2026-08-16",
+            },
+            {
+                "id": "lr2",
+                "result_id": "lr2",
+                "report_id": "lab2",
+                "profile_id": "p2",
+                "analyte_original": "Glucose",
+                "analyte_code": "glucose",
+                "value_original": "9.9",
+                "value_normalized": 9.9,
+                "unit_original": "mmol/L",
+                "unit_normalized": "mmol/L",
+                "verification_status": "user_confirmed",
+                "source_type": "upload",
+                "observed_at": "2026-08-16",
+            },
+        ])
         self.labs = Collection([])
         self.vitals = Collection([
             {
@@ -86,10 +121,13 @@ def test_context_never_mixes_profiles_and_keeps_provenance():
     assert measurement["quality"] == "high"
     assert measurement["freshness"]["status"] in {"fresh", "recent", "stale"}
     assert isinstance(measurement["freshness"]["age_seconds"], int)
+    assert [item["evidence_id"] for item in context["recent_lab_results"]] == ["lab_result:lr1"]
+    assert context["recent_lab_results"][0]["verification_status"] == "user_confirmed"
     serialized = str(context)
     assert "Bob" not in serialized
     assert "fever" not in serialized
     assert "android_health_connect" not in serialized
+    assert "9.9" not in serialized
 
 
 def test_context_marks_missing_timestamp_freshness_unknown():
