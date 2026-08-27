@@ -1,0 +1,131 @@
+name: Sync Gemini OCR to production
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/sync-gemini-production.yml'
+  workflow_run:
+    workflows: ['Deploy to RU VDS']
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  sync-gemini:
+    if: >-
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      RUVDS_HOST: ${{ secrets.RUVDS_HOST }}
+      RUVDS_USER: ${{ secrets.RUVDS_USER }}
+      RUVDS_PORT: ${{ secrets.RUVDS_PORT }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+    steps:
+      - name: Validate required secrets
+        env:
+          RUVDS_SSH_KEY: ${{ secrets.RUVDS_SSH_KEY }}
+          RUVDS_SSH_KNOWN_HOSTS: ${{ secrets.RUVDS_SSH_KNOWN_HOSTS }}
+        run: |
+          test -n "$RUVDS_HOST" || (echo 'RUVDS_HOST secret is missing' && exit 1)
+          test -n "$RUVDS_USER" || (echo 'RUVDS_USER secret is missing' && exit 1)
+          test -n "$RUVDS_PORT" || (echo 'RUVDS_PORT secret is missing' && exit 1)
+          test -n "$RUVDS_SSH_KEY" || (echo 'RUVDS_SSH_KEY secret is missing' && exit 1)
+          test -n "$RUVDS_SSH_KNOWN_HOSTS" || (echo 'RUVDS_SSH_KNOWN_HOSTS secret is missing' && exit 1)
+          test -n "$GEMINI_API_KEY" || (echo 'GEMINI_API_KEY secret is missing' && exit 1)
+
+      - name: Validate Gemini key before production sync
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.error, urllib.request
+          key = os.environ['GEMINI_API_KEY'].strip()
+          url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent'
+          body = json.dumps({
+              'contents': [{'role': 'user', 'parts': [{'text': 'Return JSON {"ok":true} only.'}]}],
+              'generationConfig': {'responseMimeType': 'application/json'},
+          }).encode()
+          req = urllib.request.Request(url, data=body, headers={
+              'x-goog-api-key': key,
+              'Content-Type': 'application/json',
+          }, method='POST')
+          try:
+              with urllib.request.urlopen(req, timeout=25) as response:
+                  print(f'Gemini key validation HTTP {response.status}')
+          except urllib.error.HTTPError as exc:
+              detail = ''
+              try:
+                  payload = json.loads(exc.read().decode())
+                  detail = ((payload.get('error') or {}).get('message') or '')[:300]
+              except Exception:
+                  pass
+              print(f'Gemini key validation failed: HTTP {exc.code}: {detail}')
+              raise SystemExit(1)
+          PY
+
+      - name: Prepare pinned SSH identity
+        env:
+          RUVDS_SSH_KEY: ${{ secrets.RUVDS_SSH_KEY }}
+          RUVDS_SSH_KNOWN_HOSTS: ${{ secrets.RUVDS_SSH_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$RUVDS_SSH_KEY" > ~/.ssh/ruvds
+          printf '%s\n' "$RUVDS_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/ruvds ~/.ssh/known_hosts
+
+      - name: Persist Gemini key on VDS and restart backend
+        run: |
+          GEMINI_API_KEY_B64="$(printf '%s' "$GEMINI_API_KEY" | base64 | tr -d '\n')"
+          ssh -p "$RUVDS_PORT" -i ~/.ssh/ruvds -o ConnectTimeout=10 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            "$RUVDS_USER@$RUVDS_HOST" bash -s -- "$GEMINI_API_KEY_B64" <<'EOF'
+          set -euo pipefail
+          cd /opt/aida/backend
+          touch .env
+          chmod 600 .env
+          export GEMINI_API_KEY_B64="$1"
+          python3 - <<'PY'
+          import base64, os
+          from pathlib import Path
+
+          value = base64.b64decode(os.environ['GEMINI_API_KEY_B64']).decode().strip()
+          if not value:
+              raise SystemExit('Decoded GEMINI_API_KEY is empty')
+
+          path = Path('.env')
+          lines = path.read_text().splitlines()
+          updated = []
+          replaced = False
+          for line in lines:
+              if line.startswith('GEMINI_API_KEY='):
+                  if not replaced:
+                      updated.append('GEMINI_API_KEY=' + value)
+                      replaced = True
+                  continue
+              if line.startswith('GEMINI_MODEL='):
+                  if not any(item.startswith('GEMINI_MODEL=') for item in updated):
+                      updated.append('GEMINI_MODEL=gemini-2.5-flash')
+                  continue
+              updated.append(line)
+          if not replaced:
+              if updated and updated[-1] != '':
+                  updated.append('')
+              updated.append('GEMINI_API_KEY=' + value)
+          if not any(line.startswith('GEMINI_MODEL=') for line in updated):
+              updated.append('GEMINI_MODEL=gemini-2.5-flash')
+          path.write_text('\n'.join(updated).rstrip() + '\n')
+          print('Gemini OCR configuration persisted on production.')
+          PY
+
+          sudo -n /usr/bin/systemctl restart aida-backend
+          for attempt in 1 2 3 4 5 6 7 8; do
+            sleep 2
+            if curl --fail --silent http://127.0.0.1:8000/openapi.json >/dev/null; then
+              exit 0
+            fi
+          done
+          echo 'Backend did not recover after Gemini configuration sync.'
+          exit 1
+          EOF
