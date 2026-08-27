@@ -1,5 +1,5 @@
 import React from "react";
-import { ActivityIndicator, StyleSheet, View, Pressable, ScrollView } from "react-native";
+import { StyleSheet, View, Pressable, ScrollView } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { Ionicons } from "@expo/vector-icons";
@@ -53,19 +53,6 @@ export default function Home() {
   const openTasks = state.tasks.filter((x) => !x.done);
   const failedSections = Object.entries(state.sectionStates).filter(([, value]) => value === "error");
 
-  if (health.loading) {
-    return <View style={[styles.statePage, { backgroundColor: colors.surface }]}><ActivityIndicator size="large" color={colors.brand} /></View>;
-  }
-  if (health.error) {
-    return (
-      <View style={[styles.statePage, { backgroundColor: colors.surface, paddingTop: insets.top + spacing.xl }]} testID="home-load-error">
-        <Card style={{ width: "100%", maxWidth: CONTENT_MAX }}>
-          <EmptyState icon="cloud-offline-outline" text={lang === "ru" ? "Не удалось загрузить данные. Это техническая ошибка: сохранённые данные не считаются отсутствующими." : "Could not load data. This is a technical error; saved records are not treated as missing."} actionLabel={lang === "ru" ? "Повторить" : "Retry"} onAction={() => void health.reload()} />
-        </Card>
-      </View>
-    );
-  }
-
   return (
     <View style={{ flex: 1, backgroundColor: colors.surface }}>
       <StatusBar style={theme === "dark" ? "light" : "dark"} />
@@ -91,6 +78,16 @@ export default function Home() {
             </View>
           </View>
           <Txt variant="caption" color={colors.muted} style={{ marginTop: spacing.sm }}>{greet} · {m.collecting}</Txt>
+
+          {health.error ? (
+            <Card style={{ marginTop: spacing.md }} testID="home-load-error-inline">
+              <EmptyState icon="cloud-offline-outline" text={lang === "ru" ? "Не удалось обновить часть данных. Сохранённые данные остаются на экране и не считаются отсутствующими." : "Some data could not be refreshed. Saved records stay visible and are not treated as missing."} actionLabel={lang === "ru" ? "Повторить" : "Retry"} onAction={() => void health.reload()} />
+            </Card>
+          ) : health.loading ? (
+            <Card style={{ marginTop: spacing.md }} testID="home-loading-inline">
+              <Txt variant="caption" color={colors.muted}>{lang === "ru" ? "Обновляем данные… сохранённые значения уже доступны ниже." : "Refreshing data… saved values are already available below."}</Txt>
+            </Card>
+          ) : null}
 
           {failedSections.length ? (
             <Card style={{ marginTop: spacing.md }}>
