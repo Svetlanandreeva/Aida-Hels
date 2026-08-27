@@ -89,10 +89,13 @@ async function appendUploadFile(form: FormData, file: UploadFile, label: string)
 }
 
 async function uploadForm<T>(path: string, form: FormData, label: string): Promise<T> {
-  const timeoutMs = label === "lab_upload" ? 60000 : 15000;
+  // Gemini OCR is allowed up to 90 seconds server-side, and Drive storage happens before it.
+  // Keep the client window longer than the full backend pipeline so a valid upload is not
+  // reported as a failure while the server is still processing it.
+  const timeoutMs = label === "lab_upload" ? 150000 : 15000;
   const res = await withTimeout(apiFetch(path, { method: "POST", body: form as any }), timeoutMs, label);
   if (!res.ok) { const txt = await res.text().catch(() => ""); throw new Error(`${res.status}: ${txt}`); }
-  return withTimeout(res.json(), 2000, `${label}_json`) as Promise<T>;
+  return withTimeout(res.json(), 5000, `${label}_json`) as Promise<T>;
 }
 
 function minutesUntilNextDose(medication: Medication, now = new Date()) {
