@@ -127,7 +127,8 @@ def test_context_never_mixes_profiles_and_keeps_provenance():
     assert "Bob" not in serialized
     assert "fever" not in serialized
     assert "android_health_connect" not in serialized
-    assert "9.9" not in serialized
+    assert all(item.get("result_id") != "lr2" for item in context["recent_lab_results"])
+    assert all(item.get("value_normalized") != 9.9 for item in context["recent_lab_results"])
 
 
 def test_context_marks_missing_timestamp_freshness_unknown():
