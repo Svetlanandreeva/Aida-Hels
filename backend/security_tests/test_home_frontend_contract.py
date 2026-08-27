@@ -31,8 +31,9 @@ def test_home_screen_preserves_explicit_source_availability_states():
     assert "home.tasks.items" in adapter
     assert "home.medication_day.slots" in adapter
     assert "health.error" in source
-    assert 'testID="home-load-error"' in source
-    assert "сохранённые данные не считаются отсутствующими" in source
+    assert 'testID="home-load-error-inline"' in source
+    assert "Сохранённые данные остаются на экране" in source
+    assert "return <View style={[styles.statePage" not in source
 
 
 def test_home_client_uses_authenticated_api_fetch_and_explicit_query_context():
