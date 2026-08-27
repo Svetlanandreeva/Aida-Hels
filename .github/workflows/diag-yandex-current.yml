@@ -1,0 +1,33 @@
+name: Diagnose current Yandex OAuth
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/diag-yandex-current.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      RUVDS_HOST: ${{ secrets.RUVDS_HOST }}
+      RUVDS_USER: ${{ secrets.RUVDS_USER }}
+      RUVDS_PORT: ${{ secrets.RUVDS_PORT }}
+    steps:
+      - name: Prepare pinned SSH identity
+        env:
+          RUVDS_SSH_KEY: ${{ secrets.RUVDS_SSH_KEY }}
+          RUVDS_SSH_KNOWN_HOSTS: ${{ secrets.RUVDS_SSH_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$RUVDS_SSH_KEY" > ~/.ssh/ruvds
+          printf '%s\n' "$RUVDS_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/ruvds ~/.ssh/known_hosts
+      - name: Read recent redacted Yandex OAuth traceback
+        run: |
+          ssh -p "$RUVDS_PORT" -i ~/.ssh/ruvds -o ConnectTimeout=15 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes "$RUVDS_USER@$RUVDS_HOST" \
+            "sudo -n journalctl -u aida-backend --since '45 minutes ago' --no-pager | grep -A 80 -B 8 -E 'Social OAuth account persistence failed: provider=yandex|Social OAuth completion persistence failed|Yandex ID' | tail -n 220 | sed -E 's/([?&](code|state|oauth_ticket)=)[^& ]+/\1[REDACTED]/g; s/[A-Za-z0-9_=-]{40,}/[REDACTED]/g' || true"
