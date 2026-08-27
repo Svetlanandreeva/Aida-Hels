@@ -19,6 +19,35 @@ jobs:
       RUVDS_USER: ${{ secrets.RUVDS_USER }}
       RUVDS_PORT: ${{ secrets.RUVDS_PORT }}
     steps:
+      - name: Check GitHub Gemini secret
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request, urllib.error
+          key = (os.environ.get('GEMINI_API_KEY') or '').strip()
+          print(f'GitHub_GEMINI_API_KEY_present={bool(key)}')
+          if not key:
+              raise SystemExit(0)
+          url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent'
+          body = json.dumps({'contents':[{'role':'user','parts':[{'text':'Return JSON {"ok":true} only.'}]}], 'generationConfig': {'responseMimeType':'application/json'}}).encode()
+          req = urllib.request.Request(url, data=body, headers={'x-goog-api-key': key, 'Content-Type':'application/json'}, method='POST')
+          try:
+              with urllib.request.urlopen(req, timeout=20) as r:
+                  print(f'GitHub_Gemini_http_status={r.status}')
+                  print('GitHub_Gemini_smoke=OK')
+          except urllib.error.HTTPError as exc:
+              print(f'GitHub_Gemini_http_status={exc.code}')
+              try:
+                  payload = json.loads(exc.read().decode())
+                  detail = ((payload.get('error') or {}).get('message') or '')[:240]
+              except Exception:
+                  detail = ''
+              print('GitHub_Gemini_error=' + detail.replace('\n',' '))
+          except Exception as exc:
+              print('GitHub_Gemini_smoke=NETWORK_ERROR:' + type(exc).__name__)
+          PY
+
       - name: Prepare SSH
         env:
           RUVDS_SSH_KEY: ${{ secrets.RUVDS_SSH_KEY }}
