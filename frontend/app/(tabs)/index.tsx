@@ -1,2 +1,1 @@
-export { default } from "@/src/emergent/screens/Home";
-
+export { default } from "@/src/emergent/screens/HomeEditorial";
