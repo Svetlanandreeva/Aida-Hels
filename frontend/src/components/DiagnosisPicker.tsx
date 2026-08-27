@@ -10,6 +10,15 @@ const ICD_DISPLAY = /^([A-Z]\d{2}(?:\.\d+)?)\s*[—-]\s*(.+)$/i;
 
 const formatItem = (item: Icd10Item) => `${item.code} — ${item.name}`;
 const selectedCode = (value: string) => value.match(ICD_DISPLAY)?.[1]?.toUpperCase() || "";
+const dedupeSelected = (values: string[]) => {
+  const seen = new Set<string>();
+  return values.filter((value) => {
+    const key = selectedCode(value) || value.trim().toLocaleLowerCase();
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+};
 
 export function DiagnosisPicker({
   selected,
@@ -29,7 +38,12 @@ export function DiagnosisPicker({
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
 
-  const selectedCodes = useMemo(() => new Set(selected.map(selectedCode).filter(Boolean)), [selected]);
+  const uniqueSelected = useMemo(() => dedupeSelected(selected), [selected]);
+  const selectedCodes = useMemo(() => new Set(uniqueSelected.map(selectedCode).filter(Boolean)), [uniqueSelected]);
+
+  useEffect(() => {
+    if (uniqueSelected.length !== selected.length) onChange(uniqueSelected);
+  }, [onChange, selected.length, uniqueSelected]);
 
   useEffect(() => {
     const value = query.trim();
@@ -66,13 +80,13 @@ export function DiagnosisPicker({
   }, [mentalOnly, query, selectedCodes]);
 
   const add = (item: Icd10Item) => {
-    const value = formatItem(item);
-    if (!selected.includes(value)) onChange([...selected, value]);
+    const code = item.code.toUpperCase();
+    if (!selectedCodes.has(code)) onChange([...uniqueSelected, formatItem(item)]);
     setQuery("");
     setResults([]);
   };
 
-  const remove = (index: number) => onChange(selected.filter((_, itemIndex) => itemIndex !== index));
+  const remove = (index: number) => onChange(uniqueSelected.filter((_, itemIndex) => itemIndex !== index));
 
   return (
     <View testID={testID}>
@@ -118,9 +132,9 @@ export function DiagnosisPicker({
         ))}
       </View> : null}
 
-      {selected.length ? <View style={s.selectedList}>
-        {selected.map((value, index) => (
-          <View key={`${value}-${index}`} style={s.selectedRow}>
+      {uniqueSelected.length ? <View style={s.selectedList}>
+        {uniqueSelected.map((value, index) => (
+          <View key={selectedCode(value) || value} style={s.selectedRow}>
             <Ionicons name="checkmark-circle" size={19} color={colors.onSurface} />
             <Text style={s.selectedText}>{value}</Text>
             <Pressable
