@@ -1,0 +1,79 @@
+name: Diagnose lab OCR runtime 20260828
+
+on:
+  push:
+    branches: [fix/lab-upload-runtime-resilience-20260828]
+    paths:
+      - '.github/workflows/diagnose-lab-runtime-20260828.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      RUVDS_HOST: ${{ secrets.RUVDS_HOST }}
+      RUVDS_USER: ${{ secrets.RUVDS_USER }}
+      RUVDS_PORT: ${{ secrets.RUVDS_PORT }}
+    steps:
+      - name: Prepare SSH
+        env:
+          RUVDS_SSH_KEY: ${{ secrets.RUVDS_SSH_KEY }}
+          RUVDS_SSH_KNOWN_HOSTS: ${{ secrets.RUVDS_SSH_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$RUVDS_SSH_KEY" > ~/.ssh/ruvds
+          printf '%s\n' "$RUVDS_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/ruvds ~/.ssh/known_hosts
+
+      - name: Diagnose OCR configuration and Gemini reachability
+        run: |
+          ssh -p "$RUVDS_PORT" -i ~/.ssh/ruvds -o ConnectTimeout=10 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes "$RUVDS_USER@$RUVDS_HOST" <<'EOF'
+          set -euo pipefail
+          cd /opt/aida/backend
+          .venv/bin/python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import httpx
+
+          for line in Path('.env').read_text().splitlines():
+              if line and not line.lstrip().startswith('#') and '=' in line:
+                  key, value = line.split('=', 1)
+                  os.environ.setdefault(key.strip(), value.strip())
+
+          gemini = (os.getenv('GEMINI_API_KEY') or '').strip()
+          legacy = (os.getenv('EMERGENT_LLM_KEY') or '').strip()
+          model = (os.getenv('GEMINI_MODEL') or 'gemini-3.6-flash').strip()
+          drive_sa = bool((os.getenv('GOOGLE_SERVICE_ACCOUNT_JSON') or '').strip())
+          drive_folder = bool((os.getenv('GOOGLE_DRIVE_UPLOADS_FOLDER_ID') or '').strip())
+          print(f'GEMINI_API_KEY_present={bool(gemini)}')
+          print(f'EMERGENT_LLM_KEY_present={bool(legacy)}')
+          print(f'OCR_key_present={bool(gemini or legacy)}')
+          print(f'GEMINI_MODEL={model}')
+          print(f'DRIVE_service_account_present={drive_sa}')
+          print(f'DRIVE_folder_present={drive_folder}')
+
+          key = gemini or legacy
+          if not key:
+              print('Gemini_smoke=SKIPPED_NO_KEY')
+              raise SystemExit(0)
+          url = f'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent'
+          try:
+              r = httpx.post(url, headers={'x-goog-api-key': key, 'Content-Type': 'application/json'}, json={'contents':[{'role':'user','parts':[{'text':'Return JSON {"ok":true} only.'}]}], 'generationConfig': {'responseMimeType':'application/json'}}, timeout=20)
+              print(f'Gemini_http_status={r.status_code}')
+              if r.status_code >= 400:
+                  try:
+                      detail = ((r.json().get('error') or {}).get('message') or '')[:240]
+                  except Exception:
+                      detail = ''
+                  print('Gemini_error=' + detail.replace('\n',' '))
+              else:
+                  print('Gemini_smoke=OK')
+          except Exception as exc:
+              print('Gemini_smoke=NETWORK_ERROR:' + type(exc).__name__)
+          PY
+          EOF
