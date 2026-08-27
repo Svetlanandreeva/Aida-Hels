@@ -43,7 +43,7 @@ jobs:
           python3 - <<'PY'
           import json, os, urllib.error, urllib.request
           key = os.environ['GEMINI_API_KEY'].strip()
-          url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent'
+          url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent'
           body = json.dumps({
               'contents': [{'role': 'user', 'parts': [{'text': 'Return JSON {"ok":true} only.'}]}],
               'generationConfig': {'responseMimeType': 'application/json'},
@@ -98,6 +98,7 @@ jobs:
           lines = path.read_text().splitlines()
           updated = []
           replaced = False
+          model_written = False
           for line in lines:
               if line.startswith('GEMINI_API_KEY='):
                   if not replaced:
@@ -105,16 +106,17 @@ jobs:
                       replaced = True
                   continue
               if line.startswith('GEMINI_MODEL='):
-                  if not any(item.startswith('GEMINI_MODEL=') for item in updated):
-                      updated.append('GEMINI_MODEL=gemini-2.5-flash')
+                  if not model_written:
+                      updated.append('GEMINI_MODEL=gemini-3.6-flash')
+                      model_written = True
                   continue
               updated.append(line)
           if not replaced:
               if updated and updated[-1] != '':
                   updated.append('')
               updated.append('GEMINI_API_KEY=' + value)
-          if not any(line.startswith('GEMINI_MODEL=') for line in updated):
-              updated.append('GEMINI_MODEL=gemini-2.5-flash')
+          if not model_written:
+              updated.append('GEMINI_MODEL=gemini-3.6-flash')
           path.write_text('\n'.join(updated).rstrip() + '\n')
           print('Gemini OCR configuration persisted on production.')
           PY
