@@ -1,0 +1,55 @@
+name: Diagnose lab upload runtime
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-lab-upload-runtime.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      RUVDS_HOST: ${{ secrets.RUVDS_HOST }}
+      RUVDS_USER: ${{ secrets.RUVDS_USER }}
+      RUVDS_PORT: ${{ secrets.RUVDS_PORT }}
+    steps:
+      - name: Prepare SSH
+        env:
+          RUVDS_SSH_KEY: ${{ secrets.RUVDS_SSH_KEY }}
+          RUVDS_SSH_KNOWN_HOSTS: ${{ secrets.RUVDS_SSH_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$RUVDS_SSH_KEY" > ~/.ssh/ruvds
+          printf '%s\n' "$RUVDS_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/ruvds ~/.ssh/known_hosts
+
+      - name: Read recent safe lab upload diagnostics
+        run: |
+          ssh -p "$RUVDS_PORT" -i ~/.ssh/ruvds -o ConnectTimeout=10 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            "$RUVDS_USER@$RUVDS_HOST" <<'EOF'
+          set -euo pipefail
+          echo '=== runtime config presence ==='
+          cd /opt/aida/backend
+          python3 - <<'PY'
+          from pathlib import Path
+          values = {}
+          for line in Path('.env').read_text().splitlines():
+              if '=' in line and not line.lstrip().startswith('#'):
+                  k,v=line.split('=',1); values[k.strip()]=v.strip()
+          for key in ('GEMINI_API_KEY','GEMINI_MODEL','GOOGLE_SERVICE_ACCOUNT_JSON','GOOGLE_DRIVE_FOLDER_ID'):
+              if key == 'GEMINI_MODEL':
+                  print(f'{key}={values.get(key, "<missing>")}')
+              else:
+                  print(f'{key}_configured={bool(values.get(key))}')
+          PY
+          echo '=== recent backend lines ==='
+          sudo -n journalctl -u aida-backend --since '20 minutes ago' --no-pager -o cat | \
+            grep -Ei 'labs/upload|lab upload|gemini|google drive|ocr|traceback|exception|error|http.*(4|5)[0-9][0-9]' | \
+            tail -n 180 || true
+          EOF
