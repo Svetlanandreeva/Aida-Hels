@@ -1,9 +1,9 @@
 """Google Drive file storage for medical documents.
 
-Drive archival is optional for the OCR path. If the service account exists but
-no uploads folder is configured, lab recognition must still work; the source
-file is then treated as ephemeral and only the confirmed structured result is
-persisted in the medical store.
+Drive archival is optional for the OCR path. If the service account or uploads
+folder is not configured, lab recognition must still work; the source file is
+then treated as ephemeral and only the confirmed structured result is persisted
+in the medical store.
 """
 
 from __future__ import annotations
@@ -91,8 +91,12 @@ class GoogleDriveStorage:
 def build_drive_storage_from_env():
     raw = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON", "").strip()
     folder_id = os.environ.get("GOOGLE_DRIVE_UPLOADS_FOLDER_ID", "").strip()
-    if not raw:
-        return None
-    if not folder_id:
+    if not raw or not folder_id:
         return EphemeralDriveStorage()
-    return GoogleDriveStorage(raw, folder_id)
+    try:
+        return GoogleDriveStorage(raw, folder_id)
+    except Exception:
+        # Archival must never make the medical OCR path unavailable. Invalid
+        # Drive credentials fall back to ephemeral source handling; confirmed
+        # structured results are still persisted by the application database.
+        return EphemeralDriveStorage()
