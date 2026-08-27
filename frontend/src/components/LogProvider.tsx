@@ -24,6 +24,7 @@ export const LogProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [labTarget, setLabTarget] = useState<string | null>(null);
   const [recognizing, setRecognizing] = useState(false);
   const [labPreview, setLabPreview] = useState<LabImportPreview | null>(null);
+  const [labError, setLabError] = useState<string | null>(null);
   const [savingLab, setSavingLab] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [permBlocked, setPermBlocked] = useState(false);
@@ -42,8 +43,13 @@ export const LogProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const openSymptom = useCallback(() => { setMenu(false); setSymName(""); setSymSev(5); setSymNote(""); setTimeout(() => setSymOpen(true), 250); }, []);
   const openMed = useCallback(() => { setMenu(false); setMedName(""); setMedDose(""); setMedSchedule(""); setTimeout(() => setMedOpen(true), 250); }, []);
   const openLab = useCallback((targetProfileId?: string) => {
-    setMenu(false); setLabTarget(targetProfileId || activeId); setPermBlocked(false); setLabPreview(null); setTimeout(() => setLabOpen(true), 250);
-  }, [activeId]);
+    setMenu(false);
+    setLabTarget(targetProfileId || activeId || profiles[0]?.id || null);
+    setPermBlocked(false);
+    setLabPreview(null);
+    setLabError(null);
+    setTimeout(() => setLabOpen(true), 250);
+  }, [activeId, profiles]);
 
   const saveSymptom = async () => {
     if (!symName.trim() || !activeId) return;
@@ -59,15 +65,24 @@ export const LogProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const processUpload = async (file: { uri: string; name: string; type: string }) => {
-    const target = labTarget || activeId;
-    if (!target) return;
+    const target = labTarget || activeId || profiles[0]?.id;
+    if (!target) {
+      const message = lang === "ru" ? "Сначала выберите профиль, для которого загружается анализ." : "Choose a profile before uploading a lab.";
+      setLabError(message);
+      toast(message);
+      return;
+    }
+    setLabError(null);
     setRecognizing(true);
     try {
       const preview = await api.uploadLab(target, lang, file);
       setLabPreview(preview);
       toast(lang === "ru" ? "Проверьте распознанные значения перед сохранением" : "Review recognized values before saving");
-    } catch {
-      toast(lang === "ru" ? "Не удалось распознать анализ" : "Could not read the lab");
+    } catch (cause) {
+      const message = lang === "ru" ? "Не удалось загрузить или распознать анализ. Попробуйте ещё раз." : "Could not upload or read the lab. Please try again.";
+      setLabError(message);
+      toast(message);
+      console.warn("Lab upload failed", cause);
     } finally { setRecognizing(false); }
   };
 
@@ -111,7 +126,22 @@ export const LogProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const res = await ImagePicker.launchImageLibraryAsync({ quality: 0.7 }); if (!res.canceled && res.assets[0]) { const a = res.assets[0]; await processUpload({ uri: a.uri, name: a.fileName || "image.jpg", type: a.mimeType || "image/jpeg" }); }
   };
   const pickFile = async () => {
-    const res = await DocumentPicker.getDocumentAsync({ type: ["application/pdf", "image/*"] }); if (!res.canceled && res.assets[0]) { const a = res.assets[0]; await processUpload({ uri: a.uri, name: a.name || "document.pdf", type: a.mimeType || "application/pdf" }); }
+    setLabError(null);
+    const res = await DocumentPicker.getDocumentAsync({ type: ["application/pdf", "image/*"], copyToCacheDirectory: true });
+    if (res.canceled || !res.assets[0]) return;
+    const a = res.assets[0];
+    const browserFile = (a as any).file as Blob | undefined;
+    let uploadUri = a.uri;
+    let revokeUri = false;
+    try {
+      if (browserFile && typeof URL !== "undefined" && typeof URL.createObjectURL === "function") {
+        uploadUri = URL.createObjectURL(browserFile);
+        revokeUri = true;
+      }
+      await processUpload({ uri: uploadUri, name: a.name || "document.pdf", type: a.mimeType || (browserFile as any)?.type || "application/pdf" });
+    } finally {
+      if (revokeUri && typeof URL !== "undefined" && typeof URL.revokeObjectURL === "function") URL.revokeObjectURL(uploadUri);
+    }
   };
 
   return <LogContext.Provider value={{ openMenu, openSymptom, openMed, openLab, toast }}>
@@ -155,7 +185,8 @@ export const LogProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         <Pressable onPress={addBiomarker} style={styles.addMarker} testID="lab-preview-add"><Ionicons name="add" size={18} color={colors.brand} /><Text style={styles.addMarkerText}>{lang === "ru" ? "Добавить показатель" : "Add biomarker"}</Text></Pressable>
         <View style={styles.actions}><PrimaryButton label={lang === "ru" ? "Подтвердить и сохранить" : "Confirm and save"} onPress={confirmLab} loading={savingLab} testID="lab-preview-confirm" /><Pressable disabled={savingLab} onPress={cancelLabReview} style={styles.cancelBtn} testID="lab-preview-cancel"><Text style={styles.cancelText}>{lang === "ru" ? "Отменить импорт" : "Cancel import"}</Text></Pressable></View>
       </> : <>
-        <View style={styles.whoseBox}><Text style={styles.whoseTitle}>{t("whose_lab")}</Text><Text style={styles.whoseHint}>{t("whose_lab_hint")}</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm, paddingVertical: spacing.sm }}>{profiles.map((p) => <Chip key={p.id} testID={`lab-target-${p.id}`} label={p.name} active={labTarget === p.id} onPress={() => setLabTarget(p.id)} />)}</ScrollView></View>
+        <View style={styles.whoseBox}><Text style={styles.whoseTitle}>{t("whose_lab")}</Text><Text style={styles.whoseHint}>{t("whose_lab_hint")}</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm, paddingVertical: spacing.sm }}>{profiles.map((p) => <Chip key={p.id} testID={`lab-target-${p.id}`} label={p.name} active={labTarget === p.id} onPress={() => { setLabTarget(p.id); setLabError(null); }} />)}</ScrollView></View>
+        {labError && <View style={styles.permBanner} testID="lab-upload-error"><Ionicons name="alert-circle-outline" size={18} color={colors.warning} /><Text style={styles.permText}>{labError}</Text></View>}
         {permBlocked && <Pressable style={styles.permBanner} onPress={() => Linking.openSettings()} testID="open-settings"><Ionicons name="warning-outline" size={18} color={colors.warning} /><Text style={styles.permText}>{lang === "ru" ? "Доступ запрещён. Открыть настройки" : "Access denied. Open settings"}</Text></Pressable>}
         <MenuRow icon="camera-outline" label={t("from_camera")} onPress={pickCamera} testID="lab-camera" /><MenuRow icon="images-outline" label={t("from_gallery")} onPress={pickGallery} testID="lab-gallery" /><MenuRow icon="document-outline" label={t("from_file")} onPress={pickFile} testID="lab-file" />
       </>}
