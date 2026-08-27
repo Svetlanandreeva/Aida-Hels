@@ -55,18 +55,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
-  const value = useMemo<AppContextValue>(
-    () => ({
+  const value = useMemo<AppContextValue>(() => {
+    const base = translations[lang];
+    const t: Dict = {
+      ...base,
+      common: {
+        ...base.common,
+        tryDemo: base.common.login,
+      },
+    };
+    return {
       theme,
       colors: palette[theme],
       toggleTheme,
       lang,
       toggleLang,
-      t: translations[lang],
-    }),
+      t,
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [theme, lang],
-  );
+  }, [theme, lang]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }
@@ -76,5 +83,4 @@ export function useApp() {
   if (!ctx) throw new Error("useApp must be used within AppProvider");
   return ctx;
 }
-
 
