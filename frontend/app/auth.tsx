@@ -16,6 +16,8 @@ import { LangToggle, ThemeToggle, Txt } from "@/src/emergent/ui";
 
 type Mode = "login" | "forgot";
 
+const SOCIAL_START_TIMEOUT_MS = 20000;
+
 function socialCallbackError(code: string, provider: string | null, ru: boolean) {
   const label = provider === "vk" ? "VK ID" : provider === "yandex" ? "Яндекс ID" : (ru ? "внешний аккаунт" : "social account");
   if (code === "account_exists") return ru ? "Аккаунт Aida с этой почтой уже существует. Войдите по email и паролю." : "An Aida account with this email already exists. Sign in with email and password.";
@@ -112,7 +114,7 @@ export default function AuthScreen() {
     setSocialBusy(provider);
     try {
       const returnUri = Platform.OS === "web" && typeof window !== "undefined" ? `${window.location.origin}/auth` : "https://aidaassistent.ru/auth";
-      const authorizationUrl = await withTimeout(startSocialLogin(provider, returnUri), 6500, `social_${provider}`);
+      const authorizationUrl = await withTimeout(startSocialLogin(provider, returnUri), SOCIAL_START_TIMEOUT_MS, `social_${provider}`);
       if (Platform.OS === "web" && typeof window !== "undefined") window.location.assign(authorizationUrl);
       else await Linking.openURL(authorizationUrl);
     } catch (cause: any) {
