@@ -30,4 +30,4 @@ jobs:
       - name: Read redacted OAuth diagnostics
         run: |
           ssh -p "$RUVDS_PORT" -i ~/.ssh/ruvds -o ConnectTimeout=15 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes "$RUVDS_USER@$RUVDS_HOST" \
-            "sudo -n journalctl -u aida-backend --since '90 minutes ago' --no-pager | grep -E 'Social OAuth|Yandex ID|oauth' | tail -n 120 | sed -E 's/[A-Za-z0-9_=-]{32,}/[REDACTED]/g' || true"
+            "sudo -n journalctl -u aida-backend --since '2026-08-27 16:24:40' --until '2026-08-27 16:25:10' --no-pager | tail -n 180 | sed -E 's/([?&](code|state|oauth_ticket)=)[^& ]+/\1[REDACTED]/g; s/[A-Za-z0-9_=-]{40,}/[REDACTED]/g' || true"
