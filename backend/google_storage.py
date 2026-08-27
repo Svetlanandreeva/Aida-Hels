@@ -282,6 +282,15 @@ class SheetsCollection:
         await asyncio.to_thread(self.http.append, self.sheet, [[_encode(payload.get(h)) for h in headers]])
         return payload
 
+    async def _find_existing_id_unlocked(self, document_id: Any):
+        if document_id in (None, ""):
+            return None
+        _, rows = await self._read()
+        for _, existing in rows:
+            if existing.get("id") == document_id:
+                return existing
+        return None
+
     def find(self, query: Optional[Dict[str, Any]] = None, projection: Optional[Dict[str, Any]] = None):
         return LazyCursor(self, query or {})
 
@@ -294,7 +303,17 @@ class SheetsCollection:
 
     async def insert_one(self, doc: Dict[str, Any]):
         async with self.lock:
-            payload = await self._append_unlocked(doc)
+            try:
+                payload = await self._append_unlocked(doc)
+            except (requests.Timeout, requests.ConnectionError):
+                # A write timeout is ambiguous: Google may have committed the row
+                # before the client stopped waiting. Confirm by the stable document
+                # id before retrying so OAuth tickets and health records never get
+                # duplicated by network recovery.
+                existing = await self._find_existing_id_unlocked(doc.get("id"))
+                if existing is not None:
+                    return {"inserted_id": existing.get("id"), "recovered": True}
+                payload = await self._append_unlocked(doc)
         return {"inserted_id": payload.get("id")}
 
     async def update_one(self, query: Dict[str, Any], update: Dict[str, Any], upsert: bool = False):
