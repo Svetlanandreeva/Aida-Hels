@@ -39,6 +39,8 @@ jobs:
           import os
           from pathlib import Path
           import httpx
+          from google.auth.transport.requests import Request
+          from google.oauth2 import service_account
 
           for line in Path('.env').read_text().splitlines():
               if line and not line.lstrip().startswith('#') and '=' in line:
@@ -48,32 +50,58 @@ jobs:
           gemini = (os.getenv('GEMINI_API_KEY') or '').strip()
           legacy = (os.getenv('EMERGENT_LLM_KEY') or '').strip()
           model = (os.getenv('GEMINI_MODEL') or 'gemini-3.6-flash').strip()
-          drive_sa = bool((os.getenv('GOOGLE_SERVICE_ACCOUNT_JSON') or '').strip())
+          raw_sa = (os.getenv('GOOGLE_SERVICE_ACCOUNT_JSON') or '').strip()
           drive_folder = bool((os.getenv('GOOGLE_DRIVE_UPLOADS_FOLDER_ID') or '').strip())
           print(f'GEMINI_API_KEY_present={bool(gemini)}')
           print(f'EMERGENT_LLM_KEY_present={bool(legacy)}')
           print(f'OCR_key_present={bool(gemini or legacy)}')
           print(f'GEMINI_MODEL={model}')
-          print(f'DRIVE_service_account_present={drive_sa}')
+          print(f'DRIVE_service_account_present={bool(raw_sa)}')
           print(f'DRIVE_folder_present={drive_folder}')
 
-          key = gemini or legacy
-          if not key:
-              print('Gemini_smoke=SKIPPED_NO_KEY')
-              raise SystemExit(0)
+          body = {'contents':[{'role':'user','parts':[{'text':'Return JSON {"ok":true} only.'}]}], 'generationConfig': {'responseMimeType':'application/json'}}
           url = f'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent'
-          try:
-              r = httpx.post(url, headers={'x-goog-api-key': key, 'Content-Type': 'application/json'}, json={'contents':[{'role':'user','parts':[{'text':'Return JSON {"ok":true} only.'}]}], 'generationConfig': {'responseMimeType':'application/json'}}, timeout=20)
-              print(f'Gemini_http_status={r.status_code}')
-              if r.status_code >= 400:
-                  try:
-                      detail = ((r.json().get('error') or {}).get('message') or '')[:240]
-                  except Exception:
-                      detail = ''
-                  print('Gemini_error=' + detail.replace('\n',' '))
-              else:
-                  print('Gemini_smoke=OK')
-          except Exception as exc:
-              print('Gemini_smoke=NETWORK_ERROR:' + type(exc).__name__)
+
+          key = gemini or legacy
+          if key:
+              try:
+                  r = httpx.post(url, headers={'x-goog-api-key': key, 'Content-Type': 'application/json'}, json=body, timeout=20)
+                  print(f'Gemini_key_http_status={r.status_code}')
+                  if r.status_code >= 400:
+                      try:
+                          detail = ((r.json().get('error') or {}).get('message') or '')[:240]
+                      except Exception:
+                          detail = ''
+                      print('Gemini_key_error=' + detail.replace('\n',' '))
+                  else:
+                      print('Gemini_key_smoke=OK')
+              except Exception as exc:
+                  print('Gemini_key_smoke=NETWORK_ERROR:' + type(exc).__name__)
+          else:
+              print('Gemini_key_smoke=SKIPPED_NO_KEY')
+
+          if raw_sa:
+              try:
+                  info = json.loads(raw_sa)
+                  creds = service_account.Credentials.from_service_account_info(info, scopes=['https://www.googleapis.com/auth/cloud-platform'])
+                  creds.refresh(Request())
+                  project_id = info.get('project_id') or ''
+                  headers = {'Authorization': f'Bearer {creds.token}', 'Content-Type': 'application/json'}
+                  if project_id:
+                      headers['x-goog-user-project'] = project_id
+                  r = httpx.post(url, headers=headers, json=body, timeout=20)
+                  print(f'Gemini_oauth_http_status={r.status_code}')
+                  if r.status_code >= 400:
+                      try:
+                          detail = ((r.json().get('error') or {}).get('message') or '')[:240]
+                      except Exception:
+                          detail = ''
+                      print('Gemini_oauth_error=' + detail.replace('\n',' '))
+                  else:
+                      print('Gemini_oauth_smoke=OK')
+              except Exception as exc:
+                  print('Gemini_oauth_smoke=ERROR:' + type(exc).__name__ + ':' + str(exc)[:180].replace('\n',' '))
+          else:
+              print('Gemini_oauth_smoke=SKIPPED_NO_SERVICE_ACCOUNT')
           PY
           EOF
