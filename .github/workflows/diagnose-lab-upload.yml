@@ -30,4 +30,4 @@ jobs:
       - name: Read redacted recent lab upload diagnostics
         run: |
           ssh -p "$RUVDS_PORT" -i ~/.ssh/ruvds -o ConnectTimeout=15 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes "$RUVDS_USER@$RUVDS_HOST" \
-            "sudo -n journalctl -u aida-backend --since '60 minutes ago' --no-pager | grep -A 60 -B 10 -E '/api/lab-imports|lab-import|OCR|ocr|Lab import|lab upload' | tail -n 220 | sed -E 's/([?&](token|code|state)=)[^& ]+/\1[REDACTED]/g; s/[A-Za-z0-9_=-]{40,}/[REDACTED]/g' || true"
+            "sudo -n journalctl -u aida-backend --since '90 minutes ago' --no-pager | grep -A 80 -B 12 -E '/api/labs/upload|/labs/upload|/api/lab-imports|lab-import|OCR|ocr|Lab import|lab upload' | tail -n 260 | sed -E 's/([?&](token|code|state)=)[^& ]+/\1[REDACTED]/g; s/[A-Za-z0-9_=-]{40,}/[REDACTED]/g' || true"
