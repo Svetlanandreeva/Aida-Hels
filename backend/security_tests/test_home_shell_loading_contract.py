@@ -13,4 +13,6 @@ def test_home_does_not_enter_blocking_loading_mode():
     assert "const [loading] = useState(false);" in context
     assert "setLoading(true)" not in context
     assert "useEffect(() => { void reload(); }, [reload, refreshTick]);" in context
-    assert "if (health.loading)" in home
+    assert "if (health.loading)" not in home
+    assert 'testID="home-loading-inline"' in home
+    assert "Обновляем данные… сохранённые значения уже доступны ниже." in home
