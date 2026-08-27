@@ -7,10 +7,10 @@ import { StatusKind } from "@/src/emergent/health-context";
 import { radius, spacing, fontSize } from "@/src/emergent/tokens";
 import { Txt, shadow } from "@/src/emergent/ui";
 
-export function Card({ children, style }: { children: React.ReactNode; style?: StyleProp<ViewStyle> }) {
+export function Card({ children, style, testID }: { children: React.ReactNode; style?: StyleProp<ViewStyle>; testID?: string }) {
   const { colors } = useApp();
   return (
-    <View style={[styles.card, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }, style]}>
+    <View testID={testID} style={[styles.card, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }, style]}>
       {children}
     </View>
   );
@@ -108,7 +108,7 @@ export function ScaleRow({
   label: string;
   value: number;
   onChange: (v: number) => void;
-  invert?: boolean; // higher = worse (stress)
+  invert?: boolean;
   testID?: string;
 }) {
   const { colors } = useApp();
@@ -188,4 +188,3 @@ const styles = StyleSheet.create({
   metricRow: { flexDirection: "row", alignItems: "center", borderRadius: radius.md, padding: spacing.md, borderWidth: StyleSheet.hairlineWidth * 2 },
   fab: { position: "absolute", right: spacing.xl, bottom: spacing.lg, width: 56, height: 56, borderRadius: 28, alignItems: "center", justifyContent: "center" },
 });
-
