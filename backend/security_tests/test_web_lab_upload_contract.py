@@ -20,6 +20,6 @@ def test_lab_upload_is_bounded_and_uses_shared_multipart_path():
 
     assert 'await appendUploadFile(form, file, "lab")' in source
     assert 'uploadForm<LabImportPreview>("/labs/upload", form, "lab_upload")' in source
-    assert 'const timeoutMs = label === "lab_upload" ? 60000 : 15000' in source
+    assert 'const timeoutMs = label === "lab_upload" ? 150000 : 15000' in source
     assert 'withTimeout(apiFetch(path, { method: "POST", body: form as any }), timeoutMs, label)' in source
     assert 'withTimeout(fileResponse.blob(), 5000' in source
