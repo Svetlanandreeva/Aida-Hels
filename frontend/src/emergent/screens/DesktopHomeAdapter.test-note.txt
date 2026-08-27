@@ -1,1 +1,0 @@
-Desktop web deliberately uses the bounded legacy Home composition while mobile uses HomeEditorial. This prevents the mobile-first editorial canvas from being stretched across wide browser viewports until a dedicated desktop editorial composition is implemented.
