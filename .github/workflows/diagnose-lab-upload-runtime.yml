@@ -34,8 +34,8 @@ jobs:
           ssh -p "$RUVDS_PORT" -i ~/.ssh/ruvds -o ConnectTimeout=10 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
             "$RUVDS_USER@$RUVDS_HOST" <<'EOF'
           set -euo pipefail
-          echo '=== runtime config presence ==='
           cd /opt/aida/backend
+          echo '=== runtime config presence ==='
           python3 - <<'PY'
           from pathlib import Path
           values = {}
@@ -48,8 +48,55 @@ jobs:
               else:
                   print(f'{key}_configured={bool(values.get(key))}')
           PY
+
+          echo '=== Cloud Vision fallback probe ==='
+          .venv/bin/python - <<'PY'
+          import base64, json
+          from pathlib import Path
+          import requests
+          from google.auth.transport.requests import Request
+          from google.oauth2 import service_account
+
+          values = {}
+          for line in Path('.env').read_text().splitlines():
+              if '=' in line and not line.lstrip().startswith('#'):
+                  k,v=line.split('=',1); values[k.strip()]=v.strip()
+          raw = values.get('GOOGLE_SERVICE_ACCOUNT_JSON','')
+          if not raw:
+              print('vision_probe=no_service_account')
+              raise SystemExit(0)
+          try:
+              info = json.loads(raw)
+          except Exception:
+              print('vision_probe=invalid_service_account_json')
+              raise SystemExit(0)
+          creds = service_account.Credentials.from_service_account_info(
+              info, scopes=['https://www.googleapis.com/auth/cloud-platform']
+          )
+          creds.refresh(Request())
+          # Tiny valid PNG; contains no user data.
+          png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
+          payload = {'requests':[{'image':{'content':png},'features':[{'type':'TEXT_DETECTION','maxResults':1}]}]}
+          response = requests.post(
+              'https://vision.googleapis.com/v1/images:annotate',
+              headers={'Authorization':'Bearer '+creds.token,'Content-Type':'application/json'},
+              json=payload, timeout=20,
+          )
+          detail = ''
+          try:
+              body = response.json()
+              detail = ((body.get('error') or {}).get('message') or '')[:180]
+              if not detail and body.get('responses'):
+                  detail = (((body['responses'][0].get('error') or {}).get('message')) or '')[:180]
+          except Exception:
+              pass
+          print(f'vision_probe_http={response.status_code}')
+          if detail:
+              print('vision_probe_detail='+detail)
+          PY
+
           echo '=== recent backend lines ==='
-          sudo -n journalctl -u aida-backend --since '20 minutes ago' --no-pager -o cat | \
+          sudo -n journalctl -u aida-backend --since '25 minutes ago' --no-pager -o cat | \
             grep -Ei 'labs/upload|lab upload|gemini|google drive|ocr|traceback|exception|error|http.*(4|5)[0-9][0-9]' | \
             tail -n 180 || true
           EOF
