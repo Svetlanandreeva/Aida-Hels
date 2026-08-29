@@ -44,8 +44,8 @@
 
 @layer base {
   body {
-    background-color: #f6f7fa;
-    color: #0e0f1b;
+    background-color: var(--aida-bg, #050711);
+    color: var(--aida-text, #f7f8ff);
     font-family: var(--aida-font);
   }
 
@@ -59,8 +59,119 @@
   }
 }
 
-.aida-app-main { margin-left: 272px; width: calc(100% - 272px) !important; min-height: 100vh; }
-@media (max-width: 900px) { .aida-app-main { margin-left: 0; width: 100% !important; } }
+/* New Aida mobile surface. Scoped to the authenticated product so the promo
+   landing page keeps its original dark visual language. */
+@media screen and (max-width: 767px) {
+  .aida-product-shell {
+    --mobile-canvas: #eaeae8;
+    --mobile-card: rgba(255, 255, 255, 0.72);
+    --mobile-ink: #1b1b1d;
+    --mobile-muted: #727276;
+    --mobile-accent: #cff24a;
+    min-height: 100dvh;
+    background: var(--mobile-canvas) !important;
+    color: var(--mobile-ink) !important;
+  }
+
+  .aida-product-shell > header {
+    height: 68px !important;
+    padding: 0 16px !important;
+    color: var(--mobile-ink) !important;
+    border-bottom: 1px solid rgba(27, 27, 29, 0.06) !important;
+    background: rgba(234, 234, 232, 0.86) !important;
+    backdrop-filter: blur(24px) !important;
+  }
+
+  .aida-product-shell > header button > div:first-child {
+    color: var(--mobile-ink) !important;
+    border-color: rgba(27, 27, 29, 0.08) !important;
+    background: var(--mobile-accent) !important;
+    box-shadow: none !important;
+  }
+
+  .aida-product-shell > header span,
+  .aida-product-shell > header button {
+    color: var(--mobile-ink) !important;
+  }
+
+  .aida-product-shell > header > div > div:last-child > button:not(:last-child),
+  .aida-product-shell > header > div > div:last-child > div {
+    display: none !important;
+  }
+
+  .aida-product-shell > main {
+    max-width: 430px !important;
+    padding: 10px 12px 112px !important;
+  }
+
+  .aida-product-shell main .bg-\[\#090B10\],
+  .aida-product-shell main .bg-\[\#0A0B0D\] {
+    background: transparent !important;
+  }
+
+  .aida-product-shell main .max-w-\[393px\] {
+    max-width: 100% !important;
+  }
+
+  .aida-product-shell main [class*="bg-[#111827]"],
+  .aida-product-shell main [class*="bg-[#0D"],
+  .aida-product-shell main [class*="bg-[#09"] {
+    background: var(--mobile-card) !important;
+    color: var(--mobile-ink) !important;
+    border-color: rgba(27, 27, 29, 0.06) !important;
+    box-shadow: 0 12px 36px rgba(27, 27, 29, 0.06) !important;
+    backdrop-filter: blur(20px);
+  }
+
+  .aida-product-shell main .text-white,
+  .aida-product-shell main [class*="text-white/"] {
+    color: var(--mobile-ink) !important;
+  }
+
+  .aida-product-shell main [class*="border-white/"] {
+    border-color: rgba(27, 27, 29, 0.07) !important;
+  }
+
+  .aida-product-shell main [class*="text-gray-"] {
+    color: var(--mobile-muted) !important;
+  }
+
+  .aida-product-shell main button {
+    touch-action: manipulation;
+  }
+
+  .aida-product-shell .bottom-nav-wrapper {
+    bottom: max(12px, env(safe-area-inset-bottom)) !important;
+    width: calc(100% - 24px) !important;
+    max-width: 406px !important;
+  }
+
+  .aida-product-shell .bottom-nav {
+    min-height: 72px !important;
+    padding: 8px 6px !important;
+    border: 1px solid rgba(27, 27, 29, 0.08) !important;
+    border-radius: 26px !important;
+    background: rgba(251, 251, 250, 0.92) !important;
+    box-shadow: 0 16px 42px rgba(27, 27, 29, 0.14) !important;
+    backdrop-filter: blur(24px) !important;
+  }
+
+  .aida-product-shell .bottom-nav .active-orb {
+    color: var(--mobile-ink) !important;
+    background: var(--mobile-accent) !important;
+    border-color: rgba(27, 27, 29, 0.06) !important;
+    box-shadow: none !important;
+  }
+
+  .aida-product-shell .bottom-nav .nav-label {
+    color: #858589 !important;
+  }
+
+  .aida-product-shell .bottom-nav .nav-item.active .nav-label {
+    color: var(--mobile-ink) !important;
+    font-weight: 700 !important;
+  }
+}
 
 /* Aida Design System Custom Styles */
 .aida-ring {
@@ -560,5 +671,4 @@
 .nav-item.active .nav-icon {
   opacity: 0;
 }
-
 
