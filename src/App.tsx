@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   ScreenId,
   DashboardTab,
@@ -15,20 +15,21 @@ import {
 } from './types';
 import { calculateHealthProfile } from './utils/calculateHealthProfile';
 import {
-  SubjectProfile,
-  loadSubjectProfiles,
-  saveSubjectProfiles,
-  getPrimarySubjectProfileId,
-  getStoredActiveSubjectProfileId,
-  saveStoredActiveSubjectProfileId,
-  filterBySubjectProfile,
-  getSubjectUserProfile,
-} from './utils/subjectProfiles';
-import {
+  initialUserProfile,
   emptyUserProfile,
+  demoUserProfile,
   emptyBodySystems,
   emptyMentalPatterns,
   emptyWeeklyReport,
+  initialBodySystems,
+  initialDocuments,
+  initialAppointments,
+  initialDailyLogs,
+  initialReminders,
+  initialDiaryEntries,
+  initialMentalPatterns,
+  initialWeeklyReport,
+  initialPressureLogs,
 } from './data/initialData';
 
 import { Navigation } from './components/Navigation';
@@ -37,17 +38,13 @@ import { StartScreen } from './components/StartScreen';
 import { Questionnaire } from './components/Questionnaire';
 import { Dashboard } from './components/Dashboard';
 import { MedicalProfile } from './components/MedicalProfile';
-import { SettingsDrawer } from './components/SettingsDrawer';
+import { SettingsScreen } from './components/SettingsScreen';
 import { AiAssistant } from './components/AiAssistant';
 import { DailyCheckin } from './components/DailyCheckin';
 import { BodyMap } from './components/BodyMap';
 import { RemindersScreen } from './components/RemindersScreen';
 import { MentalDiaryScreen } from './components/MentalDiaryScreen';
 import { PressureDiary } from './components/PressureDiary';
-import { TimelineScreen } from './components/TimelineScreen';
-import { WearablesIntegrationsScreen } from './components/WearablesIntegrationsScreen';
-import { PermissionSettingsScreen } from './components/PermissionSettingsScreen';
-import { WellnessOverview } from './components/WellnessOverview';
 
 import { SecurityLockModal } from './components/SecurityLockModal';
 import { checkAndTriggerReminders } from './services/notificationService';
@@ -78,6 +75,10 @@ export const logSecurityEvent = async (event: string, severity: 'low' | 'high') 
   }
 };
 
+const isDemoUser = (u: UserProfile) => {
+  return Boolean((u as any)?.isDemoUser) || u?.email === 'anna.ivanova@health.ru';
+};
+
 export default function App() {
   // Navigation State
   const [currentScreen, setCurrentScreen] = useState<ScreenId>(() => {
@@ -98,7 +99,6 @@ export default function App() {
     return 'start';
   });
   const [dashboardTab, setDashboardTab] = useState<DashboardTab>('main');
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [authTab, setAuthTab] = useState<'login' | 'register'>('register');
 
   // Application Data States
@@ -107,8 +107,20 @@ export default function App() {
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (parsed.email === 'anna.ivanova@health.ru' || parsed.fullName === 'Анна Сергеевна Иванова') {
-          return emptyUserProfile;
+        if (!parsed.isDemoUser && parsed.email !== 'anna.ivanova@health.ru' && parsed.fullName !== 'Анна Сергеевна Иванова') {
+          if (parsed.id === 'usr-1') parsed.id = `usr-${Date.now()}`;
+          if (parsed.birthDate === '1995-06-14') parsed.birthDate = '';
+          if (parsed.height === 168) parsed.height = 0;
+          if (parsed.weight === 58) parsed.weight = 0;
+          parsed.allergies = (parsed.allergies || []).filter(
+            (a: string) => a !== 'Пенициллин' && a !== 'Цветение березы' && a !== 'Арахис'
+          );
+          parsed.chronicDiagnoses = (parsed.chronicDiagnoses || []).filter(
+            (d: any) => d.name !== 'Субклинический гипотиреоз' && d.name !== 'Синдром раздраженного кишечника'
+          );
+          if (parsed.womenHealth?.partnerSyncCode === 'PARTNER-9842-RU') {
+            parsed.womenHealth = { ...parsed.womenHealth, partnerSyncCode: '', lastPeriodDate: '' };
+          }
         }
         return parsed;
       } catch {
@@ -128,54 +140,63 @@ export default function App() {
   }, [user]);
 
   const [bodySystems, setBodySystems] = useState<BodySystem[]>(() => {
+    if (isDemoUser(user)) return initialBodySystems;
     const saved = localStorage.getItem('app_body_systems');
     if (saved) { try { return JSON.parse(saved); } catch {} }
     return emptyBodySystems;
   });
 
   const [documents, setDocuments] = useState<MedicalDocument[]>(() => {
+    if (isDemoUser(user)) return initialDocuments;
     const saved = localStorage.getItem('app_user_documents');
     if (saved) { try { return JSON.parse(saved); } catch {} }
     return [];
   });
 
   const [appointments, setAppointments] = useState<Appointment[]>(() => {
+    if (isDemoUser(user)) return initialAppointments;
     const saved = localStorage.getItem('app_user_appointments');
     if (saved) { try { return JSON.parse(saved); } catch {} }
     return [];
   });
 
   const [dailyLogs, setDailyLogs] = useState<DailyLogEntry[]>(() => {
+    if (isDemoUser(user)) return initialDailyLogs;
     const saved = localStorage.getItem('app_user_daily_logs');
     if (saved) { try { return JSON.parse(saved); } catch {} }
     return [];
   });
 
   const [reminders, setReminders] = useState<Reminder[]>(() => {
+    if (isDemoUser(user)) return initialReminders;
     const saved = localStorage.getItem('app_user_reminders');
     if (saved) { try { return JSON.parse(saved); } catch {} }
     return [];
   });
 
   const [pressureLogs, setPressureLogs] = useState<PressureLogEntry[]>(() => {
+    if (isDemoUser(user)) return initialPressureLogs;
     const saved = localStorage.getItem('app_user_pressure_logs');
     if (saved) { try { return JSON.parse(saved); } catch {} }
     return [];
   });
 
   const [diaryEntries, setDiaryEntries] = useState<DiaryEntry[]>(() => {
+    if (isDemoUser(user)) return initialDiaryEntries;
     const saved = localStorage.getItem('app_user_diary_entries');
     if (saved) { try { return JSON.parse(saved); } catch {} }
     return [];
   });
 
   const [mentalPatterns, setMentalPatterns] = useState<UserMentalPatterns>(() => {
+    if (isDemoUser(user)) return initialMentalPatterns;
     const saved = localStorage.getItem('app_user_mental_patterns');
     if (saved) { try { return JSON.parse(saved); } catch {} }
     return emptyMentalPatterns;
   });
 
   const [weeklyReport, setWeeklyReport] = useState<WeeklyMentalReport>(() => {
+    if (isDemoUser(user)) return initialWeeklyReport;
     const saved = localStorage.getItem('app_user_weekly_report');
     if (saved) { try { return JSON.parse(saved); } catch {} }
     return emptyWeeklyReport;
@@ -190,146 +211,13 @@ export default function App() {
   });
   const [isAppLocked, setIsAppLocked] = useState<boolean>(false);
 
-  // Subject Profiles & Context State
-  const accountId = user?.id || 'usr-1';
-  const primarySubjectProfileId = useMemo(() => getPrimarySubjectProfileId(accountId), [accountId]);
-
-  const [subjectProfiles, setSubjectProfiles] = useState<SubjectProfile[]>(() => {
-    return loadSubjectProfiles(user);
-  });
-
-  const [activeSubjectProfileId, setActiveSubjectProfileId] = useState<string>(() => {
-    return getStoredActiveSubjectProfileId(accountId);
-  });
-
-  // Sync subject profiles if account user profile updates
+  // Recalculate body systems dynamically whenever documents, user profile, or logs change
   useEffect(() => {
-    if (!user) return;
-    const updatedProfiles = loadSubjectProfiles(user);
-    setSubjectProfiles(updatedProfiles);
-    saveSubjectProfiles(user.id || 'usr-1', updatedProfiles);
-  }, [user.id, user.fullName, user.birthDate, user.gender, user.height, user.weight, user.bloodType, user.allergies]);
-
-  const handleSelectSubjectProfile = (profileId: string) => {
-    setActiveSubjectProfileId(profileId);
-    saveStoredActiveSubjectProfileId(user.id || 'usr-1', profileId);
-  };
-
-  const handleAddSubjectProfile = (newProfileData: Omit<SubjectProfile, 'id' | 'accountId'>) => {
-    const newId = `sp-${newProfileData.type}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-    const createdProfile: SubjectProfile = {
-      ...newProfileData,
-      id: newId,
-      accountId: user.id || 'usr-1',
-    };
-    const updatedProfiles = [...subjectProfiles, createdProfile];
-    setSubjectProfiles(updatedProfiles);
-    saveSubjectProfiles(user.id || 'usr-1', updatedProfiles);
-
-    setActiveSubjectProfileId(newId);
-    saveStoredActiveSubjectProfileId(user.id || 'usr-1', newId);
-  };
-
-  const handleDeleteSubjectProfile = (profileId: string) => {
-    if (profileId === primarySubjectProfileId) return;
-    const updatedProfiles = subjectProfiles.filter((p) => p.id !== profileId);
-    setSubjectProfiles(updatedProfiles);
-    saveSubjectProfiles(user.id || 'usr-1', updatedProfiles);
-
-    if (activeSubjectProfileId === profileId) {
-      setActiveSubjectProfileId(primarySubjectProfileId);
-      saveStoredActiveSubjectProfileId(user.id || 'usr-1', primarySubjectProfileId);
+    if (documents.length > 0 || isDemoUser(user)) {
+      const { bodySystems: updatedSystems } = calculateHealthProfile(user, documents, dailyLogs, pressureLogs);
+      setBodySystems(updatedSystems);
     }
-  };
-
-  // Active Subject & Scoped Medical Collections
-  const activeSubjectProfile = useMemo(() => {
-    return (
-      subjectProfiles.find((p) => p.id === activeSubjectProfileId) ||
-      subjectProfiles[0] || {
-        id: primarySubjectProfileId,
-        accountId,
-        type: 'self' as const,
-        fullName: user.fullName || 'Я',
-        relationship: 'Я',
-      }
-    );
-  }, [subjectProfiles, activeSubjectProfileId, primarySubjectProfileId, accountId, user.fullName]);
-
-  const activeUserForSubject = useMemo(() => {
-    return getSubjectUserProfile(user, activeSubjectProfile);
-  }, [user, activeSubjectProfile]);
-
-  const activeDocuments = useMemo(() => {
-    return filterBySubjectProfile(documents, activeSubjectProfileId, primarySubjectProfileId);
-  }, [documents, activeSubjectProfileId, primarySubjectProfileId]);
-
-  const activeAppointments = useMemo(() => {
-    return filterBySubjectProfile(appointments, activeSubjectProfileId, primarySubjectProfileId);
-  }, [appointments, activeSubjectProfileId, primarySubjectProfileId]);
-
-  const activeDailyLogs = useMemo(() => {
-    return filterBySubjectProfile(dailyLogs, activeSubjectProfileId, primarySubjectProfileId);
-  }, [dailyLogs, activeSubjectProfileId, primarySubjectProfileId]);
-
-  const activePressureLogs = useMemo(() => {
-    return filterBySubjectProfile(pressureLogs, activeSubjectProfileId, primarySubjectProfileId);
-  }, [pressureLogs, activeSubjectProfileId, primarySubjectProfileId]);
-
-  const activeReminders = useMemo(() => {
-    return filterBySubjectProfile(reminders, activeSubjectProfileId, primarySubjectProfileId);
-  }, [reminders, activeSubjectProfileId, primarySubjectProfileId]);
-
-  const activeDiaryEntries = useMemo(() => {
-    return filterBySubjectProfile(diaryEntries, activeSubjectProfileId, primarySubjectProfileId);
-  }, [diaryEntries, activeSubjectProfileId, primarySubjectProfileId]);
-
-  // Wrappers to ensure newly added records are tagged with subject_profile_id
-  const handleSetDocuments: React.Dispatch<React.SetStateAction<MedicalDocument[]>> = (value) => {
-    setDocuments((prev) => {
-      const next = typeof value === 'function' ? value(prev) : value;
-      return next.map((item) => (item.subject_profile_id ? item : { ...item, subject_profile_id: activeSubjectProfileId }));
-    });
-  };
-
-  const handleSetAppointments: React.Dispatch<React.SetStateAction<Appointment[]>> = (value) => {
-    setAppointments((prev) => {
-      const next = typeof value === 'function' ? value(prev) : value;
-      return next.map((item) => (item.subject_profile_id ? item : { ...item, subject_profile_id: activeSubjectProfileId }));
-    });
-  };
-
-  const handleSetDailyLogs: React.Dispatch<React.SetStateAction<DailyLogEntry[]>> = (value) => {
-    setDailyLogs((prev) => {
-      const next = typeof value === 'function' ? value(prev) : value;
-      return next.map((item) => (item.subject_profile_id ? item : { ...item, subject_profile_id: activeSubjectProfileId }));
-    });
-  };
-
-  const handleSetPressureLogs: React.Dispatch<React.SetStateAction<PressureLogEntry[]>> = (value) => {
-    setPressureLogs((prev) => {
-      const next = typeof value === 'function' ? value(prev) : value;
-      return next.map((item) => (item.subject_profile_id ? item : { ...item, subject_profile_id: activeSubjectProfileId }));
-    });
-  };
-
-  const handleSetReminders: React.Dispatch<React.SetStateAction<Reminder[]>> = (value) => {
-    setReminders((prev) => {
-      const next = typeof value === 'function' ? value(prev) : value;
-      return next.map((item) => (item.subject_profile_id ? item : { ...item, subject_profile_id: activeSubjectProfileId }));
-    });
-  };
-
-  // Recalculate body systems dynamically using active subject profile data
-  useEffect(() => {
-    const { bodySystems: updatedSystems } = calculateHealthProfile(
-      activeUserForSubject,
-      activeDocuments,
-      activeDailyLogs,
-      activePressureLogs
-    );
-    setBodySystems(updatedSystems);
-  }, [activeUserForSubject, activeDocuments, activeDailyLogs, activePressureLogs]);
+  }, [user, documents, dailyLogs, pressureLogs]);
 
   // Auto-synchronize medications from user profile (chronicDiagnoses & psychiatricData) to reminders
   useEffect(() => {
@@ -391,17 +279,19 @@ export default function App() {
     }
   }, [user]);
 
-  // Save user data changes to localStorage
+  // Save non-demo user data changes to localStorage
   useEffect(() => {
-    localStorage.setItem('app_body_systems', JSON.stringify(bodySystems));
-    localStorage.setItem('app_user_documents', JSON.stringify(documents));
-    localStorage.setItem('app_user_appointments', JSON.stringify(appointments));
-    localStorage.setItem('app_user_daily_logs', JSON.stringify(dailyLogs));
-    localStorage.setItem('app_user_reminders', JSON.stringify(reminders));
-    localStorage.setItem('app_user_pressure_logs', JSON.stringify(pressureLogs));
-    localStorage.setItem('app_user_diary_entries', JSON.stringify(diaryEntries));
-    localStorage.setItem('app_user_mental_patterns', JSON.stringify(mentalPatterns));
-    localStorage.setItem('app_user_weekly_report', JSON.stringify(weeklyReport));
+    if (!isDemoUser(user)) {
+      localStorage.setItem('app_body_systems', JSON.stringify(bodySystems));
+      localStorage.setItem('app_user_documents', JSON.stringify(documents));
+      localStorage.setItem('app_user_appointments', JSON.stringify(appointments));
+      localStorage.setItem('app_user_daily_logs', JSON.stringify(dailyLogs));
+      localStorage.setItem('app_user_reminders', JSON.stringify(reminders));
+      localStorage.setItem('app_user_pressure_logs', JSON.stringify(pressureLogs));
+      localStorage.setItem('app_user_diary_entries', JSON.stringify(diaryEntries));
+      localStorage.setItem('app_user_mental_patterns', JSON.stringify(mentalPatterns));
+      localStorage.setItem('app_user_weekly_report', JSON.stringify(weeklyReport));
+    }
   }, [user, bodySystems, documents, appointments, dailyLogs, reminders, pressureLogs, diaryEntries, mentalPatterns, weeklyReport]);
 
   // Background timer for active browser notifications
@@ -424,7 +314,6 @@ export default function App() {
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       user_id: user.id || 'usr-1',
-      subject_profile_id: activeSubjectProfileId,
       event_datetime: entryData.event_datetime || new Date().toISOString(),
       entry_type: entryData.entry_type || 'full',
       state_score: entryData.state_score ?? 7,
@@ -449,7 +338,7 @@ export default function App() {
       const res = await fetch('/api/mental-diary/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ entries: activeDiaryEntries, newEntry, subjectProfileId: activeSubjectProfileId }),
+        body: JSON.stringify({ entries: diaryEntries, newEntry }),
       });
       if (res.ok) {
         const data = await res.json();
@@ -510,29 +399,38 @@ export default function App() {
   const [isDoctorReportOpen, setIsDoctorReportOpen] = useState(false);
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
 
-  const navigateTo = (screen: ScreenId) => {
-    if (screen === 'settings') {
-      setIsSettingsOpen(true);
-      return;
-    }
-    setIsSettingsOpen(false);
-    setCurrentScreen(screen);
-  };
-
   // Handlers
   const handleAuthSuccess = (userData?: Partial<UserProfile>) => {
     const isNewRegistration = userData?.isQuestionnaireCompleted === false;
-    const baseProfile = isNewRegistration ? emptyUserProfile : user;
+    const isPrevDemo = isDemoUser(user) || user.email === 'anna.ivanova@health.ru' || user.fullName === 'Анна Сергеевна Иванова';
+
+    const baseProfile = (isPrevDemo || isNewRegistration) ? emptyUserProfile : user;
 
     const updatedUser: UserProfile = {
       ...emptyUserProfile,
       ...baseProfile,
       ...userData,
+      isDemoUser: false,
       isAuthenticated: true,
     };
 
-    if (!updatedUser.id) {
+    if (!updatedUser.id || updatedUser.id === 'usr-1') {
       updatedUser.id = `usr-${Date.now()}`;
+    }
+
+    if (updatedUser.fullName !== 'Анна Сергеевна Иванова' && updatedUser.email !== 'anna.ivanova@health.ru') {
+      if (updatedUser.birthDate === '1995-06-14') updatedUser.birthDate = '';
+      if (updatedUser.height === 168) updatedUser.height = 0;
+      if (updatedUser.weight === 58) updatedUser.weight = 0;
+      updatedUser.allergies = (updatedUser.allergies || []).filter(
+        (a: string) => a !== 'Пенициллин' && a !== 'Цветение березы' && a !== 'Арахис'
+      );
+      updatedUser.chronicDiagnoses = (updatedUser.chronicDiagnoses || []).filter(
+        (d: any) => d.name !== 'Субклинический гипотиреоз' && d.name !== 'Синдром раздраженного кишечника'
+      );
+      if (updatedUser.womenHealth?.partnerSyncCode === 'PARTNER-9842-RU') {
+        updatedUser.womenHealth = { ...updatedUser.womenHealth, partnerSyncCode: '', lastPeriodDate: '' };
+      }
     }
 
     setUser(updatedUser);
@@ -555,23 +453,22 @@ export default function App() {
   };
 
   const handleDemoLogin = () => {
-    const guestUser: UserProfile = {
-      ...emptyUserProfile,
-      id: `usr-guest-${Date.now()}`,
-      fullName: 'Новый пользователь',
+    const demoUser = {
+      ...demoUserProfile,
       isAuthenticated: true,
       isQuestionnaireCompleted: true,
+      isDemoUser: true,
     };
-    setUser(guestUser);
-    setBodySystems(emptyBodySystems);
-    setDocuments([]);
-    setAppointments([]);
-    setDailyLogs([]);
-    setReminders([]);
-    setPressureLogs([]);
-    setDiaryEntries([]);
-    setMentalPatterns(emptyMentalPatterns);
-    setWeeklyReport(emptyWeeklyReport);
+    setUser(demoUser);
+    setBodySystems(initialBodySystems);
+    setDocuments(initialDocuments);
+    setAppointments(initialAppointments);
+    setDailyLogs(initialDailyLogs);
+    setReminders(initialReminders);
+    setPressureLogs(initialPressureLogs);
+    setDiaryEntries(initialDiaryEntries);
+    setMentalPatterns(initialMentalPatterns);
+    setWeeklyReport(initialWeeklyReport);
     setCurrentScreen('dashboard');
   };
 
@@ -585,44 +482,24 @@ export default function App() {
   const handleDeleteProfile = async () => {
     logSecurityEvent(`КРИТИЧЕСКОЕ СОБЫТИЕ: Запрос на полное удаление профиля (пользователь ${user.email || user.id})`, 'high');
     const currentUserId = user.id || 'usr-1';
-    const currentEmail = user.email || '';
     const savedSheetUrl = localStorage.getItem('app_google_sheet_url') || '';
 
-    // a) Call server deletion endpoints
-    let serverSuccess = true;
-    try {
-      const res = await fetch('/api/auth/delete-account', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: currentUserId,
-          email: currentEmail,
-        }),
-      });
-      if (!res.ok) {
-        serverSuccess = false;
-      }
-    } catch (err) {
-      console.error('Server delete-account error:', err);
-      serverSuccess = false;
-    }
-
-    // b) Reset all local React states to empty/defaults
-    setUser(emptyUserProfile);
-    setBodySystems(emptyBodySystems);
+    // a) Reset all local React states to empty/defaults
+    setUser(initialUserProfile);
+    setBodySystems(initialBodySystems);
     setDocuments([]);
     setAppointments([]);
     setDailyLogs([]);
     setReminders([]);
     setPressureLogs([]);
     setDiaryEntries([]);
-    setMentalPatterns(emptyMentalPatterns);
-    setWeeklyReport(emptyWeeklyReport);
+    setMentalPatterns(initialMentalPatterns);
+    setWeeklyReport(initialWeeklyReport);
     setBiometricsEnabled(false);
     setUserPin('');
     setIsAppLocked(false);
 
-    // c) Clear all localStorage keys
+    // b) Clear all localStorage keys
     try {
       localStorage.removeItem('app_user_profile');
       localStorage.removeItem('app_biometrics_enabled');
@@ -630,43 +507,66 @@ export default function App() {
       localStorage.removeItem('app_saved_credentials');
       localStorage.removeItem('app_google_sheet_url');
       localStorage.removeItem('app_sync_status');
-      localStorage.removeItem('app_pending_verifications');
       localStorage.clear();
     } catch (err) {
       console.error('Error clearing localStorage during account deletion:', err);
     }
 
-    // d) Redirect user to start screen as a brand new user
+    // c) Call server endpoint /api/sheets/proxy with deleteUserAccount action
+    let serverSuccess = true;
+    try {
+      const res = await fetch('/api/sheets/proxy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'deleteUserAccount',
+          userId: currentUserId,
+          webAppUrl: savedSheetUrl,
+        }),
+      });
+      if (!res.ok) {
+        serverSuccess = false;
+      } else {
+        const data = await res.json();
+        if (!data.success) {
+          serverSuccess = false;
+        }
+      }
+    } catch (err) {
+      console.error('Server deleteUserAccount request error:', err);
+      serverSuccess = false;
+    }
+
+    // e) Redirect user to start screen as a brand new user
     setCurrentScreen('start');
     setDashboardTab('main');
 
     if (!serverSuccess) {
       setTimeout(() => {
-        alert('Локальные данные профиля полностью удалены.');
+        alert('Локальные данные профиля полностью удалены. Часть данных в облаке могла не удалиться из-за отсутствия связи с сервером.');
       }, 300);
     }
   };
 
   return (
-    <div className={`min-h-screen flex flex-col ${currentScreen === 'start' || currentScreen === 'auth' ? '' : 'aida-app-shell bg-[#f6f7fa]'}`}>
+    <div className={`min-h-screen font-sans flex flex-col ${
+      currentScreen === 'start' || currentScreen === 'auth'
+        ? 'bg-[#0A0B0D] text-gray-100 selection:bg-emerald-500/20 selection:text-emerald-300'
+        : 'aida-product-shell bg-[#EAEAE8] text-[#1B1B1D] selection:bg-[#CFF24A]/40'
+    }`}>
       {/* Top Header & Mobile Navigation (Only for logged-in inside app screens) */}
       {currentScreen !== 'start' && currentScreen !== 'auth' && user.isAuthenticated && (
         <Navigation
           currentScreen={currentScreen}
-          setCurrentScreen={navigateTo}
+          setCurrentScreen={setCurrentScreen}
           dashboardTab={dashboardTab}
           setDashboardTab={setDashboardTab}
           user={user}
           onLogout={handleLogout}
           onOpenTutorial={() => setIsOnboardingOpen(true)}
-          activeRemindersCount={activeReminders.filter((r) => r.isEnabled).length}
-          reminders={activeReminders}
-          documents={activeDocuments}
-          subjectProfiles={subjectProfiles}
-          activeSubjectProfileId={activeSubjectProfileId}
-          onSelectSubjectProfile={handleSelectSubjectProfile}
-          onAddSubjectProfile={handleAddSubjectProfile}
-          onDeleteSubjectProfile={handleDeleteSubjectProfile}
+          activeRemindersCount={reminders.filter((r) => r.isEnabled).length}
+          reminders={reminders}
+          documents={documents}
           onRefreshAnalysis={() => {
             // Trigger navigation back to dashboard or trigger refresh
             if (currentScreen !== 'dashboard') {
@@ -678,7 +578,7 @@ export default function App() {
       )}
 
       {/* Main Screen Router Content */}
-      <main className={currentScreen === 'start' || currentScreen === 'auth' ? 'flex-1 w-full flex flex-col' : 'flex-1 w-full aida-app-main'}>
+      <main className={currentScreen === 'start' || currentScreen === 'auth' ? 'flex-1 w-full flex flex-col' : 'flex-1 max-w-[1320px] w-full mx-auto px-3 sm:px-6 pt-4 sm:pt-6 pb-28 sm:pb-24'}>
         {/* GATE / AUTH SCREEN */}
         {currentScreen === 'auth' && (
           <AuthScreen
@@ -695,7 +595,7 @@ export default function App() {
               setAuthTab('register');
               setCurrentScreen('auth');
             }}
-            onGoToDashboard={handleDemoLogin}
+            onGoToDashboard={() => setCurrentScreen('dashboard')}
             onLoginClick={() => {
               setAuthTab('login');
               setCurrentScreen('auth');
@@ -724,19 +624,19 @@ export default function App() {
           <Dashboard
             activeTab={dashboardTab}
             setActiveTab={setDashboardTab}
-            user={activeUserForSubject}
-            documents={activeDocuments}
-            setDocuments={handleSetDocuments}
-            appointments={activeAppointments}
-            setAppointments={handleSetAppointments}
+            user={user}
+            documents={documents}
+            setDocuments={setDocuments}
+            appointments={appointments}
+            setAppointments={setAppointments}
             bodySystems={bodySystems}
             onNavigate={(screen) => setCurrentScreen(screen)}
             onOpenDoctorReport={() => setIsDoctorReportOpen(true)}
-            reminders={activeReminders}
-            setReminders={handleSetReminders}
-            dailyLogs={activeDailyLogs}
-            diaryEntries={activeDiaryEntries}
-            pressureLogs={activePressureLogs}
+            reminders={reminders}
+            setReminders={setReminders}
+            dailyLogs={dailyLogs}
+            diaryEntries={diaryEntries}
+            pressureLogs={pressureLogs}
             mentalPatterns={mentalPatterns}
           />
         )}
@@ -744,27 +644,58 @@ export default function App() {
         {/* SCREEN 7: ANAMNESIS & PROFILE (READ-ONLY) */}
         {currentScreen === 'profile' && (
           <MedicalProfile
-            user={activeUserForSubject}
+            user={user}
             onOpenDoctorReport={() => setIsDoctorReportOpen(true)}
             onEditQuestionnaire={() => setCurrentScreen('q1')}
+          />
+        )}
+
+        {/* SCREEN 8: SETTINGS & PARTNER CYCLE SYNC */}
+        {currentScreen === 'settings' && (
+          <SettingsScreen
+            user={user}
+            setUser={setUser}
+            reminders={reminders}
+            setReminders={setReminders}
+            documents={documents}
+            setDocuments={setDocuments}
+            onLogout={handleLogout}
+            onDeleteProfile={handleDeleteProfile}
+            onNavigate={(screen) => setCurrentScreen(screen)}
+            biometricsEnabled={biometricsEnabled}
+            setBiometricsEnabled={(enabled) => {
+              setBiometricsEnabled(enabled);
+              localStorage.setItem('app_biometrics_enabled', JSON.stringify(enabled));
+              logSecurityEvent(`Изменение настроек безопасности: биометрическая защита ${enabled ? 'включена' : 'отключена'}`, 'high');
+            }}
+            userPin={userPin}
+            setUserPin={(pin) => {
+              setUserPin(pin);
+              localStorage.setItem('app_pin_code', pin);
+              logSecurityEvent(`Изменение настроек безопасности: ${pin ? 'установлен новый PIN-код' : 'PIN-код сброшен'}`, 'high');
+            }}
+            onLockApp={() => {
+              setIsAppLocked(true);
+              logSecurityEvent('Ручная блокировка экрана приложения пользователем', 'low');
+            }}
           />
         )}
 
         {/* SCREEN 9: AI CHAT ASSISTANT */}
         {currentScreen === 'ai_chat' && (
           <AiAssistant
-            user={activeUserForSubject}
-            documents={activeDocuments}
-            dailyLogs={activeDailyLogs}
-            diaryEntries={activeDiaryEntries}
-            reminders={activeReminders}
-            pressureLogs={activePressureLogs}
+            user={user}
+            documents={documents}
+            dailyLogs={dailyLogs}
+            diaryEntries={diaryEntries}
+            reminders={reminders}
+            pressureLogs={pressureLogs}
           />
         )}
 
         {/* SCREEN 10: DAILY CHECK-IN & RECHARTS DYNAMICS */}
         {currentScreen === 'daily_checkin' && (
-          <DailyCheckin logs={activeDailyLogs} setLogs={handleSetDailyLogs} />
+          <DailyCheckin logs={dailyLogs} setLogs={setDailyLogs} />
         )}
 
         {/* SCREEN 11: BODY MAP (10 SYSTEMS) & ORGANISM AGE */}
@@ -773,10 +704,10 @@ export default function App() {
             systems={bodySystems}
             onSelectSystem={(system) => setSelectedSystemDetail(system)}
             onOpenOverviewModal={() => setIsOverviewModalOpen(true)}
-            user={activeUserForSubject}
-            documents={activeDocuments}
-            pressureLogs={activePressureLogs}
-            dailyLogs={activeDailyLogs}
+            user={user}
+            documents={documents}
+            pressureLogs={pressureLogs}
+            dailyLogs={dailyLogs}
             onNavigate={(screen) => setCurrentScreen(screen)}
           />
         )}
@@ -784,8 +715,8 @@ export default function App() {
         {/* SCREEN 12: REMINDERS & MEDICATION SCHEDULE */}
         {currentScreen === 'reminders' && (
           <RemindersScreen
-            reminders={activeReminders}
-            setReminders={handleSetReminders}
+            reminders={reminders}
+            setReminders={setReminders}
             onNavigateToCheckin={() => setCurrentScreen('daily_checkin')}
             onNavigateToAppointments={() => {
               setCurrentScreen('dashboard');
@@ -797,8 +728,8 @@ export default function App() {
         {/* SCREEN 13: MENTAL STATE DIARY */}
         {currentScreen === 'mental_diary' && (
           <MentalDiaryScreen
-            user={activeUserForSubject}
-            entries={activeDiaryEntries}
+            user={user}
+            entries={diaryEntries}
             patterns={mentalPatterns}
             weeklyReport={weeklyReport}
             onAddEntry={handleAddDiaryEntry}
@@ -811,61 +742,18 @@ export default function App() {
           />
         )}
 
-        {currentScreen === 'sleep_diary' && (
-          <WellnessOverview mode="sleep" onPrimary={() => setCurrentScreen('daily_checkin')} />
-        )}
-
-        {currentScreen === 'medications' && (
-          <WellnessOverview mode="medications" onPrimary={() => setCurrentScreen('reminders')} />
-        )}
-
         {/* SCREEN 14: PRESSURE & PULSE DIARY */}
         {currentScreen === 'pressure_diary' && (
           <PressureDiary
-            entries={activePressureLogs}
-            setEntries={handleSetPressureLogs}
+            entries={pressureLogs}
+            setEntries={setPressureLogs}
             onNavigateBack={() => {
               setCurrentScreen('dashboard');
               setDashboardTab('main');
             }}
           />
         )}
-
-        {/* SCREEN 15: AGGREGATED HEALTH TIMELINE */}
-        {currentScreen === 'timeline' && (
-          <TimelineScreen
-            onNavigate={(screen) => setCurrentScreen(screen)}
-            activeSubjectProfileId={activeSubjectProfileId}
-          />
-        )}
-
-        {/* SCREEN 16: WEARABLES & HEALTH PLATFORMS INTEGRATION HUB */}
-        {currentScreen === 'integrations' && (
-          <WearablesIntegrationsScreen
-            onBackToDashboard={() => {
-              setCurrentScreen('dashboard');
-              setDashboardTab('main');
-            }}
-          />
-        )}
-
-        {/* SCREEN 17: PERMISSION LAYER & FAMILY SECURITY HUB */}
-        {currentScreen === 'permissions' && (
-          <PermissionSettingsScreen
-            onBackToDashboard={() => {
-              setCurrentScreen('dashboard');
-              setDashboardTab('main');
-            }}
-          />
-        )}
       </main>
-
-      <SettingsDrawer
-        isOpen={isSettingsOpen}
-        user={user}
-        onClose={() => setIsSettingsOpen(false)}
-        onNavigate={navigateTo}
-      />
 
       {/* OVERLAY MODALS */}
 
@@ -888,8 +776,8 @@ export default function App() {
       <DoctorReportModal
         isOpen={isDoctorReportOpen}
         onClose={() => setIsDoctorReportOpen(false)}
-        user={activeUserForSubject}
-        documents={activeDocuments}
+        user={user}
+        documents={documents}
         systems={bodySystems}
       />
 
