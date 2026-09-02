@@ -18,7 +18,7 @@ def test_primary_navigation_matches_figma_product_hierarchy():
     # Medical detail modules stay addressable but no longer compete with the
     # five canonical mobile tabs from the approved Figma information architecture.
     for route in ["mind", "pressure", "body", "labs", "companion"]:
-        assert f'<Tabs.Screen name="{route}" options={{ href: null }}' in layout
+        assert f'<Tabs.Screen name="{route}" options={{{{ href: null }}}}' in layout
 
     tabbar = read("frontend/src/components/ResponsiveTabBar.tsx")
     for route in expected_primary:
