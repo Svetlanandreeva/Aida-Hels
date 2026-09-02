@@ -29,20 +29,23 @@ jobs:
           printf '%s\n' "$RUVDS_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/ruvds ~/.ssh/known_hosts
 
-      - name: Compare production vhosts and served bundle
+      - name: Compare production root and served bundle
         run: |
           ssh -p "$RUVDS_PORT" -i ~/.ssh/ruvds -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes "$RUVDS_USER@$RUVDS_HOST" <<'EOF'
           set -euo pipefail
+          host='aidaassistent.ru'
           echo '=== deployed web root ==='
           sha256sum /opt/aida/web/index.html
-          echo '=== relevant nginx configuration ==='
-          sudo -n nginx -T 2>/dev/null | grep -E -B3 -A10 'server_name .*aida(assistant|assistent)\.ru' || true
-          echo '=== hostname response hashes ==='
-          for host in aidaassistant.ru aidaassistent.ru; do
-            echo "HOST=$host"
-            curl -ksS --max-time 15 "https://$host/" -o "/tmp/$host.html"
-            sha256sum "/tmp/$host.html"
-            grep -oE '/_expo/static/js/web/[^" ]+\.js' "/tmp/$host.html" | head -n 3 || true
-            curl -ksSI --max-time 15 "https://$host/" | grep -Ei '^(HTTP/|cache-control:|age:|server:|etag:|last-modified:)' || true
-          done
+          echo '=== nginx configuration ==='
+          sudo -n nginx -T 2>/dev/null | grep -E -B3 -A12 'server_name .*aidaassistent\.ru' || true
+          echo '=== public response ==='
+          curl -ksS --max-time 15 "https://$host/" -o /tmp/public-index.html
+          sha256sum /tmp/public-index.html
+          echo '=== bundle references ==='
+          grep -oE '/_expo/static/js/web/[^" ]+\.js' /opt/aida/web/index.html | head -n 5 || true
+          grep -oE '/_expo/static/js/web/[^" ]+\.js' /tmp/public-index.html | head -n 5 || true
+          echo '=== response headers ==='
+          curl -ksSI --max-time 15 "https://$host/" | grep -Ei '^(HTTP/|cache-control:|age:|server:|etag:|last-modified:)' || true
+          echo '=== compare ==='
+          cmp -s /opt/aida/web/index.html /tmp/public-index.html && echo 'PUBLIC_INDEX_MATCHES_DEPLOYED=yes' || echo 'PUBLIC_INDEX_MATCHES_DEPLOYED=no'
           EOF
