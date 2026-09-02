@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useMemo, useState } from "react";
-import { StyleSheet, View, Pressable, TextInput, ScrollView } from "react-native";
+import { Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { Ionicons } from "@expo/vector-icons";
@@ -8,216 +8,38 @@ import Animated, { FadeIn, SlideInDown } from "react-native-reanimated";
 
 import { useApp } from "@/src/emergent/AppContext";
 import { useHealth } from "@/src/emergent/health-context";
-import { font, fontSize, radius, spacing, FORM_MAX } from "@/src/emergent/tokens";
-import { Txt, PillButton } from "@/src/emergent/ui";
+import { Txt } from "@/src/emergent/ui";
 import { ScaleRow } from "@/src/emergent/health";
+import { figma, RoundIcon } from "@/src/emergent/figma-mobile";
 
 export type AddType = "bp" | "lab" | "wellbeing" | "med" | "weight" | "symptom" | "task";
-
 const AddCtx = createContext<{ open: (t?: AddType) => void } | undefined>(undefined);
+export function useAddSheet(){const c=useContext(AddCtx);if(!c)throw new Error("useAddSheet must be used within AddSheetProvider");return c;}
+export function AddSheetProvider({children}:{children:React.ReactNode}){const[visible,setVisible]=useState(false);const[type,setType]=useState<AddType>("bp");const api=useMemo(()=>({open:(t?:AddType)=>{setType(t??"bp");setVisible(true);}}),[]);return <AddCtx.Provider value={api}>{children}{visible?<AddSheet type={type} setType={setType} onClose={()=>setVisible(false)}/>:null}</AddCtx.Provider>}
 
-export function useAddSheet() {
-  const c = useContext(AddCtx);
-  if (!c) throw new Error("useAddSheet must be used within AddSheetProvider");
-  return c;
+function AddSheet({type,setType,onClose}:{type:AddType;setType:(t:AddType)=>void;onClose:()=>void}){
+  const {t}=useApp();const insets=useSafeAreaInsets();const health=useHealth();const m=t.mod;
+  const[sys,setSys]=useState("");const[dia,setDia]=useState("");const[pulse,setPulse]=useState("");const[labName,setLabName]=useState("");const[labValue,setLabValue]=useState("");const[labUnit,setLabUnit]=useState("");const[kg,setKg]=useState("");const[medName,setMedName]=useState("");const[medTime,setMedTime]=useState("09:00");const[symptom,setSymptom]=useState("");const[taskTitle,setTaskTitle]=useState("");const[taskTime,setTaskTime]=useState("12:00");const[mood,setMood]=useState(3);const[energy,setEnergy]=useState(3);const[stress,setStress]=useState(3);const[wellbeing,setWellbeing]=useState(3);
+  const types:{key:AddType;label:string;icon:keyof typeof Ionicons.glyphMap}[]=[{key:"bp",label:m.typeBp,icon:"pulse-outline"},{key:"lab",label:m.typeLab,icon:"flask-outline"},{key:"wellbeing",label:m.typeWellbeing,icon:"happy-outline"},{key:"med",label:m.typeMed,icon:"medkit-outline"},{key:"weight",label:m.typeWeight,icon:"barbell-outline"},{key:"symptom",label:m.typeSymptom,icon:"thermometer-outline"},{key:"task",label:m.typeTask,icon:"checkbox-outline"}];
+  const canSave=type==="bp"?!!sys&&!!dia:type==="lab"?!!labName&&!!labValue:type==="weight"?!!kg:type==="med"?!!medName:type==="symptom"?!!symptom:type==="task"?!!taskTitle:true;
+  const save=()=>{void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);switch(type){case"bp":health.addBp({sys:+sys,dia:+dia,pulse:+pulse||0});break;case"lab":health.addLab({name:labName,value:+labValue,unit:labUnit});break;case"weight":health.addWeight({kg:+kg});break;case"med":health.addMed({name:medName,time:medTime});break;case"symptom":health.addSymptom({text:symptom});break;case"task":health.addTask({title:taskTitle,time:taskTime});break;case"wellbeing":health.addCheckin({mood,energy,stress,wellbeing});break;}onClose();};
+  const title=type==="bp"?m.addReading:type==="lab"?m.addLab:type==="wellbeing"?m.quickCheckin:type==="med"?m.typeMed:type==="weight"?m.typeWeight:type==="symptom"?m.typeSymptom:m.typeTask;
+  const icon=types.find(x=>x.key===type)?.icon||"add";
+  const Field=({label,children}:{label:string;children:React.ReactNode})=><View style={styles.field}><Txt variant="label" color={figma.muted} weight="semibold">{label}</Txt>{children}</View>;
+  const inputStyle=styles.input;
+  return <View style={StyleSheet.absoluteFill} testID="add-sheet"><Animated.View entering={FadeIn.duration(160)} style={StyleSheet.absoluteFill}><Pressable testID="add-sheet-backdrop" onPress={onClose} style={[StyleSheet.absoluteFill,styles.backdrop]}/></Animated.View><Animated.View entering={SlideInDown.springify().damping(18)} style={[styles.sheet,{paddingBottom:Math.max(insets.bottom,12)+18}]}>
+    <View style={styles.handle}/><View style={styles.head}><RoundIcon icon={icon} size={54} bg="#EEF2DB"/><View style={{flex:1}}><Txt variant="h1" style={styles.title}>{title}</Txt><Txt variant="label" color={figma.muted}>{m.add}</Txt></View><Pressable testID="add-sheet-close" onPress={onClose} style={styles.close}><Ionicons name="close" size={22} color={figma.ink}/></Pressable></View>
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.types}>{types.map(tp=>{const active=tp.key===type;return <Pressable key={tp.key} testID={`add-type-${tp.key}`} onPress={()=>setType(tp.key)} style={[styles.type,active&&styles.typeActive]}><Ionicons name={tp.icon} size={16} color={active?"#fff":figma.muted}/><Txt variant="label" color={active?"#fff":figma.ink} weight="bold">{tp.label}</Txt></Pressable>})}</ScrollView>
+    <KeyboardAwareScrollView bottomOffset={18} keyboardShouldPersistTaps="handled" style={{maxHeight:460}} contentContainerStyle={{paddingBottom:12}}>
+      {type==="bp"?<><View style={styles.two}><View style={{flex:1}}><Field label={m.systolic}><TextInput testID="add-bp-sys" value={sys} onChangeText={setSys} keyboardType="number-pad" placeholder="120" placeholderTextColor={figma.muted} style={[inputStyle,styles.bigInput]}/></Field></View><View style={{flex:1}}><Field label={m.diastolic}><TextInput testID="add-bp-dia" value={dia} onChangeText={setDia} keyboardType="number-pad" placeholder="80" placeholderTextColor={figma.muted} style={[inputStyle,styles.bigInput]}/></Field></View></View><Field label={m.pulse}><TextInput testID="add-bp-pulse" value={pulse} onChangeText={setPulse} keyboardType="number-pad" placeholder="66" placeholderTextColor={figma.muted} style={inputStyle}/></Field></>:null}
+      {type==="lab"?<><Field label={m.labName}><TextInput testID="add-lab-name" value={labName} onChangeText={setLabName} placeholder="Витамин D" placeholderTextColor={figma.muted} style={inputStyle}/></Field><View style={styles.two}><View style={{flex:1}}><Field label={m.labValue}><TextInput testID="add-lab-value" value={labValue} onChangeText={setLabValue} keyboardType="numeric" placeholder="32" placeholderTextColor={figma.muted} style={inputStyle}/></Field></View><View style={{flex:1}}><Field label={m.labUnit}><TextInput testID="add-lab-unit" value={labUnit} onChangeText={setLabUnit} placeholder="ng/ml" placeholderTextColor={figma.muted} style={inputStyle}/></Field></View></View></>:null}
+      {type==="weight"?<Field label={`${m.weightTitle}, кг`}><TextInput testID="add-weight" value={kg} onChangeText={setKg} keyboardType="numeric" placeholder="70" placeholderTextColor={figma.muted} style={inputStyle}/></Field>:null}
+      {type==="med"?<><Field label={m.name}><TextInput testID="add-med-name" value={medName} onChangeText={setMedName} placeholder="Магний" placeholderTextColor={figma.muted} style={inputStyle}/></Field><Field label={m.today}><TextInput testID="add-med-time" value={medTime} onChangeText={setMedTime} placeholder="09:00" placeholderTextColor={figma.muted} style={inputStyle}/></Field></>:null}
+      {type==="symptom"?<Field label={m.symptomText}><TextInput testID="add-symptom" value={symptom} onChangeText={setSymptom} placeholder="Головная боль" placeholderTextColor={figma.muted} style={inputStyle}/></Field>:null}
+      {type==="task"?<><Field label={m.taskTitle}><TextInput testID="add-task-title" value={taskTitle} onChangeText={setTaskTitle} placeholder="Выпить воды" placeholderTextColor={figma.muted} style={inputStyle}/></Field><Field label={m.today}><TextInput testID="add-task-time" value={taskTime} onChangeText={setTaskTime} placeholder="12:00" placeholderTextColor={figma.muted} style={inputStyle}/></Field></>:null}
+      {type==="wellbeing"?<View style={styles.scaleWrap}><ScaleRow testID="add-mood" label={m.mood} value={mood} onChange={setMood}/><ScaleRow testID="add-energy" label={m.energy} value={energy} onChange={setEnergy}/><ScaleRow testID="add-stress" label={m.stress} value={stress} onChange={setStress} invert/><ScaleRow testID="add-wellbeing" label={m.wellbeing} value={wellbeing} onChange={setWellbeing}/></View>:null}
+    </KeyboardAwareScrollView>
+    <Pressable testID="add-save-button" disabled={!canSave} onPress={save} style={[styles.save,!canSave&&{opacity:.35}]}><Txt variant="caption" color="#fff" weight="bold">{m.save}</Txt></Pressable><Pressable onPress={onClose} style={styles.cancel}><Txt variant="caption" weight="bold">Отмена</Txt></Pressable>
+  </Animated.View></View>;
 }
-
-export function AddSheetProvider({ children }: { children: React.ReactNode }) {
-  const [visible, setVisible] = useState(false);
-  const [type, setType] = useState<AddType>("bp");
-  const api = useMemo(() => ({ open: (t?: AddType) => { setType(t ?? "bp"); setVisible(true); } }), []);
-
-  return (
-    <AddCtx.Provider value={api}>
-      {children}
-      {visible ? <AddSheet type={type} setType={setType} onClose={() => setVisible(false)} /> : null}
-    </AddCtx.Provider>
-  );
-}
-
-function AddSheet({ type, setType, onClose }: { type: AddType; setType: (t: AddType) => void; onClose: () => void }) {
-  const { colors, t } = useApp();
-  const insets = useSafeAreaInsets();
-  const health = useHealth();
-  const m = t.mod;
-
-  const [sys, setSys] = useState("");
-  const [dia, setDia] = useState("");
-  const [pulse, setPulse] = useState("");
-  const [labName, setLabName] = useState("");
-  const [labValue, setLabValue] = useState("");
-  const [labUnit, setLabUnit] = useState("");
-  const [kg, setKg] = useState("");
-  const [medName, setMedName] = useState("");
-  const [medTime, setMedTime] = useState("09:00");
-  const [symptom, setSymptom] = useState("");
-  const [taskTitle, setTaskTitle] = useState("");
-  const [taskTime, setTaskTime] = useState("12:00");
-  const [mood, setMood] = useState(3);
-  const [energy, setEnergy] = useState(3);
-  const [stress, setStress] = useState(3);
-  const [wellbeing, setWellbeing] = useState(3);
-
-  const types: { key: AddType; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
-    { key: "bp", label: m.typeBp, icon: "pulse-outline" },
-    { key: "lab", label: m.typeLab, icon: "flask-outline" },
-    { key: "wellbeing", label: m.typeWellbeing, icon: "happy-outline" },
-    { key: "med", label: m.typeMed, icon: "medkit-outline" },
-    { key: "weight", label: m.typeWeight, icon: "barbell-outline" },
-    { key: "symptom", label: m.typeSymptom, icon: "thermometer-outline" },
-    { key: "task", label: m.typeTask, icon: "checkbox-outline" },
-  ];
-
-  const canSave = (() => {
-    switch (type) {
-      case "bp": return !!sys && !!dia;
-      case "lab": return !!labName && !!labValue;
-      case "weight": return !!kg;
-      case "med": return !!medName;
-      case "symptom": return !!symptom;
-      case "task": return !!taskTitle;
-      case "wellbeing": return true;
-    }
-  })();
-
-  const save = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    switch (type) {
-      case "bp": health.addBp({ sys: +sys, dia: +dia, pulse: +pulse || 0 }); break;
-      case "lab": health.addLab({ name: labName, value: +labValue, unit: labUnit }); break;
-      case "weight": health.addWeight({ kg: +kg }); break;
-      case "med": health.addMed({ name: medName, time: medTime }); break;
-      case "symptom": health.addSymptom({ text: symptom }); break;
-      case "task": health.addTask({ title: taskTitle, time: taskTime }); break;
-      case "wellbeing": health.addCheckin({ mood, energy, stress, wellbeing }); break;
-    }
-    onClose();
-  };
-
-  const inputStyle = [styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.onSurface }];
-
-  const Field = ({ label, children }: { label: string; children: React.ReactNode }) => (
-    <View style={{ marginBottom: spacing.md }}>
-      <Txt variant="label" weight="semibold" color={colors.muted} style={{ marginBottom: 8 }}>{label}</Txt>
-      {children}
-    </View>
-  );
-
-  return (
-    <View style={StyleSheet.absoluteFill} testID="add-sheet">
-      <Animated.View entering={FadeIn.duration(180)} style={StyleSheet.absoluteFill}>
-        <Pressable testID="add-sheet-backdrop" onPress={onClose} style={[StyleSheet.absoluteFill, styles.backdrop]} />
-      </Animated.View>
-
-      <Animated.View
-        entering={SlideInDown.springify().damping(18)}
-        style={[styles.sheet, { backgroundColor: colors.surfaceSecondary, paddingBottom: insets.bottom + spacing.lg }]}
-      >
-        <View style={styles.handle} />
-        <View style={styles.sheetHead}>
-          <Txt variant="h3">{m.add}</Txt>
-          <Pressable testID="add-sheet-close" onPress={onClose} hitSlop={8}>
-            <Ionicons name="close" size={24} color={colors.muted} />
-          </Pressable>
-        </View>
-
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.typesRow}>
-          {types.map((tp) => {
-            const active = tp.key === type;
-            return (
-              <Pressable
-                key={tp.key}
-                testID={`add-type-${tp.key}`}
-                onPress={() => setType(tp.key)}
-                style={[styles.typeChip, { backgroundColor: active ? colors.brand : colors.surfaceTertiary, borderColor: active ? colors.brand : colors.border }]}
-              >
-                <Ionicons name={tp.icon} size={16} color={active ? colors.onBrandPrimary : colors.muted} />
-                <Txt variant="label" weight="bold" color={active ? colors.onBrandPrimary : colors.onSurfaceTertiary} style={{ marginLeft: 6 }}>{tp.label}</Txt>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
-
-        <KeyboardAwareScrollView bottomOffset={16} keyboardShouldPersistTaps="handled" style={{ maxHeight: 360 }} contentContainerStyle={styles.form}>
-          {type === "bp" ? (
-            <View style={{ flexDirection: "row", gap: spacing.md }}>
-              <View style={{ flex: 1 }}><Field label={m.systolic}><TextInput testID="add-bp-sys" value={sys} onChangeText={setSys} keyboardType="number-pad" placeholder="120" placeholderTextColor={colors.muted} style={inputStyle} /></Field></View>
-              <View style={{ flex: 1 }}><Field label={m.diastolic}><TextInput testID="add-bp-dia" value={dia} onChangeText={setDia} keyboardType="number-pad" placeholder="80" placeholderTextColor={colors.muted} style={inputStyle} /></Field></View>
-              <View style={{ flex: 1 }}><Field label={m.pulse}><TextInput testID="add-bp-pulse" value={pulse} onChangeText={setPulse} keyboardType="number-pad" placeholder="66" placeholderTextColor={colors.muted} style={inputStyle} /></Field></View>
-            </View>
-          ) : null}
-
-          {type === "lab" ? (
-            <>
-              <Field label={m.labName}><TextInput testID="add-lab-name" value={labName} onChangeText={setLabName} placeholder="Витамин D" placeholderTextColor={colors.muted} style={inputStyle} /></Field>
-              <View style={{ flexDirection: "row", gap: spacing.md }}>
-                <View style={{ flex: 2 }}><Field label={m.labValue}><TextInput testID="add-lab-value" value={labValue} onChangeText={setLabValue} keyboardType="numeric" placeholder="32" placeholderTextColor={colors.muted} style={inputStyle} /></Field></View>
-                <View style={{ flex: 1 }}><Field label={m.labUnit}><TextInput testID="add-lab-unit" value={labUnit} onChangeText={setLabUnit} placeholder="ng/ml" placeholderTextColor={colors.muted} style={inputStyle} /></Field></View>
-              </View>
-            </>
-          ) : null}
-
-          {type === "weight" ? (
-            <Field label={m.weightTitle + ", кг"}><TextInput testID="add-weight" value={kg} onChangeText={setKg} keyboardType="numeric" placeholder="70" placeholderTextColor={colors.muted} style={inputStyle} /></Field>
-          ) : null}
-
-          {type === "med" ? (
-            <>
-              <Field label={m.name}><TextInput testID="add-med-name" value={medName} onChangeText={setMedName} placeholder="Магний" placeholderTextColor={colors.muted} style={inputStyle} /></Field>
-              <Field label={m.today}><TextInput testID="add-med-time" value={medTime} onChangeText={setMedTime} placeholder="09:00" placeholderTextColor={colors.muted} style={inputStyle} /></Field>
-            </>
-          ) : null}
-
-          {type === "symptom" ? (
-            <Field label={m.symptomText}><TextInput testID="add-symptom" value={symptom} onChangeText={setSymptom} placeholder="Головная боль" placeholderTextColor={colors.muted} style={inputStyle} /></Field>
-          ) : null}
-
-          {type === "task" ? (
-            <>
-              <Field label={m.taskTitle}><TextInput testID="add-task-title" value={taskTitle} onChangeText={setTaskTitle} placeholder="Выпить воды" placeholderTextColor={colors.muted} style={inputStyle} /></Field>
-              <Field label={m.today}><TextInput testID="add-task-time" value={taskTime} onChangeText={setTaskTime} placeholder="12:00" placeholderTextColor={colors.muted} style={inputStyle} /></Field>
-            </>
-          ) : null}
-
-          {type === "wellbeing" ? (
-            <View>
-              <ScaleRow testID="add-mood" label={m.mood} value={mood} onChange={setMood} />
-              <ScaleRow testID="add-energy" label={m.energy} value={energy} onChange={setEnergy} />
-              <ScaleRow testID="add-stress" label={m.stress} value={stress} onChange={setStress} invert />
-              <ScaleRow testID="add-wellbeing" label={m.wellbeing} value={wellbeing} onChange={setWellbeing} />
-            </View>
-          ) : null}
-        </KeyboardAwareScrollView>
-
-        <View style={{ marginTop: spacing.sm }}>
-          <PillButton testID="add-save-button" label={m.save} onPress={() => { if (canSave) save(); }} size="lg" icon="checkmark" full />
-          {!canSave ? <View style={[StyleSheet.absoluteFill, styles.disabledMask, { backgroundColor: colors.surfaceSecondary, pointerEvents: "none" }]} /> : null}
-        </View>
-      </Animated.View>
-    </View>
-  );
-}
-
-const styles = StyleSheet.create({
-  backdrop: { backgroundColor: "rgba(0,0,0,0.5)" },
-  sheet: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.md,
-    width: "100%",
-    maxWidth: FORM_MAX + 80,
-    alignSelf: "center",
-  },
-  handle: { width: 40, height: 5, borderRadius: 3, backgroundColor: "rgba(128,128,128,0.4)", alignSelf: "center", marginBottom: spacing.md },
-  sheetHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing.md },
-  typesRow: { gap: spacing.sm, paddingBottom: spacing.md },
-  typeChip: { flexDirection: "row", alignItems: "center", paddingHorizontal: 14, height: 38, borderRadius: radius.pill, borderWidth: StyleSheet.hairlineWidth * 2, flexShrink: 0 },
-  form: { paddingTop: spacing.sm, paddingBottom: spacing.md },
-  input: { height: 52, borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth * 2, paddingHorizontal: spacing.lg, fontSize: fontSize.lg, fontFamily: font.medium },
-  disabledMask: { opacity: 0.45, borderRadius: radius.pill },
-});
+const styles=StyleSheet.create({backdrop:{backgroundColor:"rgba(0,0,0,.55)"},sheet:{position:"absolute",left:0,right:0,bottom:0,backgroundColor:figma.card,borderTopLeftRadius:32,borderTopRightRadius:32,paddingHorizontal:24,paddingTop:16,width:"100%",maxWidth:430,alignSelf:"center"},handle:{width:44,height:5,borderRadius:3,backgroundColor:figma.divider,alignSelf:"center",marginBottom:20},head:{flexDirection:"row",alignItems:"center",gap:14,marginBottom:18},title:{fontSize:26,lineHeight:30},close:{width:38,height:38,borderRadius:19,backgroundColor:figma.bg,alignItems:"center",justifyContent:"center"},types:{gap:8,paddingBottom:18},type:{height:38,borderRadius:999,paddingHorizontal:13,backgroundColor:figma.bg,flexDirection:"row",alignItems:"center",gap:6},typeActive:{backgroundColor:figma.ink},field:{gap:7,marginBottom:14},input:{height:58,borderRadius:20,backgroundColor:figma.bg,paddingHorizontal:15,color:figma.ink,fontSize:17},bigInput:{height:112,fontSize:38,fontWeight:"700",textAlign:"center"},two:{flexDirection:"row",gap:10},scaleWrap:{backgroundColor:figma.bg,borderRadius:24,padding:14},save:{height:62,borderRadius:999,backgroundColor:figma.ink,alignItems:"center",justifyContent:"center",marginTop:8},cancel:{height:52,borderRadius:999,backgroundColor:figma.bg,alignItems:"center",justifyContent:"center",marginTop:10}});

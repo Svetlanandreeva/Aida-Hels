@@ -1,230 +1,74 @@
-import React, { useCallback, useState } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  useWindowDimensions,
-  View,
-} from "react-native";
+import React, { useCallback, useMemo, useState } from "react";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Svg, { Circle, Polyline } from "react-native-svg";
 
-import { ScreenHeader } from "@/src/components/ScreenHeader";
-import { Card, Muted } from "@/src/components/ui";
 import { useApp } from "@/src/store";
 import { useI18n } from "@/src/i18n";
 import { getLabTrends, LabTrendSeries } from "@/src/labTrendsApi";
-import { colors, fontSize, fonts, radius, spacing, statusColor } from "@/src/theme";
+import { Txt } from "@/src/emergent/ui";
+import { Bars, FCard, figma, mobileStyles, SectionHeader } from "@/src/emergent/figma-mobile";
 
-const CHART_HEIGHT = 118;
-
-function TrendChart({ series, width }: { series: LabTrendSeries; width: number }) {
-  const points = series.points;
-  const values = points.map((p) => p.value);
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const range = max - min;
-  const padX = 8;
-  const padY = 14;
-  const usableWidth = Math.max(1, width - padX * 2);
-  const usableHeight = CHART_HEIGHT - padY * 2;
-
-  const coords = points.map((p, index) => {
-    const x = points.length === 1 ? width / 2 : padX + (index / (points.length - 1)) * usableWidth;
-    const y = range === 0
-      ? CHART_HEIGHT / 2
-      : padY + ((max - p.value) / range) * usableHeight;
-    return { x, y, point: p };
-  });
-
-  return (
-    <View style={{ marginTop: spacing.md }}>
-      <Svg width={width} height={CHART_HEIGHT}>
-        <Polyline
-          points={coords.map((p) => `${p.x},${p.y}`).join(" ")}
-          fill="none"
-          stroke={colors.onSurface}
-          strokeWidth={2.5}
-          strokeLinejoin="round"
-          strokeLinecap="round"
-        />
-        {coords.map((p, index) => (
-          <Circle
-            key={`${p.point.date}-${index}`}
-            cx={p.x}
-            cy={p.y}
-            r={5}
-            fill={statusColor(p.point.status)}
-            stroke={colors.surfaceSecondary}
-            strokeWidth={2}
-          />
-        ))}
-      </Svg>
-      <View style={styles.chartDates}>
-        <Text style={styles.chartDate}>{points[0]?.date || ""}</Text>
-        <Text style={styles.chartDate}>{points[points.length - 1]?.date || ""}</Text>
-      </View>
-    </View>
-  );
-}
+const ranges = ["7д", "30д", "3м", "6м", "1г", "Все"];
 
 export default function LabTrendsScreen() {
   const insets = useSafeAreaInsets();
-  const { width: screenWidth } = useWindowDimensions();
+  const router = useRouter();
   const { activeId } = useApp();
   const { lang } = useI18n();
   const [series, setSeries] = useState<LabTrendSeries[]>([]);
   const [labCount, setLabCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
+  const [selected, setSelected] = useState(0);
+  const [range, setRange] = useState(2);
 
   const load = useCallback(async () => {
-    if (!activeId) {
-      setSeries([]);
-      setLabCount(0);
-      setLoading(false);
-      return;
-    }
+    if (!activeId) { setSeries([]); setLabCount(0); setLoading(false); return; }
     setLoadError(false);
-    try {
-      const data = await getLabTrends(activeId);
-      setSeries(data.series || []);
-      setLabCount(data.lab_count || 0);
-    } catch (_) {
-      setLoadError(true);
-    } finally {
-      setLoading(false);
-    }
+    try { const data = await getLabTrends(activeId); setSeries(data.series || []); setLabCount(data.lab_count || 0); }
+    catch { setLoadError(true); }
+    finally { setLoading(false); }
   }, [activeId]);
+  useFocusEffect(useCallback(() => { setLoading(true); void load(); }, [load]));
 
-  useFocusEffect(useCallback(() => {
-    setLoading(true);
-    load();
-  }, [load]));
+  const item = series[Math.min(selected, Math.max(0, series.length - 1))];
+  const values = item?.points.map((p) => p.value) || [];
+  const max = values.length ? Math.max(...values, 1) : 1;
+  const recent = item?.points.slice(-4) || [];
+  const deltaPct = useMemo(() => {
+    if (!item || item.points.length < 2) return null;
+    const first = item.points[0].value; const last = item.points[item.points.length - 1].value;
+    return first === 0 ? null : Math.round(((last - first) / Math.abs(first)) * 100);
+  }, [item]);
 
-  const chartWidth = Math.max(220, screenWidth - spacing.lg * 2 - spacing.xl * 2 - 2);
+  return <View style={mobileStyles.page}>
+    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingTop: insets.top + 12, paddingBottom: 36 }}>
+      <View style={mobileStyles.content}>
+        <View style={styles.header}><Pressable onPress={() => router.back()} style={styles.round}><Ionicons name="chevron-back" size={22} color={figma.ink}/></Pressable><View style={{flex:1}}><Txt variant="h1" style={styles.title}>{lang==="ru"?"Тренды показателей":"Biomarker trends"}</Txt><Txt variant="label" color={figma.muted}>{lang==="ru"?"Графики изменений по времени":"Changes over time"}</Txt></View><Pressable onPress={()=>router.push("/(tabs)/labs" as any)} style={styles.round}><Ionicons name="add" size={22} color={figma.ink}/></Pressable></View>
 
-  return (
-    <View style={styles.container}>
-      <ScreenHeader title={lang === "ru" ? "Тренды показателей" : "Biomarker trends"} />
+        {loading ? <View style={styles.state}><ActivityIndicator color={figma.ink}/></View> : loadError ? <State icon="cloud-offline-outline" title={lang==="ru"?"Не удалось загрузить тренды":"Could not load trends"} text={lang==="ru"?"Попробуйте ещё раз":"Please try again"} action={load}/> : !activeId ? <State icon="person-circle-outline" title={lang==="ru"?"Выберите профиль":"Choose a profile"} text={lang==="ru"?"Тренды строятся отдельно для каждого профиля":"Trends are profile-specific"}/> : !series.length ? <State icon="analytics-outline" title={lang==="ru"?"Пока нечего сравнивать":"Nothing to compare yet"} text={labCount<2?(lang==="ru"?"Нужно минимум два анализа с повторяющимся показателем":"At least two reports with a repeated biomarker are needed"):(lang==="ru"?"Повторяющихся совместимых показателей пока нет":"No compatible repeated biomarkers yet")}/> : <>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>{series.map((s,i)=><Pressable key={s.key} onPress={()=>setSelected(i)} style={[styles.chip,i===selected&&styles.chipActive]}><Txt variant="label" color={i===selected?"#fff":figma.ink} weight="semibold">{s.name}</Txt></Pressable>)}</ScrollView>
 
-      {loading ? (
-        <View style={styles.center}><ActivityIndicator size="large" color={colors.onSurface} /></View>
-      ) : !activeId ? (
-        <State
-          icon="person-circle-outline"
-          title={lang === "ru" ? "Выберите профиль" : "Choose a profile"}
-          text={lang === "ru" ? "Тренды строятся отдельно для каждого профиля." : "Trends are calculated separately for each profile."}
-        />
-      ) : loadError ? (
-        <View style={styles.center}>
-          <State
-            icon="cloud-offline-outline"
-            title={lang === "ru" ? "Не удалось загрузить тренды" : "Could not load trends"}
-            text={lang === "ru" ? "Данные анализов не изменены. Попробуйте ещё раз." : "Your lab data is unchanged. Please try again."}
-          />
-          <Pressable style={styles.retry} onPress={load} testID="lab-trends-retry">
-            <Text style={styles.retryText}>{lang === "ru" ? "Повторить" : "Retry"}</Text>
-          </Pressable>
-        </View>
-      ) : series.length === 0 ? (
-        <State
-          icon="analytics-outline"
-          title={lang === "ru" ? "Пока нечего сравнивать" : "Nothing to compare yet"}
-          text={
-            labCount < 2
-              ? (lang === "ru" ? "Нужно минимум два анализа с повторяющимся числовым показателем." : "You need at least two lab reports with the same numeric biomarker.")
-              : (lang === "ru" ? "В загруженных анализах пока нет повторяющихся числовых показателей с совместимыми единицами." : "No repeated numeric biomarkers with compatible units were found yet.")
-          }
-        />
-      ) : (
-        <ScrollView
-          contentContainerStyle={{ padding: spacing.lg, paddingBottom: 36 + insets.bottom }}
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={styles.intro}>
-            <Text style={styles.introTitle}>{lang === "ru" ? `${series.length} показателей с историей` : `${series.length} biomarkers with history`}</Text>
-            <Muted style={styles.introText}>{lang === "ru" ? "Графики показывают только значения из ваших анализов. Референсы не пересчитываются Аидой." : "Charts use only values from your lab reports. Aida does not recalculate reference ranges."}</Muted>
-          </View>
+          <FCard style={styles.hero}><View style={styles.heroGlow}/><Txt variant="h3">{item.name}</Txt><View style={styles.heroValue}><Txt variant="display" style={styles.number}>{item.latest.raw_value ?? item.latest.value}</Txt><Txt variant="caption" color={figma.muted}>{item.unit || ""}</Txt></View><Txt variant="caption" color={figma.orange} weight="bold">{item.latest.status === "low" ? (lang==="ru"?"Ниже нормы":"Below range") : item.latest.status === "high" ? (lang==="ru"?"Выше нормы":"Above range") : (lang==="ru"?"В норме":"In range")}</Txt><View style={styles.heroBars}><Bars values={recent.map(p=>p.value)} max={max} height={88} width={22}/></View>{deltaPct!==null?<View style={styles.deltaRing}><Txt variant="h3">{deltaPct>0?"+":""}{deltaPct}%</Txt><Txt variant="label" color={figma.muted}>{lang==="ru"?"за период":"period"}</Txt></View>:null}</FCard>
 
-          <View style={{ gap: spacing.md }}>
-            {series.map((item) => {
-              const deltaText = item.delta === 0
-                ? "0"
-                : `${item.delta > 0 ? "+" : ""}${item.delta}`;
-              return (
-                <Card key={item.key} testID={`trend-${item.key}`}>
-                  <View style={styles.cardHead}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.name}>{item.name}</Text>
-                      <Muted>{item.count} {lang === "ru" ? "измерения" : "measurements"}</Muted>
-                    </View>
-                    <View style={styles.latestWrap}>
-                      <Text style={[styles.latest, { color: statusColor(item.latest.status) }]}>
-                        {item.latest.raw_value ?? item.latest.value} {item.unit || ""}
-                      </Text>
-                      <Text style={styles.delta}>{lang === "ru" ? "к прошлому" : "vs previous"}: {deltaText} {item.unit || ""}</Text>
-                    </View>
-                  </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.ranges}>{ranges.map((r,i)=><Pressable key={r} onPress={()=>setRange(i)} style={[styles.range,i===range&&styles.rangeActive]}><Txt variant="label" color={i===range?"#fff":figma.ink} weight="semibold">{r}</Txt></Pressable>)}</ScrollView>
 
-                  <TrendChart series={item} width={chartWidth} />
+          <SectionHeader title={lang==="ru"?"Динамика":"Dynamics"}/>
+          <FCard style={styles.chartCard}><View style={styles.chartHead}><Txt variant="label" color={figma.muted}>{item.unit || ""}</Txt>{item.latest.reference?<Txt variant="label" color={figma.muted}>{lang==="ru"?"Референс":"Reference"}: {item.latest.reference}</Txt>:null}</View><View style={styles.chart}><Bars values={values.length>8?values.slice(-8):values} max={max} height={190} width={24}/></View><View style={styles.axis}>{(item.points.length>4?item.points.filter((_,i)=>i===0||i===item.points.length-1):item.points).map((p,i)=><Txt key={`${p.date}-${i}`} variant="label" color={figma.muted}>{p.date}</Txt>)}</View></FCard>
 
-                  <View style={styles.infoRow}>
-                    <View style={[styles.statusDot, { backgroundColor: statusColor(item.latest.status) }]} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.infoTitle}>{lang === "ru" ? "Последний результат" : "Latest result"} · {item.latest.date}</Text>
-                      <Text style={styles.infoText}>
-                        {item.latest.reference
-                          ? `${lang === "ru" ? "Референс лаборатории" : "Lab reference"}: ${item.latest.reference}`
-                          : (lang === "ru" ? "Референс в анализе не указан" : "No reference range in this report")}
-                      </Text>
-                    </View>
-                  </View>
-                </Card>
-              );
-            })}
-          </View>
-        </ScrollView>
-      )}
-    </View>
-  );
+          <SectionHeader title={lang==="ru"?"Сравнение периодов":"Period comparison"}/>
+          <FCard><View style={styles.compare}>{recent.length?recent.map((p,i)=><View key={`${p.date}-${i}`} style={styles.compareCol}><Txt variant="caption" weight="bold">{p.value}</Txt><View style={[styles.compareBar,{height:34+Math.round((p.value/max)*70)}]}/><Txt variant="label" color={figma.muted}>{p.date.slice(5)}</Txt></View>):null}</View></FCard>
+
+          <SectionHeader title={lang==="ru"?"Последние измерения":"Latest measurements"} action={`${item.count}`}/>
+          <FCard style={{paddingVertical:4}}>{item.points.slice().reverse().slice(0,5).map((p,i)=><View key={`${p.date}-${i}`}>{i?<View style={mobileStyles.divider}/>:null}<View style={styles.row}><View style={[styles.dot,{backgroundColor:p.status==="normal"?figma.green:figma.orange}]}/><Txt variant="label" color={figma.muted} style={{flex:1}}>{p.date}</Txt><Txt variant="h3">{p.raw_value ?? p.value}</Txt><Txt variant="label" color={figma.muted}>{item.unit||""}</Txt><Ionicons name="chevron-forward" size={18} color={figma.muted}/></View></View>)}</FCard>
+        </>}
+      </View>
+    </ScrollView>
+  </View>;
 }
 
-function State({ icon, title, text }: { icon: any; title: string; text: string }) {
-  return (
-    <View style={styles.state}>
-      <View style={styles.stateIcon}><Ionicons name={icon} size={30} color={colors.onSurfaceSecondary} /></View>
-      <Text style={styles.stateTitle}>{title}</Text>
-      <Muted style={styles.stateText}>{text}</Muted>
-    </View>
-  );
-}
+function State({icon,title,text,action}:{icon:keyof typeof Ionicons.glyphMap;title:string;text:string;action?:()=>void}){return <View style={styles.state}><Ionicons name={icon} size={34} color={figma.muted}/><Txt variant="h2">{title}</Txt><Txt variant="label" color={figma.muted} style={{textAlign:"center"}}>{text}</Txt>{action?<Pressable onPress={action} style={styles.retry}><Txt variant="caption" color="#fff" weight="bold">Повторить</Txt></Pressable>:null}</View>}
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.surface },
-  center: { flex: 1, alignItems: "center", justifyContent: "center" },
-  state: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: spacing.xl },
-  stateIcon: { width: 64, height: 64, borderRadius: 32, backgroundColor: colors.surfaceSecondary, alignItems: "center", justifyContent: "center" },
-  stateTitle: { marginTop: spacing.lg, fontSize: fontSize.xl, fontWeight: "800", color: colors.onSurface, fontFamily: fonts.display, textAlign: "center" },
-  stateText: { marginTop: spacing.sm, textAlign: "center", lineHeight: 20 },
-  retry: { marginTop: spacing.lg, backgroundColor: colors.onSurface, paddingHorizontal: spacing.xl, paddingVertical: spacing.md, borderRadius: radius.pill },
-  retryText: { color: colors.onSurfaceInverse, fontWeight: "700", fontFamily: fonts.text },
-  intro: { marginBottom: spacing.lg },
-  introTitle: { fontSize: fontSize.xl, fontWeight: "800", color: colors.onSurface, fontFamily: fonts.display },
-  introText: { marginTop: spacing.sm, lineHeight: 20 },
-  cardHead: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md },
-  name: { fontSize: fontSize.lg, fontWeight: "800", color: colors.onSurface, fontFamily: fonts.text },
-  latestWrap: { alignItems: "flex-end", maxWidth: "48%" },
-  latest: { fontSize: fontSize.lg, fontWeight: "800", fontFamily: fonts.text, textAlign: "right" },
-  delta: { marginTop: 2, fontSize: fontSize.sm, color: colors.onSurfaceSecondary, fontFamily: fonts.text, textAlign: "right" },
-  chartDates: { flexDirection: "row", justifyContent: "space-between", marginTop: -2 },
-  chartDate: { fontSize: fontSize.sm, color: colors.onSurfaceSecondary, fontFamily: fonts.text },
-  infoRow: { flexDirection: "row", gap: spacing.sm, alignItems: "flex-start", marginTop: spacing.lg, paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.divider },
-  statusDot: { width: 10, height: 10, borderRadius: 5, marginTop: 5 },
-  infoTitle: { fontSize: fontSize.sm, fontWeight: "700", color: colors.onSurface, fontFamily: fonts.text },
-  infoText: { marginTop: 2, fontSize: fontSize.sm, lineHeight: 18, color: colors.onSurfaceSecondary, fontFamily: fonts.text },
-});
+const styles=StyleSheet.create({header:{flexDirection:"row",alignItems:"center",gap:14},round:{width:40,height:40,borderRadius:20,backgroundColor:figma.card,alignItems:"center",justifyContent:"center"},title:{fontSize:27,lineHeight:31},chips:{gap:8,paddingVertical:18,paddingRight:16},chip:{height:40,borderRadius:999,paddingHorizontal:14,backgroundColor:figma.card,alignItems:"center",justifyContent:"center"},chipActive:{backgroundColor:figma.ink},hero:{minHeight:220,position:"relative",overflow:"hidden"},heroGlow:{position:"absolute",right:-30,bottom:-40,width:180,height:180,borderRadius:90,backgroundColor:"#F4D9E4",opacity:.8},heroValue:{flexDirection:"row",alignItems:"flex-end",gap:8,marginTop:8},number:{fontSize:56,lineHeight:60,color:figma.ink},heroBars:{position:"absolute",right:24,bottom:18,width:170},deltaRing:{position:"absolute",right:20,top:20,width:76,height:76,borderRadius:38,borderWidth:6,borderColor:"rgba(255,255,255,.8)",backgroundColor:"rgba(255,255,255,.35)",alignItems:"center",justifyContent:"center"},ranges:{gap:6,paddingVertical:16},range:{minWidth:50,height:40,borderRadius:999,backgroundColor:figma.card,alignItems:"center",justifyContent:"center",paddingHorizontal:10},rangeActive:{backgroundColor:figma.ink},chartCard:{minHeight:360},chartHead:{flexDirection:"row",alignItems:"center",justifyContent:"space-between"},chart:{height:210,justifyContent:"flex-end",marginTop:20,paddingHorizontal:10},axis:{flexDirection:"row",justifyContent:"space-between",marginTop:10},compare:{height:150,flexDirection:"row",alignItems:"flex-end",justifyContent:"space-around"},compareCol:{alignItems:"center",gap:6},compareBar:{width:28,borderRadius:14,backgroundColor:figma.ink},row:{minHeight:64,flexDirection:"row",alignItems:"center",gap:10},dot:{width:10,height:10,borderRadius:5},state:{minHeight:460,alignItems:"center",justifyContent:"center",gap:10,paddingHorizontal:28},retry:{height:44,paddingHorizontal:20,borderRadius:999,backgroundColor:figma.ink,alignItems:"center",justifyContent:"center",marginTop:8}});
