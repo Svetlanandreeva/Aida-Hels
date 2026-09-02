@@ -50,29 +50,7 @@ jobs:
           if needle not in text:
               raise SystemExit('Could not find insertion point in nginx Aida site.')
 
-          block = r'''
-
-    # AIDA_APP_SHELL_NO_CACHE
-    # The HTML shell must always be revalidated so iOS/PWA clients cannot
-    # remain pinned to an old hashed Expo bundle after a deployment.
-    location = / {
-        try_files /index.html =404;
-        add_header Cache-Control "no-store, no-cache, must-revalidate, max-age=0" always;
-        add_header Pragma "no-cache" always;
-        add_header Expires "0" always;
-        etag off;
-        if_modified_since off;
-    }
-
-    location = /index.html {
-        try_files /index.html =404;
-        add_header Cache-Control "no-store, no-cache, must-revalidate, max-age=0" always;
-        add_header Pragma "no-cache" always;
-        add_header Expires "0" always;
-        etag off;
-        if_modified_since off;
-    }
-'''
+          block = "\n\n    # AIDA_APP_SHELL_NO_CACHE\n    location = / {\n        try_files /index.html =404;\n        add_header Cache-Control \\\"no-store, no-cache, must-revalidate, max-age=0\\\" always;\n        add_header Pragma \\\"no-cache\\\" always;\n        add_header Expires \\\"0\\\" always;\n        etag off;\n        if_modified_since off;\n    }\n\n    location = /index.html {\n        try_files /index.html =404;\n        add_header Cache-Control \\\"no-store, no-cache, must-revalidate, max-age=0\\\" always;\n        add_header Pragma \\\"no-cache\\\" always;\n        add_header Expires \\\"0\\\" always;\n        etag off;\n        if_modified_since off;\n    }\n"
           path.write_text(text.replace(needle, needle + block, 1))
           print('Installed Aida app-shell no-cache policy.')
           PY
