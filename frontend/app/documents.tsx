@@ -1,28 +1,16 @@
 import React, { useCallback, useState } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  Pressable,
-  ActivityIndicator,
-  RefreshControl,
-  Linking,
-  Platform,
-  TextInput,
-} from "react-native";
+import { View, StyleSheet, ScrollView, Pressable, ActivityIndicator, RefreshControl, Linking, Platform, TextInput } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { ScreenHeader } from "@/src/components/ScreenHeader";
-import { Card, Muted, PrimaryButton, Chip } from "@/src/components/ui";
+
 import { Sheet } from "@/src/components/Sheet";
 import { useApp } from "@/src/store";
 import { useI18n } from "@/src/i18n";
 import { api, apiFetch, MedicalDocument } from "@/src/api";
 import { withTimeout } from "@/src/async";
-import { colors, spacing, radius, fontSize, fonts } from "@/src/theme";
+import { AddCard, FCard, figma, FigmaTxt as Txt, mobileStyles, RoundIcon, SectionHeader } from "@/src/emergent/figma-mobile";
 
 const TYPES = [
   { key: "discharge", ru: "Выписка", en: "Discharge summary" },
@@ -31,15 +19,15 @@ const TYPES = [
   { key: "imaging", ru: "Исследование", en: "Imaging / study" },
   { key: "other", ru: "Другое", en: "Other" },
 ];
-
 type UploadFile = { uri: string; name: string; type: string };
 const DOCUMENTS_TIMEOUT_MS = 3500;
 
 export default function DocumentsScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const { activeId, refreshTick, bumpRefresh } = useApp();
   const { lang } = useI18n();
-
+  const ru = lang === "ru";
   const [items, setItems] = useState<MedicalDocument[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -52,253 +40,87 @@ export default function DocumentsScreen() {
   const [pendingFile, setPendingFile] = useState<UploadFile | null>(null);
 
   const load = useCallback(async () => {
-    if (!activeId) {
-      setItems([]);
-      setError(false);
-      setLoading(false);
-      return;
-    }
+    if (!activeId) { setItems([]); setError(false); setLoading(false); return; }
     setError(false);
-    try {
-      const next = await withTimeout(api.listDocuments(activeId), DOCUMENTS_TIMEOUT_MS, "documents");
-      setItems(next);
-    } catch {
-      setError(true);
-    } finally {
-      setLoading(false);
-    }
+    try { setItems(await withTimeout(api.listDocuments(activeId), DOCUMENTS_TIMEOUT_MS, "documents")); }
+    catch { setError(true); }
+    finally { setLoading(false); }
   }, [activeId]);
-
-  useFocusEffect(useCallback(() => {
-    setLoading(true);
-    void load();
-  }, [load, refreshTick]));
-
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await load();
-    setRefreshing(false);
-  };
+  useFocusEffect(useCallback(() => { setLoading(true); void load(); }, [load, refreshTick]));
+  const onRefresh = async () => { setRefreshing(true); await load(); setRefreshing(false); };
 
   const uploadSelected = async (file: UploadFile) => {
     if (!activeId || saving) return;
-    setSaving(true);
-    setUploadError(null);
-    setPendingFile(file);
+    setSaving(true); setUploadError(null); setPendingFile(file);
     try {
       if (Platform.OS === "web") {
         const fileResponse = await withTimeout(fetch(file.uri), 5000, "document_file_read");
         if (!fileResponse.ok) throw new Error("Could not read selected file");
         const blob = await withTimeout(fileResponse.blob(), 5000, "document_file_blob");
         const form = new FormData();
-        form.append("profile_id", activeId);
-        form.append("document_type", type);
+        form.append("profile_id", activeId); form.append("document_type", type);
         if (note.trim()) form.append("note", note.trim());
         form.append("file", blob, file.name);
-        const response = await withTimeout(
-          apiFetch("/documents/upload", { method: "POST", body: form }),
-          12000,
-          "document_upload",
-        );
-        if (!response.ok) {
-          const text = await response.text().catch(() => "");
-          throw new Error(`${response.status}: ${text}`);
-        }
+        const response = await withTimeout(apiFetch("/documents/upload", { method: "POST", body: form }), 12000, "document_upload");
+        if (!response.ok) throw new Error(`${response.status}: ${await response.text().catch(() => "")}`);
         await response.json();
-      } else {
-        await withTimeout(api.uploadDocument(activeId, type, note, file), 12000, "document_upload");
-      }
-      setOpen(false);
-      setNote("");
-      setType("other");
-      setPendingFile(null);
-      setUploadError(null);
-      bumpRefresh();
-      await load();
+      } else await withTimeout(api.uploadDocument(activeId, type, note, file), 12000, "document_upload");
+      setOpen(false); setNote(""); setType("other"); setPendingFile(null); setUploadError(null); bumpRefresh(); await load();
     } catch (e: any) {
-      const raw = String(e?.message || "");
-      setUploadError(
-        raw.toLowerCase().includes("timeout")
-          ? (lang === "ru" ? "Загрузка заняла слишком много времени. Можно повторить отправку." : "Upload took too long. You can retry it.")
-          : (lang === "ru" ? "Не удалось загрузить документ. Проверьте соединение и повторите отправку." : "Could not upload the document. Check your connection and retry."),
-      );
-    } finally {
-      setSaving(false);
-    }
+      const raw = String(e?.message || "").toLowerCase();
+      setUploadError(raw.includes("timeout") ? (ru ? "Загрузка заняла слишком много времени. Можно повторить отправку." : "Upload took too long. You can retry it.") : (ru ? "Не удалось загрузить документ. Проверьте соединение и повторите отправку." : "Could not upload the document. Check your connection and retry."));
+    } finally { setSaving(false); }
   };
 
   const pick = async () => {
     if (!activeId || saving) return;
     setUploadError(null);
-    const res = await DocumentPicker.getDocumentAsync({
-      type: ["application/pdf", "image/*"],
-      copyToCacheDirectory: true,
-    });
+    const res = await DocumentPicker.getDocumentAsync({ type: ["application/pdf", "image/*"], copyToCacheDirectory: true });
     if (res.canceled || !res.assets[0]) return;
-
     const a = res.assets[0];
-    await uploadSelected({
-      uri: a.uri,
-      name: a.name || "medical-document.pdf",
-      type: a.mimeType || "application/pdf",
-    });
+    await uploadSelected({ uri: a.uri, name: a.name || "medical-document.pdf", type: a.mimeType || "application/pdf" });
   };
+  const typeLabel = (key?: string | null) => { const found = TYPES.find((x) => x.key === key); return found ? (ru ? found.ru : found.en) : (ru ? "Документ" : "Document"); };
+  const openFile = async (url?: string | null) => { if (!url) return; if (await Linking.canOpenURL(url)) await Linking.openURL(url); };
 
-  const typeLabel = (key?: string | null) => {
-    const found = TYPES.find((x) => x.key === key);
-    return found ? (lang === "ru" ? found.ru : found.en) : (lang === "ru" ? "Документ" : "Document");
-  };
-
-  const openFile = async (url?: string | null) => {
-    if (!url) return;
-    const can = await Linking.canOpenURL(url);
-    if (can) await Linking.openURL(url);
-  };
-
-  return (
-    <View style={styles.container}>
-      <ScreenHeader title={lang === "ru" ? "Медицинские документы" : "Medical documents"} />
-
-      {!activeId ? (
-        <View style={styles.centerState}>
-          <Ionicons name="person-circle-outline" size={52} color={colors.onSurfaceSecondary} />
-          <Text style={styles.stateTitle}>{lang === "ru" ? "Сначала выберите профиль" : "Choose a profile first"}</Text>
-          <Muted style={styles.stateText}>{lang === "ru" ? "Документы всегда привязаны к конкретному человеку." : "Documents are always linked to a specific person."}</Muted>
+  return <View style={mobileStyles.page}>
+    <ScrollView showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={figma.ink} />} contentContainerStyle={{ paddingTop: insets.top + 12, paddingBottom: 40 + insets.bottom }}>
+      <View style={mobileStyles.content}>
+        <View style={styles.header}>
+          <Pressable onPress={() => router.back()}><RoundIcon icon="chevron-back" size={42} bg={figma.card} /></Pressable>
+          <View style={{ flex: 1 }}><Txt variant="h1" style={styles.title}>{ru ? "Документы" : "Documents"}</Txt><Txt variant="label" color={figma.muted}>{ru ? "Медицинские файлы и заключения" : "Medical files and reports"}</Txt></View>
+          {!!activeId && <Pressable onPress={() => { setUploadError(null); setPendingFile(null); setOpen(true); }}><RoundIcon icon="add" size={42} bg={figma.card} /></Pressable>}
         </View>
-      ) : (
-        <ScrollView
-          contentContainerStyle={{ padding: spacing.lg, paddingBottom: 40 + insets.bottom }}
-          showsVerticalScrollIndicator={false}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.onSurface} />}
-        >
-          <Pressable style={styles.addCard} onPress={() => { setUploadError(null); setPendingFile(null); setOpen(true); }} testID="upload-medical-document">
-            <View style={styles.addIcon}>
-              <Ionicons name="document-attach-outline" size={22} color={colors.surfaceSecondary} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.addTitle}>{lang === "ru" ? "Загрузить документ" : "Upload document"}</Text>
-              <Text style={styles.addHint}>{lang === "ru" ? "Выписка, заключение, назначение или другое" : "Discharge summary, doctor note, prescription or other"}</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={19} color={colors.surfaceSecondary} />
-          </Pressable>
 
-          {loading ? (
-            <View style={styles.inlineState} testID="documents-loading-state">
-              <ActivityIndicator size="small" color={colors.onSurface} />
-              <Text style={styles.inlineStateText}>{lang === "ru" ? "Обновляем список документов…" : "Refreshing documents…"}</Text>
-            </View>
-          ) : null}
+        {!!activeId && <View style={{ marginTop: 18 }}><AddCard testID="upload-medical-document" title={ru ? "Загрузить документ" : "Upload document"} subtitle={ru ? "PDF, фото, выписка, заключение или назначение" : "PDF, image, discharge summary, report or prescription"} icon="document-attach-outline" onPress={() => { setUploadError(null); setPendingFile(null); setOpen(true); }} /></View>}
 
-          {error ? (
-            <View style={styles.inlineState} testID="documents-error-state">
-              <Ionicons name="cloud-offline-outline" size={20} color={colors.onSurfaceSecondary} />
-              <Text style={styles.inlineStateText}>{lang === "ru" ? "Не удалось обновить список. Уже загруженные документы остаются доступны." : "Could not refresh the list. Previously loaded documents remain available."}</Text>
-              <Pressable style={styles.retryButton} onPress={() => { setLoading(true); void load(); }} accessibilityRole="button">
-                <Text style={styles.retryText}>{lang === "ru" ? "Повторить" : "Retry"}</Text>
-              </Pressable>
-            </View>
-          ) : null}
+        {loading ? <View style={styles.center} testID="documents-loading-state"><ActivityIndicator size="small" color={figma.ink} /><Txt variant="label" color={figma.muted}>{ru ? "Обновляем документы…" : "Refreshing documents…"}</Txt></View> : null}
+        {!loading && !activeId ? <FCard style={styles.state}><RoundIcon icon="person-circle-outline" size={48} bg={figma.bg} /><Txt variant="caption" weight="bold">{ru ? "Сначала выберите профиль" : "Choose a profile first"}</Txt><Txt variant="label" color={figma.muted} center>{ru ? "Документы всегда привязаны к конкретному человеку." : "Documents are always linked to a specific person."}</Txt></FCard> : null}
+        {!loading && activeId && error ? <FCard style={styles.state} testID="documents-error-state"><RoundIcon icon="cloud-offline-outline" size={48} bg={figma.bg} /><Txt variant="caption" weight="bold">{ru ? "Не удалось обновить список" : "Could not refresh the list"}</Txt><Txt variant="label" color={figma.muted} center>{ru ? "Уже загруженные документы не удалены." : "Previously uploaded documents are still safe."}</Txt><Pressable onPress={() => { setLoading(true); void load(); }} style={styles.blackBtn}><Txt variant="label" color="#fff" weight="bold">{ru ? "Повторить" : "Retry"}</Txt></Pressable></FCard> : null}
 
-          {!loading && !error && items.length === 0 ? (
-            <View style={styles.empty}>
-              <Ionicons name="folder-open-outline" size={56} color={colors.onSurfaceSecondary} />
-              <Text style={styles.stateTitle}>{lang === "ru" ? "Документов пока нет" : "No documents yet"}</Text>
-              <Muted style={styles.stateText}>{lang === "ru" ? "Здесь будут храниться оригиналы загруженных медицинских файлов." : "Original uploaded medical files will appear here."}</Muted>
-            </View>
-          ) : (
-            <View style={{ gap: spacing.md }}>
-              {items.map((d) => (
-                <Pressable key={d.id} onPress={() => openFile(d.drive_url)} disabled={!d.drive_url} testID={`document-${d.id}`}>
-                  <Card>
-                    <View style={styles.row}>
-                      <View style={styles.fileIcon}>
-                        <Ionicons name={d.mime_type?.includes("pdf") ? "document-text-outline" : "image-outline"} size={21} color={colors.onSurface} />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.fileName} numberOfLines={2}>{d.name}</Text>
-                        <Muted style={{ marginTop: 3 }}>{typeLabel(d.document_type)}{d.created_at ? ` · ${d.created_at.slice(0, 10)}` : ""}</Muted>
-                        {d.note ? <Text style={styles.note} numberOfLines={2}>{d.note}</Text> : null}
-                      </View>
-                      {d.drive_url ? <Ionicons name="open-outline" size={18} color={colors.onSurfaceSecondary} /> : null}
-                    </View>
-                  </Card>
-                </Pressable>
-              ))}
-            </View>
-          )}
-        </ScrollView>
-      )}
+        {!loading && activeId && !error ? <>
+          <SectionHeader title={ru ? "Мои документы" : "My documents"} action={items.length ? `${items.length}` : undefined} />
+          {items.length === 0 ? <FCard style={styles.state}><RoundIcon icon="folder-open-outline" size={48} bg={figma.bg} /><Txt variant="caption" weight="bold">{ru ? "Документов пока нет" : "No documents yet"}</Txt><Txt variant="label" color={figma.muted} center>{ru ? "Здесь будут храниться оригиналы медицинских файлов." : "Original medical files will appear here."}</Txt></FCard> : <View style={styles.stack}>{items.map((d) => <Pressable key={d.id} onPress={() => void openFile(d.drive_url)} disabled={!d.drive_url} testID={`document-${d.id}`}><FCard style={styles.docCard}><View style={[styles.fileIcon, { backgroundColor: d.mime_type?.includes("pdf") ? "#FBEAE5" : "#EAF2FA" }]}><Ionicons name={d.mime_type?.includes("pdf") ? "document-text-outline" : "image-outline"} size={21} color={figma.ink} /></View><View style={{ flex: 1 }}><Txt variant="caption" weight="bold" numberOfLines={2}>{d.name}</Txt><Txt variant="label" color={figma.muted} style={{ marginTop: 3 }}>{typeLabel(d.document_type)}{d.created_at ? ` · ${d.created_at.slice(0, 10)}` : ""}</Txt>{d.note ? <Txt variant="label" color={figma.soft} style={{ marginTop: 6 }} numberOfLines={2}>{d.note}</Txt> : null}</View>{d.drive_url ? <Ionicons name="open-outline" size={18} color={figma.muted} /> : null}</FCard></Pressable>)}</View>}
+        </> : null}
+      </View>
+    </ScrollView>
 
-      <Sheet visible={open} onClose={() => !saving && setOpen(false)} testID="document-upload-sheet" scroll>
-        <Text style={styles.sheetTitle}>{lang === "ru" ? "Новый документ" : "New document"}</Text>
-        <Text style={styles.fieldLabel}>{lang === "ru" ? "Тип документа" : "Document type"}</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
-          {TYPES.map((x) => (
-            <Chip key={x.key} label={lang === "ru" ? x.ru : x.en} active={type === x.key} onPress={() => setType(x.key)} />
-          ))}
-        </ScrollView>
-        <Text style={[styles.fieldLabel, { marginTop: spacing.lg }]}>{lang === "ru" ? "Заметка (необязательно)" : "Note (optional)"}</Text>
-        <TextInput
-          value={note}
-          onChangeText={setNote}
-          multiline
-          style={styles.input}
-          placeholder={lang === "ru" ? "Например: заключение кардиолога" : "For example: cardiology report"}
-          placeholderTextColor={colors.onSurfaceSecondary}
-        />
-        {uploadError ? (
-          <View style={styles.uploadError} testID="document-upload-error">
-            <Ionicons name="alert-circle-outline" size={20} color={colors.error} />
-            <Text style={styles.uploadErrorText}>{uploadError}</Text>
-          </View>
-        ) : null}
-        {uploadError && pendingFile ? (
-          <PrimaryButton
-            label={lang === "ru" ? "Повторить отправку" : "Retry upload"}
-            icon="refresh-outline"
-            onPress={() => uploadSelected(pendingFile)}
-            loading={saving}
-            style={{ marginTop: spacing.md }}
-          />
-        ) : (
-          <PrimaryButton
-            label={lang === "ru" ? "Выбрать PDF или фото" : "Choose PDF or image"}
-            icon="document-attach-outline"
-            onPress={pick}
-            loading={saving}
-            style={{ marginTop: spacing.lg }}
-          />
-        )}
-        <Muted style={{ marginTop: spacing.md, lineHeight: 18 }}>
-          {lang === "ru" ? "Документ сохранится как оригинал. Аида не будет автоматически считать его лабораторным анализом." : "The original file will be stored as-is. Aida will not automatically treat it as a lab result."}
-        </Muted>
-      </Sheet>
-    </View>
-  );
+    <Sheet visible={open} onClose={() => !saving && setOpen(false)} testID="document-upload-sheet" scroll>
+      <Txt variant="h1" style={styles.sheetTitle}>{ru ? "Новый документ" : "New document"}</Txt>
+      <Txt variant="label" color={figma.muted} style={{ marginTop: 4 }}>{ru ? "Выберите тип документа" : "Choose document type"}</Txt>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.types}>{TYPES.map((x) => <Pressable key={x.key} onPress={() => setType(x.key)} style={[styles.typeChip, type === x.key && styles.typeChipActive]}><Txt variant="label" weight="bold">{ru ? x.ru : x.en}</Txt></Pressable>)}</ScrollView>
+      <Txt variant="label" weight="bold" style={{ marginTop: 18 }}>{ru ? "Заметка (необязательно)" : "Note (optional)"}</Txt>
+      <TextInput value={note} onChangeText={setNote} multiline style={styles.input} placeholder={ru ? "Например: заключение кардиолога" : "For example: cardiology report"} placeholderTextColor={figma.muted} />
+      {uploadError ? <FCard style={styles.errorCard} testID="document-upload-error"><Ionicons name="alert-circle-outline" size={20} color="#C64E5B" /><Txt variant="label" color="#C64E5B" style={{ flex: 1 }}>{uploadError}</Txt></FCard> : null}
+      <Pressable disabled={saving} onPress={() => uploadError && pendingFile ? void uploadSelected(pendingFile) : void pick()} style={styles.saveBtn}>{saving ? <ActivityIndicator size="small" color="#fff" /> : <><Ionicons name={uploadError && pendingFile ? "refresh-outline" : "document-attach-outline"} size={18} color="#fff" /><Txt variant="caption" color="#fff" weight="bold">{uploadError && pendingFile ? (ru ? "Повторить отправку" : "Retry upload") : (ru ? "Выбрать PDF или фото" : "Choose PDF or image")}</Txt></>}</Pressable>
+      <Txt variant="label" color={figma.muted} style={{ marginTop: 12, lineHeight: 18 }}>{ru ? "Документ сохранится как оригинал. Аида не будет автоматически считать его лабораторным анализом." : "The original file will be stored as-is. Aida will not automatically treat it as a lab result."}</Txt>
+    </Sheet>
+  </View>;
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.surface },
-  centerState: { flex: 1, alignItems: "center", justifyContent: "center", padding: spacing.xl },
-  empty: { alignItems: "center", paddingTop: spacing["3xl"], paddingHorizontal: spacing.lg },
-  stateTitle: { marginTop: spacing.md, fontSize: fontSize.lg, fontWeight: "700", color: colors.onSurface, textAlign: "center", fontFamily: fonts.text },
-  stateText: { marginTop: spacing.sm, textAlign: "center", lineHeight: 19 },
-  inlineState: { minHeight: 56, marginBottom: spacing.lg, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radius.md, backgroundColor: colors.surfaceSecondary, flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  inlineStateText: { flex: 1, color: colors.onSurfaceSecondary, fontSize: fontSize.sm, lineHeight: 19, fontFamily: fonts.text },
-  retryButton: { minHeight: 38, paddingHorizontal: spacing.md, borderRadius: radius.pill, backgroundColor: colors.onSurface, alignItems: "center", justifyContent: "center" },
-  retryText: { color: colors.onSurfaceInverse, fontWeight: "800", fontSize: fontSize.sm, fontFamily: fonts.text },
-  addCard: { minHeight: 82, borderRadius: radius.xl, backgroundColor: colors.onSurface, paddingHorizontal: spacing.lg, paddingVertical: spacing.md, marginBottom: spacing.xl, flexDirection: "row", alignItems: "center", gap: spacing.md },
-  addIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: "rgba(255,255,255,0.12)", alignItems: "center", justifyContent: "center" },
-  addTitle: { fontSize: fontSize.lg, fontWeight: "700", color: colors.surfaceSecondary, fontFamily: fonts.text },
-  addHint: { marginTop: 3, fontSize: fontSize.sm, lineHeight: 18, color: "rgba(255,255,255,0.68)", fontFamily: fonts.text },
-  row: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-  fileIcon: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center" },
-  fileName: { fontSize: fontSize.base, fontWeight: "700", color: colors.onSurface, fontFamily: fonts.text },
-  note: { marginTop: spacing.sm, fontSize: fontSize.sm, lineHeight: 18, color: colors.onSurfaceSecondary, fontFamily: fonts.text },
-  sheetTitle: { fontSize: fontSize.xl, fontWeight: "800", color: colors.onSurface, marginBottom: spacing.lg, fontFamily: fonts.display },
-  fieldLabel: { fontSize: fontSize.base, color: colors.onSurface, marginBottom: spacing.sm, fontWeight: "600", fontFamily: fonts.text },
-  chips: { gap: spacing.sm, paddingVertical: spacing.sm },
-  input: { minHeight: 84, backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, paddingHorizontal: spacing.lg, paddingVertical: spacing.md, fontSize: fontSize.base, color: colors.onSurface, borderWidth: 1, borderColor: colors.border, textAlignVertical: "top", fontFamily: fonts.text },
-  uploadError: { marginTop: spacing.lg, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.error, flexDirection: "row", alignItems: "flex-start", gap: spacing.sm },
-  uploadErrorText: { flex: 1, color: colors.error, fontSize: fontSize.sm, lineHeight: 19, fontFamily: fonts.text },
+  header: { flexDirection: "row", alignItems: "center", gap: 14 }, title: { fontSize: 28, lineHeight: 32 },
+  center: { minHeight: 180, alignItems: "center", justifyContent: "center", gap: 10 }, state: { minHeight: 180, marginTop: 20, alignItems: "center", justifyContent: "center", gap: 10, paddingHorizontal: 28 }, blackBtn: { marginTop: 8, minHeight: 40, paddingHorizontal: 20, borderRadius: 999, backgroundColor: figma.ink, alignItems: "center", justifyContent: "center" },
+  stack: { gap: 10 }, docCard: { minHeight: 88, flexDirection: "row", alignItems: "center", gap: 12 }, fileIcon: { width: 46, height: 46, borderRadius: 16, alignItems: "center", justifyContent: "center" },
+  sheetTitle: { fontSize: 28, lineHeight: 32 }, types: { gap: 8, paddingVertical: 14 }, typeChip: { minHeight: 40, paddingHorizontal: 14, borderRadius: 999, backgroundColor: figma.bg, alignItems: "center", justifyContent: "center" }, typeChipActive: { backgroundColor: figma.lime }, input: { minHeight: 92, marginTop: 8, borderRadius: 18, backgroundColor: figma.bg, paddingHorizontal: 16, paddingVertical: 14, color: figma.ink, textAlignVertical: "top" }, errorCard: { marginTop: 12, minHeight: 60, flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: "#FDECEF" }, saveBtn: { height: 52, borderRadius: 999, backgroundColor: figma.ink, marginTop: 18, flexDirection: "row", gap: 8, alignItems: "center", justifyContent: "center" },
 });
