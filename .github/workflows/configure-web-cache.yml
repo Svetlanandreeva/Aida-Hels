@@ -34,23 +34,23 @@ jobs:
           ssh -p "$RUVDS_PORT" -i ~/.ssh/ruvds -o ConnectTimeout=10 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes "$RUVDS_USER@$RUVDS_HOST" <<'EOF'
           set -euo pipefail
           site=/etc/nginx/sites-enabled/aida
+          backup=/etc/nginx/sites-enabled/aida.cache-policy.bak
           test -f "$site"
-          sudo -n cp "$site" "$site.cache-policy.bak"
+          if [ -f "$backup" ]; then
+            sudo -n cp "$backup" "$site"
+          else
+            sudo -n cp "$site" "$backup"
+          fi
           sudo -n python3 - <<'PY'
           from pathlib import Path
 
           path = Path('/etc/nginx/sites-enabled/aida')
           text = path.read_text()
-          marker = '# AIDA_APP_SHELL_NO_CACHE'
-          if marker in text:
-              print('Aida app-shell cache policy already installed.')
-              raise SystemExit(0)
-
           needle = '    client_max_body_size 50M;'
           if needle not in text:
               raise SystemExit('Could not find insertion point in nginx Aida site.')
 
-          block = "\n\n    # AIDA_APP_SHELL_NO_CACHE\n    location = / {\n        try_files /index.html =404;\n        add_header Cache-Control \\\"no-store, no-cache, must-revalidate, max-age=0\\\" always;\n        add_header Pragma \\\"no-cache\\\" always;\n        add_header Expires \\\"0\\\" always;\n        etag off;\n        if_modified_since off;\n    }\n\n    location = /index.html {\n        try_files /index.html =404;\n        add_header Cache-Control \\\"no-store, no-cache, must-revalidate, max-age=0\\\" always;\n        add_header Pragma \\\"no-cache\\\" always;\n        add_header Expires \\\"0\\\" always;\n        etag off;\n        if_modified_since off;\n    }\n"
+          block = "\n\n    # AIDA_APP_SHELL_NO_CACHE\n    location = / {\n        try_files /index.html =404;\n        add_header Cache-Control 'no-store, no-cache, must-revalidate, max-age=0' always;\n        add_header Pragma 'no-cache' always;\n        add_header Expires '0' always;\n        etag off;\n        if_modified_since off;\n    }\n\n    location = /index.html {\n        try_files /index.html =404;\n        add_header Cache-Control 'no-store, no-cache, must-revalidate, max-age=0' always;\n        add_header Pragma 'no-cache' always;\n        add_header Expires '0' always;\n        etag off;\n        if_modified_since off;\n    }\n"
           path.write_text(text.replace(needle, needle + block, 1))
           print('Installed Aida app-shell no-cache policy.')
           PY
