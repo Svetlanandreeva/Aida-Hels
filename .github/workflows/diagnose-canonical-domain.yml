@@ -29,23 +29,30 @@ jobs:
           printf '%s\n' "$RUVDS_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/ruvds ~/.ssh/known_hosts
 
-      - name: Compare production root and served bundle
+      - name: Inspect actual production bundle contents
         run: |
           ssh -p "$RUVDS_PORT" -i ~/.ssh/ruvds -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes "$RUVDS_USER@$RUVDS_HOST" <<'EOF'
           set -euo pipefail
           host='aidaassistent.ru'
-          echo '=== deployed web root ==='
-          sha256sum /opt/aida/web/index.html
-          echo '=== nginx configuration ==='
-          sudo -n nginx -T 2>/dev/null | grep -E -B3 -A12 'server_name .*aidaassistent\.ru' || true
-          echo '=== public response ==='
           curl -ksS --max-time 15 "https://$host/" -o /tmp/public-index.html
-          sha256sum /tmp/public-index.html
-          echo '=== bundle references ==='
-          grep -oE '/_expo/static/js/web/[^" ]+\.js' /opt/aida/web/index.html | head -n 5 || true
-          grep -oE '/_expo/static/js/web/[^" ]+\.js' /tmp/public-index.html | head -n 5 || true
-          echo '=== response headers ==='
-          curl -ksSI --max-time 15 "https://$host/" | grep -Ei '^(HTTP/|cache-control:|age:|server:|etag:|last-modified:)' || true
-          echo '=== compare ==='
-          cmp -s /opt/aida/web/index.html /tmp/public-index.html && echo 'PUBLIC_INDEX_MATCHES_DEPLOYED=yes' || echo 'PUBLIC_INDEX_MATCHES_DEPLOYED=no'
+          bundle="$(grep -oE '/_expo/static/js/web/[^\" ]+\.js' /tmp/public-index.html | head -n 1)"
+          test -n "$bundle"
+          echo "BUNDLE=$bundle"
+          curl -ksS --max-time 30 "https://$host$bundle" -o /tmp/public-bundle.js
+          sha256sum /tmp/public-bundle.js
+          python3 - <<'PY'
+          from pathlib import Path
+          text = Path('/tmp/public-bundle.js').read_text(errors='ignore')
+          probes = [
+              'Общее состояние сегодня',
+              'Состояние сегодня',
+              'ИИ-итог дня',
+              'Аида заметила',
+              'Добавьте первые данные',
+              'Готовность',
+              'home-editorial-hero',
+          ]
+          for probe in probes:
+              print(f'{probe}: {probe in text}')
+          PY
           EOF
