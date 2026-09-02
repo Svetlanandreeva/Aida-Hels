@@ -34,18 +34,28 @@ jobs:
           ssh -p "$RUVDS_PORT" -i ~/.ssh/ruvds -o ConnectTimeout=10 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes "$RUVDS_USER@$RUVDS_HOST" <<'EOF'
           set -euo pipefail
           site=/etc/nginx/sites-enabled/aida
-          backup=/etc/nginx/sites-enabled/aida.cache-policy.bak
+          bad_backup=/etc/nginx/sites-enabled/aida.cache-policy.bak
+          backup=/etc/nginx/aida.cache-policy.bak
           test -f "$site"
-          if [ -f "$backup" ]; then
-            sudo -n cp "$backup" "$site"
-          else
+
+          # A backup inside sites-enabled is itself loaded by nginx. Move it
+          # outside the include directory before testing or reloading.
+          if [ -f "$bad_backup" ]; then
+            sudo -n mv "$bad_backup" "$backup"
+          elif [ ! -f "$backup" ]; then
             sudo -n cp "$site" "$backup"
           fi
+
           sudo -n python3 - <<'PY'
           from pathlib import Path
 
           path = Path('/etc/nginx/sites-enabled/aida')
           text = path.read_text()
+          marker = '# AIDA_APP_SHELL_NO_CACHE'
+          if marker in text:
+              print('Aida app-shell no-cache policy already present.')
+              raise SystemExit(0)
+
           needle = '    client_max_body_size 50M;'
           if needle not in text:
               raise SystemExit('Could not find insertion point in nginx Aida site.')
@@ -54,6 +64,7 @@ jobs:
           path.write_text(text.replace(needle, needle + block, 1))
           print('Installed Aida app-shell no-cache policy.')
           PY
+
           sudo -n nginx -t
           sudo -n systemctl reload nginx
           EOF
