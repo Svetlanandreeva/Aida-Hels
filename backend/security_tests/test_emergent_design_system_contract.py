@@ -60,4 +60,4 @@ def test_authenticated_shell_stays_bottom_aligned_at_desktop_widths():
 
     assert 'tabBarPosition: "bottom"' in layout
     assert "sidebarShell" not in tab_bar
-    assert "maxWidth: 720" in tab_bar
+    assert "maxWidth: 920" in tab_bar
