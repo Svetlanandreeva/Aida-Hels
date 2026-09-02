@@ -1,0 +1,88 @@
+name: Configure production web cache
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/configure-web-cache.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  configure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      RUVDS_HOST: ${{ secrets.RUVDS_HOST }}
+      RUVDS_USER: ${{ secrets.RUVDS_USER }}
+      RUVDS_PORT: ${{ secrets.RUVDS_PORT }}
+    steps:
+      - name: Prepare SSH
+        env:
+          RUVDS_SSH_KEY: ${{ secrets.RUVDS_SSH_KEY }}
+          RUVDS_SSH_KNOWN_HOSTS: ${{ secrets.RUVDS_SSH_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$RUVDS_SSH_KEY" > ~/.ssh/ruvds
+          printf '%s\n' "$RUVDS_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/ruvds ~/.ssh/known_hosts
+
+      - name: Disable caching for app shell
+        run: |
+          ssh -p "$RUVDS_PORT" -i ~/.ssh/ruvds -o ConnectTimeout=10 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes "$RUVDS_USER@$RUVDS_HOST" <<'EOF'
+          set -euo pipefail
+          site=/etc/nginx/sites-enabled/aida
+          test -f "$site"
+          sudo -n cp "$site" "$site.cache-policy.bak"
+          sudo -n python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('/etc/nginx/sites-enabled/aida')
+          text = path.read_text()
+          marker = '# AIDA_APP_SHELL_NO_CACHE'
+          if marker in text:
+              print('Aida app-shell cache policy already installed.')
+              raise SystemExit(0)
+
+          needle = '    client_max_body_size 50M;'
+          if needle not in text:
+              raise SystemExit('Could not find insertion point in nginx Aida site.')
+
+          block = r'''
+
+    # AIDA_APP_SHELL_NO_CACHE
+    # The HTML shell must always be revalidated so iOS/PWA clients cannot
+    # remain pinned to an old hashed Expo bundle after a deployment.
+    location = / {
+        try_files /index.html =404;
+        add_header Cache-Control "no-store, no-cache, must-revalidate, max-age=0" always;
+        add_header Pragma "no-cache" always;
+        add_header Expires "0" always;
+        etag off;
+        if_modified_since off;
+    }
+
+    location = /index.html {
+        try_files /index.html =404;
+        add_header Cache-Control "no-store, no-cache, must-revalidate, max-age=0" always;
+        add_header Pragma "no-cache" always;
+        add_header Expires "0" always;
+        etag off;
+        if_modified_since off;
+    }
+'''
+          path.write_text(text.replace(needle, needle + block, 1))
+          print('Installed Aida app-shell no-cache policy.')
+          PY
+          sudo -n nginx -t
+          sudo -n systemctl reload nginx
+          EOF
+
+      - name: Verify public cache headers
+        run: |
+          headers="$(curl -fsSI https://aidaassistent.ru/)"
+          printf '%s\n' "$headers"
+          printf '%s\n' "$headers" | grep -qi '^cache-control:.*no-store'
+          printf '%s\n' "$headers" | grep -qi '^pragma:.*no-cache'
