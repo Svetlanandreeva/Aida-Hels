@@ -1,0 +1,86 @@
+name: Fix Figma mobile visual scope
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fix-figma-mobile-visual-scope.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Apply Figma light-scope and fixed primary navigation
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          root = Path('frontend')
+          shared = root / 'src/emergent/figma-mobile.tsx'
+          text = shared.read_text()
+          anchor = 'export const gradients = {'
+          helper = '''export function FigmaTxt(props: React.ComponentProps<typeof Txt>) {\n  return <Txt {...props} color={props.color ?? figma.ink} />;\n}\n\n'''
+          if 'export function FigmaTxt' not in text:
+              text = text.replace(anchor, helper + anchor, 1)
+          text = text.replace('<Txt variant="h3" style={styles.sectionTitle}>', '<FigmaTxt variant="h3" style={styles.sectionTitle}>')
+          text = text.replace('</Txt>\n    {action ?', '</FigmaTxt>\n    {action ?', 1)
+          text = text.replace('<Txt variant="h2" style={{ marginTop: 4 }}>{value}</Txt>', '<FigmaTxt variant="h2" style={{ marginTop: 4 }}>{value}</FigmaTxt>')
+          text = text.replace('<Txt variant="caption" weight="bold">{title}</Txt>', '<FigmaTxt variant="caption" weight="bold">{title}</FigmaTxt>')
+          shared.write_text(text)
+
+          targets = [
+              root / 'src/emergent/screens/HomeFigmaDashboard.tsx',
+              root / 'src/emergent/screens/Pressure.tsx',
+              root / 'src/emergent/screens/Labs.tsx',
+              root / 'app/(tabs)/health.tsx',
+          ]
+          for path in targets:
+              if not path.exists():
+                  continue
+              s = path.read_text()
+              s = s.replace('import { Txt } from "@/src/emergent/ui";\n', '')
+              marker = 'from "@/src/emergent/figma-mobile";'
+              lines = s.splitlines()
+              for i, line in enumerate(lines):
+                  if marker in line and 'FigmaTxt as Txt' not in line:
+                      left, right = line.split('}', 1)
+                      left = left.rstrip()
+                      if left.endswith('{'):
+                          left += ' FigmaTxt as Txt '
+                      else:
+                          left += ', FigmaTxt as Txt '
+                      lines[i] = left + '}' + right
+                      break
+              path.write_text('\n'.join(lines) + ('\n' if s.endswith('\n') else ''))
+
+          layout = root / 'app/(tabs)/_layout.tsx'
+          s = layout.read_text()
+          old = '''  const routeVisible = (name: string) => {\n    if (name === "companion") return petUnlocked;\n    const moduleCode = MODULE_GATES[name];\n    return moduleCode == null || enabledModules === null || enabledModules.has(moduleCode);\n  };'''
+          new = '''  const routeVisible = (name: string) => {\n    // Figma 2.0 primary navigation is fixed: Home / Health / Aida / Tasks / Profile.\n    // Server module gates apply only to secondary medical routes.\n    if (PRIMARY_TABS.has(name)) return true;\n    if (name === "companion") return petUnlocked;\n    const moduleCode = MODULE_GATES[name];\n    return moduleCode == null || enabledModules === null || enabledModules.has(moduleCode);\n  };'''
+          if old not in s:
+              raise SystemExit('Primary navigation contract block not found')
+          layout.write_text(s.replace(old, new, 1))
+          PY
+
+      - name: Sanity-check patched imports
+        run: |
+          grep -q 'FigmaTxt as Txt' frontend/src/emergent/screens/HomeFigmaDashboard.tsx
+          grep -q 'FigmaTxt as Txt' frontend/src/emergent/screens/Pressure.tsx
+          grep -q 'FigmaTxt as Txt' frontend/src/emergent/screens/Labs.tsx
+          grep -q 'FigmaTxt as Txt' 'frontend/app/(tabs)/health.tsx'
+          grep -q 'PRIMARY_TABS.has(name)' 'frontend/app/(tabs)/_layout.tsx'
+
+      - name: Commit patch
+        run: |
+          git config user.name 'Aida CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git add frontend
+          git diff --cached --quiet && exit 0
+          git commit -m 'fix: match Figma mobile light visual system'
+          git push
