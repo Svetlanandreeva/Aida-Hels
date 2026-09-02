@@ -43,7 +43,7 @@ export default function HealthHub() {
   const go = (route: string) => { setAddOpen(false); setTimeout(() => router.push(route as any), 100); };
   const run = (fn: () => void) => { setAddOpen(false); setTimeout(fn, 160); };
 
-  const mods: Mod[] = [
+  const mods = ([
     { key:"labs",settingKey:"labs",route:"/(tabs)/labs",label:lang==="ru"?"Анализы":"Labs",icon:"flask-outline",count:counts.labs },
     { key:"pressure",settingKey:"pressure",route:"/(tabs)/pressure",label:lang==="ru"?"Давление":"Pressure",icon:"pulse-outline",count:counts.pressure },
     { key:"mind",settingKey:"mind",route:"/(tabs)/mind",label:lang==="ru"?"Самочувствие":"Wellbeing",icon:"happy-outline",count:counts.mind },
@@ -52,9 +52,9 @@ export default function HealthHub() {
     { key:"documents",route:"/documents",label:lang==="ru"?"Документы":"Documents",icon:"folder-outline",count:counts.documents },
     { key:"rhythm",route:"/sleep-rhythm",label:lang==="ru"?"Сон и режим":"Sleep & rhythm",icon:"moon-outline",count:counts.rhythm },
     ...(womenRelevant ? [{ key:"women",settingKey:"women",route:"/womens-health",label:lang==="ru"?"Женское здоровье":"Women’s health",icon:"flower-outline" as const }] : []),
-  ].filter((m)=>enabled(m.settingKey));
+  ] as Mod[]).filter((m)=>enabled(m.settingKey));
 
-  const actions: AddAction[] = [
+  const actions = ([
     {key:"pressure",settingKey:"pressure",labelRu:"Давление",labelEn:"Blood pressure",hintRu:"Систолическое, диастолическое и пульс",hintEn:"Systolic, diastolic and pulse",icon:"pulse-outline",run:()=>go("/(tabs)/pressure")},
     {key:"symptom",labelRu:"Симптом",labelEn:"Symptom",hintRu:"Что беспокоит и насколько сильно",hintEn:"What you feel and how severe it is",icon:"medical-outline",run:()=>run(openSymptom)},
     {key:"mind",settingKey:"mind",labelRu:"Самочувствие",labelEn:"Wellbeing",hintRu:"Настроение, энергия и стресс",hintEn:"Mood, energy and stress",icon:"happy-outline",run:()=>go("/(tabs)/mind")},
@@ -62,7 +62,7 @@ export default function HealthHub() {
     {key:"lab",settingKey:"labs",labelRu:"Анализ",labelEn:"Lab result",hintRu:"Фото или PDF",hintEn:"Photo or PDF",icon:"flask-outline",run:()=>run(()=>openLab())},
     {key:"doc",labelRu:"Документ",labelEn:"Document",hintRu:"Выписка, заключение или назначение",hintEn:"Summary, note or prescription",icon:"document-attach-outline",run:()=>go("/documents")},
     {key:"measurement",labelRu:"Измерение",labelEn:"Measurement",hintRu:"Вес, температура, SpO₂ и другое",hintEn:"Weight, temperature, SpO₂ and more",icon:"fitness-outline",run:()=>go("/measurements")},
-  ].filter((a)=>enabled(a.settingKey));
+  ] as AddAction[]).filter((a)=>enabled(a.settingKey));
 
   return <View style={mobileStyles.page}>
     <ScrollView showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={figma.ink}/>} contentContainerStyle={{paddingTop:insets.top+14,paddingBottom:36}}>
