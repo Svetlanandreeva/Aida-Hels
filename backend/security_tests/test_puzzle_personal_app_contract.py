@@ -71,8 +71,11 @@ def test_personal_app_frontend_contract():
     assert '["weight", "Вес / образ жизни", "Weight / lifestyle"]' in onboarding
     assert '["other", "Другое", "Other"]' in onboarding
     assert "getModuleConfig" in tabs
-    assert "PRIMARY_TAB_MODULES" in tabs
+    assert "MODULE_GATES" in tabs
     assert 'index: null' in tabs and 'chat: null' in tabs
+    assert 'mind: "mental"' in tabs and 'labs: "labs"' in tabs
     assert "enabledModules === null" in tabs
+    assert "PRIMARY_TABS" in tabs
+    assert '"health"' in tabs and '"profile"' in tabs
     assert "enableAllModules" in settings
     assert "Хочу отслеживать всё" in settings
