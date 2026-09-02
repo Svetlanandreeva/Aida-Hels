@@ -9,8 +9,7 @@ import dayjs from "dayjs";
 import { useApp } from "@/src/emergent/AppContext";
 import { useHealth, useDerived, bpStatus } from "@/src/emergent/health-context";
 import { useAddSheet } from "@/src/emergent/AddSheet";
-import { Txt } from "@/src/emergent/ui";
-import { AddCard, FCard, figma, gradients, GradientPanel, MetricMini, mobileStyles, SectionHeader } from "@/src/emergent/figma-mobile";
+import { AddCard, FCard, figma, gradients, GradientPanel, MetricMini, mobileStyles, SectionHeader, FigmaTxt as Txt } from "@/src/emergent/figma-mobile";
 
 export default function Pressure() {
   const { lang } = useApp();

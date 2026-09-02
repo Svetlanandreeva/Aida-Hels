@@ -9,8 +9,7 @@ import dayjs from "dayjs";
 import { useApp } from "@/src/emergent/AppContext";
 import { useHealth } from "@/src/emergent/health-context";
 import { useLog } from "@/src/components/LogProvider";
-import { Txt } from "@/src/emergent/ui";
-import { AddCard, Bars, FCard, figma, MetricMini, mobileStyles, SectionHeader } from "@/src/emergent/figma-mobile";
+import { AddCard, Bars, FCard, figma, MetricMini, mobileStyles, SectionHeader, FigmaTxt as Txt } from "@/src/emergent/figma-mobile";
 
 type Filter = "all" | "normal" | "high" | "low";
 

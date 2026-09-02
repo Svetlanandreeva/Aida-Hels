@@ -20,6 +20,10 @@ export const figma = {
   red: "#FF315B",
 };
 
+export function FigmaTxt(props: React.ComponentProps<typeof Txt>) {
+  return <Txt {...props} color={props.color ?? figma.ink} />;
+}
+
 export const gradients = {
   status: ["#F6D8B0", "#F79C7E", "#EE8BB3"] as const,
   ai: ["#E7F7A6", "#CFF24A", "#B9E22E"] as const,
@@ -32,7 +36,7 @@ export const gradients = {
 
 export function SectionHeader({ title, action, onPress }: { title: string; action?: string; onPress?: () => void }) {
   return <View style={styles.sectionHeader}>
-    <Txt variant="h3" style={styles.sectionTitle}>{title}</Txt>
+    <FigmaTxt variant="h3" style={styles.sectionTitle}>{title}</FigmaTxt>
     {action ? <Pressable disabled={!onPress} onPress={onPress}><Txt variant="label" color={figma.muted} weight="semibold">{action}</Txt></Pressable> : null}
   </View>;
 }
@@ -59,11 +63,11 @@ export function AddCard({ title, subtitle, icon = "add", onPress, dark = false, 
 }
 
 export function MetricMini({ label, value, dot = figma.green }: { label: string; value: string; dot?: string }) {
-  return <View style={styles.metricMini}><View style={styles.metricTop}><Txt variant="label" color={figma.muted}>{label}</Txt><View style={[styles.dot, { backgroundColor: dot }]} /></View><Txt variant="h2" style={{ marginTop: 4 }}>{value}</Txt></View>;
+  return <View style={styles.metricMini}><View style={styles.metricTop}><Txt variant="label" color={figma.muted}>{label}</Txt><View style={[styles.dot, { backgroundColor: dot }]} /></View><FigmaTxt variant="h2" style={{ marginTop: 4 }}>{value}</FigmaTxt></View>;
 }
 
 export function EmptyCopy({ icon, title, body }: { icon: keyof typeof Ionicons.glyphMap; title: string; body?: string }) {
-  return <View style={styles.empty}><RoundIcon icon={icon} bg={figma.bg} /><View style={{ flex: 1 }}><Txt variant="caption" weight="bold">{title}</Txt>{body ? <Txt variant="label" color={figma.muted} style={{ marginTop: 3 }}>{body}</Txt> : null}</View></View>;
+  return <View style={styles.empty}><RoundIcon icon={icon} bg={figma.bg} /><View style={{ flex: 1 }}><FigmaTxt variant="caption" weight="bold">{title}</FigmaTxt>{body ? <Txt variant="label" color={figma.muted} style={{ marginTop: 3 }}>{body}</Txt> : null}</View></View>;
 }
 
 export function Bars({ values, max = 100, height = 120, width = 22 }: { values: number[]; max?: number; height?: number; width?: number }) {

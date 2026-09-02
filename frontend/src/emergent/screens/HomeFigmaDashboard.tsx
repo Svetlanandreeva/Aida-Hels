@@ -10,8 +10,7 @@ import "dayjs/locale/ru";
 import { useApp } from "@/src/emergent/AppContext";
 import { useHealth, useDerived, todayStr, type StatusKind } from "@/src/emergent/health-context";
 import { useAddSheet } from "@/src/emergent/AddSheet";
-import { Txt } from "@/src/emergent/ui";
-import { AddCard, FCard, figma, gradients, GradientPanel, mobileStyles, RoundIcon, SectionHeader } from "@/src/emergent/figma-mobile";
+import { AddCard, FCard, figma, gradients, GradientPanel, mobileStyles, RoundIcon, SectionHeader, FigmaTxt as Txt } from "@/src/emergent/figma-mobile";
 
 export default function HomeFigmaDashboard() {
   const { lang } = useApp();

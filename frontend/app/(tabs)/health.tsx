@@ -10,8 +10,7 @@ import { useApp } from "@/src/store";
 import { useI18n } from "@/src/i18n";
 import { api } from "@/src/api";
 import { getCircadianDay } from "@/src/circadianApi";
-import { Txt } from "@/src/emergent/ui";
-import { AddCard, FCard, figma, mobileStyles, RoundIcon, SectionHeader } from "@/src/emergent/figma-mobile";
+import { AddCard, FCard, figma, mobileStyles, RoundIcon, SectionHeader, FigmaTxt as Txt } from "@/src/emergent/figma-mobile";
 
 type Mod = { key: string; settingKey?: string; route: string; label: string; icon: keyof typeof Ionicons.glyphMap; count?: number };
 type AddAction = { key: string; settingKey?: string; labelRu: string; labelEn: string; hintRu: string; hintEn: string; icon: keyof typeof Ionicons.glyphMap; run: () => void };

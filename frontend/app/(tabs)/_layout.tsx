@@ -62,6 +62,9 @@ export default function TabsLayout() {
   );
 
   const routeVisible = (name: string) => {
+    // Figma 2.0 primary navigation is fixed: Home / Health / Aida / Tasks / Profile.
+    // Server module gates apply only to secondary medical routes.
+    if (PRIMARY_TABS.has(name)) return true;
     if (name === "companion") return petUnlocked;
     const moduleCode = MODULE_GATES[name];
     return moduleCode == null || enabledModules === null || enabledModules.has(moduleCode);
