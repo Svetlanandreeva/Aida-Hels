@@ -1,0 +1,48 @@
+name: Diagnose canonical production domain
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-canonical-domain.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      RUVDS_HOST: ${{ secrets.RUVDS_HOST }}
+      RUVDS_USER: ${{ secrets.RUVDS_USER }}
+      RUVDS_PORT: ${{ secrets.RUVDS_PORT }}
+    steps:
+      - name: Prepare SSH
+        env:
+          RUVDS_SSH_KEY: ${{ secrets.RUVDS_SSH_KEY }}
+          RUVDS_SSH_KNOWN_HOSTS: ${{ secrets.RUVDS_SSH_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$RUVDS_SSH_KEY" > ~/.ssh/ruvds
+          printf '%s\n' "$RUVDS_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/ruvds ~/.ssh/known_hosts
+
+      - name: Compare production vhosts and served bundle
+        run: |
+          ssh -p "$RUVDS_PORT" -i ~/.ssh/ruvds -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes "$RUVDS_USER@$RUVDS_HOST" <<'EOF'
+          set -euo pipefail
+          echo '=== deployed web root ==='
+          sha256sum /opt/aida/web/index.html
+          echo '=== relevant nginx configuration ==='
+          sudo -n nginx -T 2>/dev/null | grep -E -B3 -A10 'server_name .*aida(assistant|assistent)\.ru' || true
+          echo '=== hostname response hashes ==='
+          for host in aidaassistant.ru aidaassistent.ru; do
+            echo "HOST=$host"
+            curl -ksS --max-time 15 "https://$host/" -o "/tmp/$host.html"
+            sha256sum "/tmp/$host.html"
+            grep -oE '/_expo/static/js/web/[^" ]+\.js' "/tmp/$host.html" | head -n 3 || true
+            curl -ksSI --max-time 15 "https://$host/" | grep -Ei '^(HTTP/|cache-control:|age:|server:|etag:|last-modified:)' || true
+          done
+          EOF
