@@ -1,51 +1,51 @@
-// Tokens are kept in lockstep with the Emergent reference application.
+// Shared product tokens aligned with the approved Figma mobile light system.
 export const colors = {
-  surface: "#050505",
-  onSurface: "#FFFFFF",
-  surfaceSecondary: "#111111",
-  onSurfaceSecondary: "#8E8E93",
-  surfaceTertiary: "#1C1C1E",
-  onSurfaceTertiary: "#FFFFFF",
-  surfaceInverse: "#FFFFFF",
-  onSurfaceInverse: "#050505",
+  surface: "#EAEAE8",
+  onSurface: "#1B1B1D",
+  surfaceSecondary: "#FBFBFA",
+  onSurfaceSecondary: "#8A8A8E",
+  surfaceTertiary: "#F2F2EF",
+  onSurfaceTertiary: "#1B1B1D",
+  surfaceInverse: "#1B1B1D",
+  onSurfaceInverse: "#FFFFFF",
 
-  // glass
-  glass: "rgba(17,17,17,0.82)",
-  glassBorder: "#38383A",
-  glassStrong: "rgba(28,28,30,0.94)",
+  // light glass / elevated surfaces
+  glass: "rgba(251,251,250,0.86)",
+  glassBorder: "#DCDCD8",
+  glassStrong: "rgba(251,251,250,0.96)",
 
-  brand: "#FF2D55",
-  brandPrimary: "#FF2D55",
+  brand: "#FF315B",
+  brandPrimary: "#FF315B",
   onBrandPrimary: "#FFFFFF",
-  brandSecondary: "#3A000A",
-  onBrandSecondary: "#FFB3C1",
-  brandTertiary: "#3A000A",
-  onBrandTertiary: "#FFB3C1",
+  brandSecondary: "#F6A8C9",
+  onBrandSecondary: "#1B1B1D",
+  brandTertiary: "#E7F7A6",
+  onBrandTertiary: "#1B1B1D",
 
-  accent: "#FF2D55",
-  onAccent: "#FFFFFF",
+  accent: "#CFF24A",
+  onAccent: "#1B1B1D",
 
-  success: "#30D158",
+  success: "#4EBB8B",
   onSuccess: "#FFFFFF",
-  warning: "#FF9F0A",
-  onWarning: "#FFFFFF",
-  error: "#FF453A",
+  warning: "#F39A3A",
+  onWarning: "#1B1B1D",
+  error: "#D63A52",
   onError: "#FFFFFF",
-  info: "#0A84FF",
+  info: "#7D91D9",
   onInfo: "#FFFFFF",
 
-  border: "#38383A",
-  borderStrong: "#48484A",
-  divider: "#38383A",
+  border: "#DCDCD8",
+  borderStrong: "#CBCBC6",
+  divider: "#DCDCD8",
 };
 
-// Gradient palettes for hero cards
+// Gradient palettes mirror the Figma mobile cards.
 export const gradients = {
-  warm: ["#351B1F", "#241417", "#171719"] as const,
-  warmSoft: ["#2B1B19", "#211719", "#171719"] as const,
-  pink: ["#341924", "#25151D", "#171719"] as const,
-  lime: ["#20221A", "#1C2118", "#151517"] as const,
-  cool: ["#172337", "#171E2A", "#151517"] as const,
+  warm: ["#F6D8B0", "#F79C7E", "#EE8BB3"] as const,
+  warmSoft: ["#F9E3CD", "#F7C2AE", "#F3C3D5"] as const,
+  pink: ["#FBD6E4", "#F6A8C9", "#F1A1C7"] as const,
+  lime: ["#E7F7A6", "#CFF24A", "#B9E22E"] as const,
+  cool: ["#D9EBFA", "#CFD7F5", "#D5C6EB"] as const,
 };
 
 export const spacing = {
@@ -59,10 +59,10 @@ export const spacing = {
 };
 
 export const radius = {
-  sm: 8,
-  md: 16,
+  sm: 10,
+  md: 18,
   lg: 24,
-  xl: 24,
+  xl: 26,
   pill: 999,
 };
 
