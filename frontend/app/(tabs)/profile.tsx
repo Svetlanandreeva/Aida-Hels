@@ -1,5 +1,6 @@
 import React, { useCallback, useState } from "react";
 import {
+  ActivityIndicator,
   View,
   Text,
   StyleSheet,
@@ -50,6 +51,7 @@ export default function ProfileScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [edit, setEdit] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [nutritionSaving, setNutritionSaving] = useState(false);
   const [height, setHeight] = useState("");
   const [weight, setWeight] = useState("");
   const [blood, setBlood] = useState("");
@@ -93,6 +95,21 @@ export default function ProfileScreen() {
     }
   };
 
+  const toggleNutrition = async () => {
+    if (!activeProfile || nutritionSaving) return;
+    const enabled = activeProfile.module_settings?.nutrition === true;
+    setNutritionSaving(true);
+    try {
+      await api.updateProfile(activeProfile.id, {
+        module_settings: { ...(activeProfile.module_settings || {}), nutrition: !enabled },
+      });
+      await reload();
+      bumpRefresh();
+    } finally {
+      setNutritionSaving(false);
+    }
+  };
+
   if (!activeProfile) {
     return (
       <View style={[styles.empty, { paddingTop: insets.top + 40 }]}>
@@ -104,6 +121,7 @@ export default function ProfileScreen() {
   }
 
   const age = ageFrom(activeProfile.dob);
+  const nutritionEnabled = activeProfile.module_settings?.nutrition === true;
   const sexLabel = lang === "ru"
     ? activeProfile.sex === "female" ? "Жен." : activeProfile.sex === "male" ? "Муж." : "—"
     : activeProfile.sex || "—";
@@ -172,6 +190,25 @@ export default function ProfileScreen() {
               <Text style={styles.settingValue}>{lang === "ru" ? "RU / EN" : "EN / RU"}</Text>
             </Pressable>
           </View>
+          <View style={styles.divider} />
+          <Pressable style={styles.settingRow} onPress={() => void toggleNutrition()} disabled={nutritionSaving} testID="nutrition-setting-toggle">
+            <View style={styles.settingActionLabel}>
+              <Ionicons name="restaurant-outline" size={18} color={figma.text} />
+              <View style={styles.flex}>
+                <Text style={styles.settingLabel}>{lang === "ru" ? "Дневник питания" : "Nutrition diary"}</Text>
+                <Text style={styles.settingHint}>{lang === "ru" ? "Добавлять питание в общий анализ Аиды" : "Include nutrition in Aida analysis"}</Text>
+              </View>
+            </View>
+            <View style={[styles.moduleChip, nutritionEnabled && styles.moduleChipActive]}>
+              {nutritionSaving ? (
+                <ActivityIndicator size="small" color={nutritionEnabled ? "#FFFFFF" : figma.text} />
+              ) : (
+                <Text style={[styles.moduleChipText, nutritionEnabled && styles.moduleChipTextActive]}>
+                  {nutritionEnabled ? (lang === "ru" ? "Вкл" : "On") : (lang === "ru" ? "Выкл" : "Off")}
+                </Text>
+              )}
+            </View>
+          </Pressable>
           <View style={styles.divider} />
           <Pressable style={styles.settingRow} onPress={openEdit} testID="edit-profile-button">
             <Text style={styles.settingLabel}>{t("edit")}</Text>
@@ -250,9 +287,15 @@ const styles = StyleSheet.create({
   noneText: { color: figma.muted, fontSize: 12 },
   settingsCard: { marginHorizontal: 16, marginTop: 16, paddingHorizontal: 24, paddingTop: 14, paddingBottom: 6, borderRadius: 26, backgroundColor: figma.card },
   settingsTitle: { color: figma.text, fontSize: 14, fontWeight: "800", marginBottom: 6 },
-  settingRow: { minHeight: 40, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  settingRow: { minHeight: 40, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
   settingLabel: { color: figma.text, fontSize: 13 },
   settingValue: { color: figma.muted, fontSize: 12 },
+  settingActionLabel: { flex: 1, flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 8 },
+  settingHint: { color: figma.muted, fontSize: 10, lineHeight: 14, marginTop: 2 },
+  moduleChip: { minWidth: 54, height: 30, paddingHorizontal: 10, borderRadius: 999, backgroundColor: "#EFEFED", alignItems: "center", justifyContent: "center" },
+  moduleChipActive: { backgroundColor: figma.text },
+  moduleChipText: { color: figma.text, fontSize: 11, fontWeight: "800" },
+  moduleChipTextActive: { color: "#FFFFFF" },
   divider: { height: 1, backgroundColor: figma.divider },
   secondaryRow: { marginHorizontal: 16, marginTop: 14, minHeight: 56, paddingHorizontal: 18, borderRadius: 22, backgroundColor: "rgba(251,251,250,0.66)", flexDirection: "row", alignItems: "center", gap: 12 },
   secondaryText: { flex: 1, color: figma.text, fontSize: 13, fontWeight: "700" },
