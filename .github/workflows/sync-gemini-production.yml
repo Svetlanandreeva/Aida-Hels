@@ -19,7 +19,7 @@ jobs:
       github.event_name != 'workflow_run' ||
       github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 12
     env:
       RUVDS_HOST: ${{ secrets.RUVDS_HOST }}
       RUVDS_USER: ${{ secrets.RUVDS_USER }}
@@ -41,29 +41,55 @@ jobs:
       - name: Validate Gemini key before production sync
         run: |
           python3 - <<'PY'
-          import json, os, urllib.error, urllib.request
+          import json
+          import os
+          import socket
+          import time
+          import urllib.error
+          import urllib.request
+
           key = os.environ['GEMINI_API_KEY'].strip()
           url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent'
           body = json.dumps({
               'contents': [{'role': 'user', 'parts': [{'text': 'Return JSON {"ok":true} only.'}]}],
               'generationConfig': {'responseMimeType': 'application/json'},
           }).encode()
-          req = urllib.request.Request(url, data=body, headers={
-              'x-goog-api-key': key,
-              'Content-Type': 'application/json',
-          }, method='POST')
-          try:
-              with urllib.request.urlopen(req, timeout=25) as response:
-                  print(f'Gemini key validation HTTP {response.status}')
-          except urllib.error.HTTPError as exc:
-              detail = ''
+
+          attempts = 3
+          timeout_seconds = 45
+
+          for attempt in range(1, attempts + 1):
+              req = urllib.request.Request(url, data=body, headers={
+                  'x-goog-api-key': key,
+                  'Content-Type': 'application/json',
+              }, method='POST')
               try:
-                  payload = json.loads(exc.read().decode())
-                  detail = ((payload.get('error') or {}).get('message') or '')[:300]
-              except Exception:
-                  pass
-              print(f'Gemini key validation failed: HTTP {exc.code}: {detail}')
-              raise SystemExit(1)
+                  print(f'Gemini validation attempt {attempt}/{attempts}...')
+                  with urllib.request.urlopen(req, timeout=timeout_seconds) as response:
+                      print(f'Gemini key validation HTTP {response.status}')
+                      raise SystemExit(0)
+              except urllib.error.HTTPError as exc:
+                  detail = ''
+                  try:
+                      payload = json.loads(exc.read().decode())
+                      detail = ((payload.get('error') or {}).get('message') or '')[:300]
+                  except Exception:
+                      pass
+                  # Auth/configuration failures are not transient and should fail immediately.
+                  if exc.code in (400, 401, 403, 404):
+                      print(f'Gemini key validation failed: HTTP {exc.code}: {detail}')
+                      raise SystemExit(1)
+                  print(f'Gemini transient HTTP error on attempt {attempt}: HTTP {exc.code}: {detail}')
+              except (TimeoutError, socket.timeout, urllib.error.URLError) as exc:
+                  print(f'Gemini validation transient network error on attempt {attempt}: {exc}')
+
+              if attempt < attempts:
+                  delay = attempt * 5
+                  print(f'Retrying Gemini validation in {delay}s...')
+                  time.sleep(delay)
+
+          print(f'Gemini validation failed after {attempts} attempts.')
+          raise SystemExit(1)
           PY
 
       - name: Prepare pinned SSH identity
