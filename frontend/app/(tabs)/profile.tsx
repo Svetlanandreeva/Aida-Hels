@@ -1,6 +1,5 @@
 import React, { useCallback, useState } from "react";
 import {
-  ActivityIndicator,
   View,
   Text,
   StyleSheet,
@@ -15,22 +14,31 @@ import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { avatarFor } from "@/src/components/TopBar";
-import { Card, Muted, PrimaryButton, Tag } from "@/src/components/ui";
+import { PrimaryButton } from "@/src/components/ui";
 import { Sheet } from "@/src/components/Sheet";
 import { useApp } from "@/src/store";
 import { useI18n } from "@/src/i18n";
-import { useResponsiveLayout } from "@/src/hooks/use-responsive-layout";
 import { api } from "@/src/api";
-import { colors, spacing, radius, fontSize, fonts } from "@/src/theme";
 
 const COVER = "https://images.unsplash.com/photo-1737040455054-f83c122176ef";
+
+const figma = {
+  bg: "#EAEAE8",
+  card: "#FBFBFA",
+  text: "#1B1B1D",
+  muted: "#8A8A8E",
+  divider: "#ECECEA",
+  allergy: "#F6E7DE",
+  coverA: "#E9D8C8",
+  coverB: "#DEC7B1",
+  coverC: "#D9BEA6",
+};
 
 function ageFrom(dob?: string | null): number | null {
   if (!dob) return null;
   const d = new Date(dob);
-  if (isNaN(d.getTime())) return null;
-  const diff = Date.now() - d.getTime();
-  return Math.floor(diff / (365.25 * 24 * 3600 * 1000));
+  if (Number.isNaN(d.getTime())) return null;
+  return Math.floor((Date.now() - d.getTime()) / (365.25 * 24 * 3600 * 1000));
 }
 
 export default function ProfileScreen() {
@@ -38,13 +46,10 @@ export default function ProfileScreen() {
   const router = useRouter();
   const { activeProfile, reload, refreshTick, bumpRefresh } = useApp();
   const { t, lang, setLang } = useI18n();
-  const responsive = useResponsiveLayout();
 
   const [refreshing, setRefreshing] = useState(false);
   const [edit, setEdit] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [nutritionSaving, setNutritionSaving] = useState(false);
-
   const [height, setHeight] = useState("");
   const [weight, setWeight] = useState("");
   const [blood, setBlood] = useState("");
@@ -88,58 +93,38 @@ export default function ProfileScreen() {
     }
   };
 
-  const toggleNutrition = async () => {
-    if (!activeProfile || nutritionSaving) return;
-    const enabled = activeProfile.module_settings?.nutrition === true;
-    setNutritionSaving(true);
-    try {
-      await api.updateProfile(activeProfile.id, {
-        module_settings: { ...(activeProfile.module_settings || {}), nutrition: !enabled },
-      });
-      await reload();
-      bumpRefresh();
-    } finally {
-      setNutritionSaving(false);
-    }
-  };
-
   if (!activeProfile) {
     return (
-      <View style={[styles.emptyPage, { paddingTop: insets.top + spacing["3xl"] }]}>
-        <View style={styles.emptyIcon}>
-          <Ionicons name="person-outline" size={34} color={colors.onSurfaceSecondary} />
-        </View>
+      <View style={[styles.empty, { paddingTop: insets.top + 40 }]}>
+        <Ionicons name="person-outline" size={36} color={figma.muted} />
         <Text style={styles.emptyTitle}>{lang === "ru" ? "Профиль ещё не создан" : "No profile yet"}</Text>
-        <Muted style={styles.emptyText}>
-          {lang === "ru"
-            ? "Создайте профиль, чтобы сохранять показатели здоровья, задачи и документы в одном месте."
-            : "Create a profile to keep health data, tasks and documents in one place."}
-        </Muted>
-        <PrimaryButton
-          label={lang === "ru" ? "Обновить" : "Retry"}
-          onPress={() => reload().catch(() => {})}
-          style={{ marginTop: spacing.lg, width: "100%" }}
-          testID="profile-retry"
-        />
+        <PrimaryButton label={lang === "ru" ? "Обновить" : "Retry"} onPress={() => reload().catch(() => {})} testID="profile-retry" />
       </View>
     );
   }
 
   const age = ageFrom(activeProfile.dob);
-  const nutritionEnabled = activeProfile.module_settings?.nutrition === true;
+  const sexLabel = lang === "ru"
+    ? activeProfile.sex === "female" ? "Жен." : activeProfile.sex === "male" ? "Муж." : "—"
+    : activeProfile.sex || "—";
 
   return (
     <View style={styles.container}>
       <ScrollView
-        contentContainerStyle={{ paddingBottom: 40 + insets.bottom }}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.onSurface} />}
+        contentContainerStyle={{ paddingBottom: 28 + insets.bottom }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={figma.text} />}
       >
-        <View style={[styles.coverWrap, responsive.isCompactPhone && styles.coverWrapCompact]}>
-          <Image source={{ uri: COVER }} style={styles.cover} contentFit="cover" />
-          <LinearGradient colors={["transparent", "rgba(27,27,29,0.35)"]} style={StyleSheet.absoluteFill as any} />
-          <Pressable style={[styles.langChip, { top: insets.top + spacing.md }]} onPress={() => setLang(lang === "ru" ? "en" : "ru")} testID="profile-lang-toggle">
-            <Text style={styles.langChipText}>{lang === "ru" ? "RU" : "EN"}</Text>
+        <View style={[styles.cover, { paddingTop: insets.top }]}>
+          <LinearGradient
+            colors={[figma.coverA, figma.coverB, figma.coverC]}
+            start={{ x: 0.1, y: 0 }}
+            end={{ x: 0.9, y: 1 }}
+            style={StyleSheet.absoluteFill}
+          />
+          <Image source={{ uri: COVER }} style={styles.coverTexture} contentFit="cover" />
+          <Pressable style={styles.langButton} onPress={() => setLang(lang === "ru" ? "en" : "ru")} testID="profile-lang-toggle">
+            <Text style={styles.langText}>{lang === "ru" ? "RU" : "EN"}</Text>
           </Pressable>
         </View>
 
@@ -147,264 +132,132 @@ export default function ProfileScreen() {
           <Image source={{ uri: avatarFor(activeProfile.kind) }} style={styles.avatar} contentFit="cover" />
         </View>
 
-        <View style={[styles.body, { paddingHorizontal: responsive.contentPadding }]}>
-          <Text style={styles.name}>{activeProfile.name}</Text>
-          <View style={styles.metaRow}>
-            {age !== null && <Tag label={`${age} ${t("years")}`} bg={colors.surfaceSecondary} color={colors.onSurface} />}
-            {activeProfile.blood_type && <Tag label={activeProfile.blood_type} bg={colors.surfaceSecondary} color={colors.onSurface} />}
-            {activeProfile.sex && (
-              <Tag label={lang === "ru" ? (activeProfile.sex === "female" ? "Жен." : "Муж.") : activeProfile.sex} bg={colors.surfaceSecondary} color={colors.onSurface} />
-            )}
-          </View>
+        <Text style={styles.name}>{activeProfile.name}</Text>
 
-          <View style={[styles.metricRow, responsive.isCompactPhone && styles.metricRowCompact]}>
-            <Metric compact={responsive.isCompactPhone} label={t("height")} value={activeProfile.height_cm ? `${activeProfile.height_cm} см` : "—"} />
-            <Metric compact={responsive.isCompactPhone} label={t("weight")} value={activeProfile.weight_kg ? `${activeProfile.weight_kg} кг` : "—"} />
-            <Metric compact={responsive.isCompactPhone} label={t("blood_type")} value={activeProfile.blood_type || "—"} />
-          </View>
-
-          <Pressable style={styles.medicalCardLink} onPress={() => router.push("/medical-card" as any)} testID="medical-card-link">
-            <View style={styles.medicalCardIcon}>
-              <Ionicons name="medical-outline" size={22} color={colors.onSurface} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.medicalCardTitle}>{lang === "ru" ? "Медицинская карта" : "Medical card"}</Text>
-              <Text style={styles.medicalCardHint}>{lang === "ru" ? "Диагнозы, операции, лекарства, документы и privacy" : "Diagnoses, procedures, medications, documents and privacy"}</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={19} color={colors.onSurfaceSecondary} />
-          </Pressable>
-
-          <View style={styles.featureLinks} testID="profile-feature-links">
-            <FeatureLink icon="body-outline" title={lang === "ru" ? "Организм" : "Body"} subtitle={lang === "ru" ? "Системы и биологический возраст" : "Systems and biological age"} onPress={() => router.push("/body" as any)} />
-            <FeatureLink icon="watch-outline" title={lang === "ru" ? "Устройства" : "Devices"} subtitle={lang === "ru" ? "Часы, HealthKit и Health Connect" : "Watches, HealthKit and Health Connect"} onPress={() => router.push("/devices" as any)} />
-            {nutritionEnabled ? <FeatureLink icon="restaurant-outline" title={lang === "ru" ? "Питание" : "Nutrition"} subtitle={lang === "ru" ? "Дневник, качество рациона и взаимодействия" : "Diary, diet quality and interactions"} onPress={() => router.push("/nutrition" as any)} /> : null}
-            {activeProfile.sex === "female" ? <FeatureLink icon="flower-outline" title={lang === "ru" ? "Женское здоровье" : "Women's health"} subtitle={lang === "ru" ? "Цикл, планирование, беременность" : "Cycle, planning, pregnancy"} onPress={() => router.push("/womens-health" as any)} /> : null}
-            <FeatureLink icon="people-outline" title={lang === "ru" ? "Семья и доступ" : "Family & access"} subtitle={lang === "ru" ? "Профили и разрешения" : "Profiles and permissions"} onPress={() => router.push("/family" as any)} />
-            <FeatureLink icon="shield-checkmark-outline" title={lang === "ru" ? "Приватность" : "Privacy"} subtitle={lang === "ru" ? "AI, уведомления и сессии" : "AI, notifications and sessions"} onPress={() => router.push("/privacy" as any)} />
-            <FeatureLink icon="download-outline" title={lang === "ru" ? "Экспорт данных" : "Data export"} subtitle={lang === "ru" ? "Скачать данные профиля" : "Download profile data"} onPress={() => router.push("/export-data" as any)} />
-            <FeatureLink icon="medical-outline" title={lang === "ru" ? "Экстренная медкарта" : "Emergency card"} subtitle={lang === "ru" ? "Краткие важные данные" : "Essential health summary"} onPress={() => router.push("/emergency-card" as any)} />
-          </View>
-
-          <Card style={{ marginTop: spacing.md }} testID="allergies-card">
-            <View style={styles.sectionHead}>
-              <Ionicons name="warning-outline" size={18} color={colors.warning} />
-              <Text style={styles.sectionTitle}>{t("allergies")}</Text>
-            </View>
-            {activeProfile.allergies.length ? (
-              <View style={styles.tagWrap}>
-                {activeProfile.allergies.map((a, i) => (
-                  <View key={i} style={styles.pill}>
-                    <Text style={styles.pillText}>{a}</Text>
-                  </View>
-                ))}
-              </View>
-            ) : (
-              <Muted>{t("none")}</Muted>
-            )}
-          </Card>
-
-          <Card style={{ marginTop: spacing.md }} testID="chronic-card">
-            <View style={styles.sectionHead}>
-              <Ionicons name="fitness-outline" size={18} color={colors.onSurface} />
-              <Text style={styles.sectionTitle}>{t("chronic")}</Text>
-            </View>
-            {activeProfile.chronic_conditions.length ? (
-              <View style={styles.tagWrap}>
-                {activeProfile.chronic_conditions.map((a, i) => (
-                  <View key={i} style={styles.pill}>
-                    <Text style={styles.pillText}>{a}</Text>
-                  </View>
-                ))}
-              </View>
-            ) : (
-              <Muted>{t("none")}</Muted>
-            )}
-          </Card>
-
-          <Card style={{ marginTop: spacing.md }} testID="settings-card">
-            <View style={styles.sectionHead}>
-              <Ionicons name="settings-outline" size={18} color={colors.onSurface} />
-              <Text style={styles.sectionTitle}>{t("settings")}</Text>
-            </View>
-            <View style={styles.settingRow}>
-              <Text style={styles.settingLabel}>{t("language")}</Text>
-              <View style={styles.langSwitch}>
-                <Pressable onPress={() => setLang("ru")} style={[styles.langOpt, lang === "ru" && styles.langOptActive]} testID="set-lang-ru">
-                  <Text style={[styles.langOptText, lang === "ru" && styles.langOptTextActive]}>RU</Text>
-                </Pressable>
-                <Pressable onPress={() => setLang("en")} style={[styles.langOpt, lang === "en" && styles.langOptActive]} testID="set-lang-en">
-                  <Text style={[styles.langOptText, lang === "en" && styles.langOptTextActive]}>EN</Text>
-                </Pressable>
-              </View>
-            </View>
-            <Pressable style={styles.settingRow} onPress={() => void toggleNutrition()} disabled={nutritionSaving} testID="nutrition-setting-toggle">
-              <View style={styles.settingActionLabel}>
-                <Ionicons name="restaurant-outline" size={19} color={colors.onSurface} />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.settingLabel}>{lang === "ru" ? "Дневник питания" : "Nutrition diary"}</Text>
-                  <Text style={styles.settingHint}>{lang === "ru" ? "Добавлять питание в общий анализ Aida" : "Include nutrition in Aida's overall analysis"}</Text>
-                </View>
-              </View>
-              <View style={[styles.moduleChip, nutritionEnabled && styles.moduleChipActive]}>
-                {nutritionSaving ? <ActivityIndicator size="small" color={nutritionEnabled ? colors.onBrandPrimary : colors.onSurface} /> : <Text style={[styles.moduleChipText, nutritionEnabled && styles.moduleChipTextActive]}>{nutritionEnabled ? (lang === "ru" ? "Вкл" : "On") : (lang === "ru" ? "Выкл" : "Off")}</Text>}
-              </View>
-            </Pressable>
-            <Pressable style={styles.settingRow} onPress={openEdit} testID="edit-profile-button">
-              <Text style={styles.settingLabel}>{t("edit")}</Text>
-              <Ionicons name="chevron-forward" size={18} color={colors.onSurfaceSecondary} />
-            </Pressable>
-            <Pressable
-              style={styles.settingRow}
-              onPress={() => router.push(`/report?profileId=${activeProfile.id}`)}
-              testID="generate-report-button"
-            >
-              <View style={styles.settingActionLabel}>
-                <Ionicons name="document-text-outline" size={19} color={colors.onSurface} />
-                <Text style={styles.settingLabel}>{t("generate_report")}</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={colors.onSurfaceSecondary} />
-            </Pressable>
-          </Card>
+        <View style={styles.metaRow}>
+          {age !== null ? <Pill text={`${age} ${lang === "ru" ? "год" : "y"}`} /> : null}
+          {activeProfile.blood_type ? <Pill text={activeProfile.blood_type} /> : null}
+          <Pill text={sexLabel} />
         </View>
+
+        <View style={styles.metricsRow}>
+          <Metric value={activeProfile.height_cm ? `${activeProfile.height_cm} см` : "—"} label={t("height")} />
+          <Metric value={activeProfile.weight_kg ? `${activeProfile.weight_kg} кг` : "—"} label={t("weight")} />
+          <Metric value={activeProfile.blood_type || "—"} label={t("blood_type")} />
+        </View>
+
+        <Pressable style={styles.medCard} onPress={() => router.push("/medical-card" as any)} testID="medical-card-link">
+          <View style={styles.medIcon}><Ionicons name="medical-outline" size={23} color={figma.text} /></View>
+          <View style={styles.flex}>
+            <Text style={styles.rowTitle}>{lang === "ru" ? "Медицинская карта" : "Medical card"}</Text>
+            <Text style={styles.rowSubtitle}>{lang === "ru" ? "Диагнозы, операции, лекарства и документы" : "Diagnoses, procedures, medications and documents"}</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={figma.muted} />
+        </Pressable>
+
+        <View style={styles.allergyCard} testID="allergies-card">
+          <Text style={styles.allergyTitle}>⚠ {t("allergies")}</Text>
+          <View style={styles.allergyRow}>
+            {(activeProfile.allergies || []).length ? activeProfile.allergies.map((item, i) => (
+              <View key={`${item}-${i}`} style={styles.allergyPill}><Text style={styles.allergyText}>{item}</Text></View>
+            )) : <Text style={styles.noneText}>{t("none")}</Text>}
+          </View>
+        </View>
+
+        <View style={styles.settingsCard} testID="settings-card">
+          <Text style={styles.settingsTitle}>{t("settings")}</Text>
+          <View style={styles.settingRow}>
+            <Text style={styles.settingLabel}>{t("language")}</Text>
+            <Pressable onPress={() => setLang(lang === "ru" ? "en" : "ru")} testID="profile-language-row">
+              <Text style={styles.settingValue}>{lang === "ru" ? "RU / EN" : "EN / RU"}</Text>
+            </Pressable>
+          </View>
+          <View style={styles.divider} />
+          <Pressable style={styles.settingRow} onPress={openEdit} testID="edit-profile-button">
+            <Text style={styles.settingLabel}>{t("edit")}</Text>
+            <Ionicons name="chevron-forward" size={18} color={figma.muted} />
+          </Pressable>
+        </View>
+
+        <Pressable style={styles.secondaryRow} onPress={() => router.push("/settings" as any)} testID="full-settings-link">
+          <Ionicons name="settings-outline" size={20} color={figma.text} />
+          <Text style={styles.secondaryText}>{lang === "ru" ? "Все настройки и разделы профиля" : "All profile settings"}</Text>
+          <Ionicons name="chevron-forward" size={18} color={figma.muted} />
+        </Pressable>
       </ScrollView>
 
       <Sheet visible={edit} onClose={() => setEdit(false)} testID="edit-sheet" scroll>
         <Text style={styles.editTitle}>{t("edit")}</Text>
-        <EditField label={t("height")}>
-          <TextInput testID="edit-height" value={height} onChangeText={setHeight} keyboardType="numeric" style={styles.input} placeholderTextColor={colors.onSurfaceSecondary} />
-        </EditField>
-        <EditField label={t("weight")}>
-          <TextInput testID="edit-weight" value={weight} onChangeText={setWeight} keyboardType="numeric" style={styles.input} placeholderTextColor={colors.onSurfaceSecondary} />
-        </EditField>
-        <EditField label={t("blood_type")}>
-          <TextInput testID="edit-blood" value={blood} onChangeText={setBlood} style={styles.input} placeholderTextColor={colors.onSurfaceSecondary} />
-        </EditField>
-        <EditField label={t("allergies")}>
-          <TextInput testID="edit-allergies" value={allergies} onChangeText={setAllergies} placeholder={lang === "ru" ? "через запятую" : "comma separated"} style={styles.input} placeholderTextColor={colors.onSurfaceSecondary} />
-        </EditField>
-        <EditField label={t("chronic")}>
-          <TextInput testID="edit-chronic" value={chronic} onChangeText={setChronic} placeholder={lang === "ru" ? "через запятую" : "comma separated"} style={styles.input} placeholderTextColor={colors.onSurfaceSecondary} />
-        </EditField>
+        <EditField label={t("height")}><TextInput testID="edit-height" value={height} onChangeText={setHeight} keyboardType="numeric" style={styles.input} /></EditField>
+        <EditField label={t("weight")}><TextInput testID="edit-weight" value={weight} onChangeText={setWeight} keyboardType="numeric" style={styles.input} /></EditField>
+        <EditField label={t("blood_type")}><TextInput testID="edit-blood" value={blood} onChangeText={setBlood} style={styles.input} /></EditField>
+        <EditField label={t("allergies")}><TextInput testID="edit-allergies" value={allergies} onChangeText={setAllergies} style={styles.input} /></EditField>
+        <EditField label={t("chronic")}><TextInput testID="edit-chronic" value={chronic} onChangeText={setChronic} style={styles.input} /></EditField>
         <PrimaryButton label={t("save")} onPress={save} loading={saving} testID="save-profile-edit" />
       </Sheet>
     </View>
   );
 }
 
-const Metric: React.FC<{ label: string; value: string; compact?: boolean }> = ({ label, value, compact }) => (
-  <View style={[styles.metric, compact && styles.metricCompact]}>
-    <Text style={styles.metricValue}>{value}</Text>
-    <Text style={styles.metricLabel}>{label}</Text>
-  </View>
-);
+function Pill({ text }: { text: string }) {
+  return <View style={styles.pill}><Text style={styles.pillText}>{text}</Text></View>;
+}
 
-const FeatureLink: React.FC<{ icon: any; title: string; subtitle: string; onPress: () => void }> = ({ icon, title, subtitle, onPress }) => (
-  <Pressable style={styles.featureLink} onPress={onPress}>
-    <View style={styles.featureIcon}><Ionicons name={icon} size={20} color={colors.onSurface} /></View>
-    <View style={{ flex: 1 }}><Text style={styles.featureTitle}>{title}</Text><Text style={styles.featureHint}>{subtitle}</Text></View>
-    <Ionicons name="chevron-forward" size={18} color={colors.onSurfaceSecondary} />
-  </Pressable>
-);
+function Metric({ value, label }: { value: string; label: string }) {
+  return (
+    <View style={styles.metric}>
+      <Text style={styles.metricValue}>{value}</Text>
+      <Text style={styles.metricLabel}>{label}</Text>
+    </View>
+  );
+}
 
 const EditField: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
-  <View style={{ marginBottom: spacing.lg }}>
+  <View style={styles.editField}>
     <Text style={styles.fieldLabel}>{label}</Text>
     {children}
   </View>
 );
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.surface },
-  featureLinks: { marginTop: spacing.md, gap: spacing.sm },
-  featureLink: { minHeight: 66, flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.md, backgroundColor: colors.surfaceSecondary, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border },
-  featureIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center" },
-  featureTitle: { fontSize: fontSize.base, fontWeight: "800", color: colors.onSurface, fontFamily: fonts.text },
-  featureHint: { marginTop: 2, fontSize: fontSize.sm, color: colors.onSurfaceSecondary, fontFamily: fonts.text },
-  emptyPage: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface, paddingHorizontal: spacing.xl },
-  emptyIcon: { width: 72, height: 72, borderRadius: 36, backgroundColor: colors.surfaceSecondary, alignItems: "center", justifyContent: "center" },
-  emptyTitle: { marginTop: spacing.lg, fontSize: fontSize.xl, fontWeight: "800", color: colors.onSurface, fontFamily: fonts.display, textAlign: "center" },
-  emptyText: { marginTop: spacing.sm, textAlign: "center", lineHeight: 20 },
-  coverWrap: { height: 180 },
-  coverWrapCompact: { height: 150 },
-  cover: { width: "100%", height: "100%", backgroundColor: colors.surfaceTertiary },
-  langChip: {
-    position: "absolute",
-    right: spacing.lg,
-    backgroundColor: "rgba(255,255,255,0.85)",
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  langChipText: { fontWeight: "800", color: colors.onSurface, fontFamily: fonts.text },
+  container: { flex: 1, backgroundColor: figma.bg },
+  empty: { flex: 1, backgroundColor: figma.bg, alignItems: "center", justifyContent: "center", paddingHorizontal: 24, gap: 18 },
+  emptyTitle: { color: figma.text, fontSize: 24, fontWeight: "800", textAlign: "center" },
+  cover: { height: 180, overflow: "hidden" },
+  coverTexture: { ...StyleSheet.absoluteFillObject, opacity: 0.08 },
+  langButton: { position: "absolute", right: 16, bottom: 77, width: 44, height: 44, borderRadius: 22, backgroundColor: "rgba(251,251,250,0.94)", alignItems: "center", justifyContent: "center" },
+  langText: { color: figma.text, fontSize: 12, fontWeight: "800" },
   avatarWrap: { alignItems: "center", marginTop: -44 },
-  avatar: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
-    borderWidth: 4,
-    borderColor: colors.surface,
-    backgroundColor: colors.surfaceTertiary,
-  },
-  body: { paddingHorizontal: spacing.lg, marginTop: spacing.md },
-  name: { fontSize: fontSize["2xl"], fontWeight: "800", color: colors.onSurface, textAlign: "center", letterSpacing: -0.5, fontFamily: fonts.display },
-  metaRow: { flexDirection: "row", gap: spacing.sm, justifyContent: "center", marginTop: spacing.sm, flexWrap: "wrap" },
-  metricRow: { flexDirection: "row", gap: spacing.md, marginTop: spacing.lg },
-  metricRowCompact: { flexDirection: "column" },
-  metric: {
-    flex: 1,
-    backgroundColor: colors.surfaceSecondary,
-    borderRadius: radius.md,
-    padding: spacing.lg,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: colors.glassBorder,
-  },
-  metricCompact: { flex: 0, width: "100%" },
-  metricValue: { fontSize: fontSize.lg, fontWeight: "800", color: colors.onSurface, fontFamily: fonts.text },
-  metricLabel: { fontSize: fontSize.sm, color: colors.onSurfaceSecondary, marginTop: 2, fontFamily: fonts.text },
-  medicalCardLink: { minHeight: 78, marginTop: spacing.lg, borderRadius: radius.lg, backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.glassBorder, paddingHorizontal: spacing.lg, paddingVertical: spacing.md, flexDirection: "row", alignItems: "center", gap: spacing.md },
-  medicalCardIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center" },
-  medicalCardTitle: { fontSize: fontSize.lg, fontWeight: "700", color: colors.onSurface, fontFamily: fonts.text },
-  medicalCardHint: { marginTop: 3, fontSize: fontSize.sm, lineHeight: 18, color: colors.onSurfaceSecondary, fontFamily: fonts.text },
-  sectionHead: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.md },
-  sectionTitle: { fontSize: fontSize.lg, fontWeight: "700", color: colors.onSurface, fontFamily: fonts.text },
-  tagWrap: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  pill: { backgroundColor: colors.surface, paddingHorizontal: spacing.md, paddingVertical: 7, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border },
-  pillText: { fontSize: fontSize.base, color: colors.onSurface, fontWeight: "500", fontFamily: fonts.text },
-  settingRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingVertical: spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: colors.divider,
-    gap: spacing.md,
-  },
-  settingActionLabel: { flex: 1, flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  settingLabel: { fontSize: fontSize.lg, color: colors.onSurface, fontFamily: fonts.text },
-  settingHint: { marginTop: 2, fontSize: fontSize.sm, lineHeight: 18, color: colors.onSurfaceSecondary, fontFamily: fonts.text },
-  moduleChip: { minWidth: 56, minHeight: 32, paddingHorizontal: 9, borderRadius: radius.pill, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
-  moduleChipActive: { backgroundColor: colors.brandPrimary, borderColor: colors.brandPrimary },
-  moduleChipText: { fontSize: fontSize.sm, fontWeight: "800", color: colors.onSurfaceSecondary, fontFamily: fonts.text },
-  moduleChipTextActive: { color: colors.onBrandPrimary },
-  langSwitch: { flexDirection: "row", backgroundColor: colors.surface, borderRadius: radius.pill, padding: 3, borderWidth: 1, borderColor: colors.border },
-  langOpt: { paddingHorizontal: spacing.md, paddingVertical: 5, borderRadius: radius.pill },
-  langOptActive: { backgroundColor: colors.brandPrimary },
-  langOptText: { fontSize: fontSize.sm, fontWeight: "700", color: colors.onSurfaceSecondary, fontFamily: fonts.text },
-  langOptTextActive: { color: colors.onBrandPrimary },
-  editTitle: { fontSize: fontSize.xl, fontWeight: "700", color: colors.onSurface, marginBottom: spacing.lg, fontFamily: fonts.display },
-  fieldLabel: { fontSize: fontSize.base, color: colors.onSurfaceSecondary, marginBottom: spacing.sm, fontWeight: "600", fontFamily: fonts.text },
-  input: {
-    height: 52,
-    backgroundColor: colors.surfaceSecondary,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.lg,
-    fontSize: fontSize.lg,
-    color: colors.onSurface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    fontFamily: fonts.text,
-  },
+  avatar: { width: 88, height: 88, borderRadius: 44, borderWidth: 4, borderColor: figma.bg, backgroundColor: "#DEDEDC" },
+  name: { color: figma.text, fontSize: 26, lineHeight: 34, fontWeight: "800", textAlign: "center", marginTop: 10 },
+  metaRow: { flexDirection: "row", justifyContent: "center", gap: 8, marginTop: 4 },
+  pill: { height: 28, minWidth: 48, paddingHorizontal: 12, borderRadius: 999, backgroundColor: figma.card, alignItems: "center", justifyContent: "center" },
+  pillText: { color: figma.text, fontSize: 12, fontWeight: "800" },
+  metricsRow: { flexDirection: "row", gap: 11, paddingHorizontal: 16, marginTop: 16 },
+  metric: { flex: 1, height: 82, borderRadius: 18, backgroundColor: figma.card, alignItems: "center", justifyContent: "center" },
+  metricValue: { color: figma.text, fontSize: 16, fontWeight: "800" },
+  metricLabel: { color: figma.muted, fontSize: 11, marginTop: 5 },
+  medCard: { minHeight: 72, marginHorizontal: 16, marginTop: 16, paddingHorizontal: 16, borderRadius: 26, backgroundColor: figma.card, flexDirection: "row", alignItems: "center", gap: 14 },
+  medIcon: { width: 42, height: 42, borderRadius: 21, backgroundColor: "#F0F0EE", alignItems: "center", justifyContent: "center" },
+  flex: { flex: 1 },
+  rowTitle: { color: figma.text, fontSize: 15, fontWeight: "800" },
+  rowSubtitle: { color: figma.muted, fontSize: 11, lineHeight: 16, marginTop: 2 },
+  allergyCard: { minHeight: 84, marginHorizontal: 16, marginTop: 16, paddingHorizontal: 24, paddingVertical: 14, borderRadius: 26, backgroundColor: figma.card },
+  allergyTitle: { color: figma.text, fontSize: 13, fontWeight: "800" },
+  allergyRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 },
+  allergyPill: { height: 24, paddingHorizontal: 12, borderRadius: 999, backgroundColor: figma.allergy, alignItems: "center", justifyContent: "center" },
+  allergyText: { color: figma.text, fontSize: 11, fontWeight: "700" },
+  noneText: { color: figma.muted, fontSize: 12 },
+  settingsCard: { marginHorizontal: 16, marginTop: 16, paddingHorizontal: 24, paddingTop: 14, paddingBottom: 6, borderRadius: 26, backgroundColor: figma.card },
+  settingsTitle: { color: figma.text, fontSize: 14, fontWeight: "800", marginBottom: 6 },
+  settingRow: { minHeight: 40, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  settingLabel: { color: figma.text, fontSize: 13 },
+  settingValue: { color: figma.muted, fontSize: 12 },
+  divider: { height: 1, backgroundColor: figma.divider },
+  secondaryRow: { marginHorizontal: 16, marginTop: 14, minHeight: 56, paddingHorizontal: 18, borderRadius: 22, backgroundColor: "rgba(251,251,250,0.66)", flexDirection: "row", alignItems: "center", gap: 12 },
+  secondaryText: { flex: 1, color: figma.text, fontSize: 13, fontWeight: "700" },
+  editTitle: { color: figma.text, fontSize: 24, fontWeight: "800", marginBottom: 18 },
+  editField: { marginBottom: 16 },
+  fieldLabel: { color: figma.muted, fontSize: 13, marginBottom: 8, fontWeight: "600" },
+  input: { height: 52, borderRadius: 16, paddingHorizontal: 16, backgroundColor: figma.card, color: figma.text, borderWidth: 1, borderColor: "#D8D8D6", fontSize: 16 },
 });
